@@ -1,0 +1,228 @@
+{
+  "status": "COMPLETED",
+  "contractVersion": "deepagent-v1",
+  "runId": "run-demo-001",
+  "workflowVersion": "causalrisk-workflow-v1",
+  "currentStage": "EXPLANATION",
+  "dataVersion": "demo-2026-09",
+  "modelVersion": "deepagent-causal-warning-v1",
+  "qualityStatus": "PASS",
+  "riskScore": 0.8304,
+  "riskLevel": "HIGH",
+  "warnings": [],
+  "graph": {
+    "nodes": [
+      {
+        "id": "COGNITION",
+        "label": "认知状态",
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR"
+      },
+      {
+        "id": "WARNING",
+        "label": "研究型风险排序",
+        "status": "ACTIVE",
+        "evidenceLevel": "MODEL"
+      },
+      {
+        "id": "APOE_E4_COUNT",
+        "label": "APOE ε4",
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR",
+        "observedAt": "2025-01-01"
+      },
+      {
+        "id": "MRI_HIPPOCAMPUS_L",
+        "label": "左海马 MRI",
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR",
+        "observedAt": "2025-01-01"
+      },
+      {
+        "id": "MRI_HIPPOCAMPUS_R",
+        "label": "右海马 MRI",
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR",
+        "observedAt": "2025-01-01"
+      }
+    ],
+    "edges": [
+      {
+        "from": "APOE_E4_COUNT",
+        "to": "COGNITION",
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR",
+        "direction": "CONDITIONAL",
+        "note": "研究先验约束路径，不代表已识别的个体因果效应"
+      },
+      {
+        "from": "MRI_HIPPOCAMPUS_L",
+        "to": "COGNITION",
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR",
+        "direction": "CONDITIONAL",
+        "note": "研究先验约束路径，不代表已识别的个体因果效应"
+      },
+      {
+        "from": "MRI_HIPPOCAMPUS_R",
+        "to": "COGNITION",
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR",
+        "direction": "CONDITIONAL",
+        "note": "研究先验约束路径，不代表已识别的个体因果效应"
+      },
+      {
+        "from": "COGNITION",
+        "to": "WARNING",
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR",
+        "direction": "CONDITIONAL",
+        "note": "研究先验约束路径，不代表已识别的个体因果效应"
+      }
+    ],
+    "paths": [
+      {
+        "nodes": [
+          "APOE_E4_COUNT",
+          "COGNITION"
+        ],
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR"
+      },
+      {
+        "nodes": [
+          "MRI_HIPPOCAMPUS_L",
+          "COGNITION"
+        ],
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR"
+      },
+      {
+        "nodes": [
+          "MRI_HIPPOCAMPUS_R",
+          "COGNITION"
+        ],
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR"
+      },
+      {
+        "nodes": [
+          "COGNITION",
+          "WARNING"
+        ],
+        "status": "ACTIVE",
+        "evidenceLevel": "PRIOR"
+      }
+    ],
+    "graphVersion": "synthetic-prior-v1"
+  },
+  "explanations": [
+    {
+      "feature": "MMSE",
+      "label": "MMSE 认知评分",
+      "direction": "UP",
+      "contribution": 0.2,
+      "message": "当前认知评分对风险排序贡献偏高",
+      "source": "graph-masked-synthetic-rule-v1",
+      "evidenceLevel": "PREDICTIVE_DEMO",
+      "interpretation": "预测贡献，不是因果效应"
+    },
+    {
+      "feature": "CDR_SB",
+      "label": "CDR-SB",
+      "direction": "UP",
+      "contribution": 0.15,
+      "message": "CDR-SB 信号在当前演示排序中贡献上移",
+      "source": "graph-masked-synthetic-rule-v1",
+      "evidenceLevel": "PREDICTIVE_DEMO",
+      "interpretation": "预测贡献，不是因果效应"
+    },
+    {
+      "feature": "MoCA",
+      "label": "MoCA 认知评分",
+      "direction": "UP",
+      "contribution": 0.14,
+      "message": "MoCA 信号使排序分数上移",
+      "source": "graph-masked-synthetic-rule-v1",
+      "evidenceLevel": "PREDICTIVE_DEMO",
+      "interpretation": "预测贡献，不是因果效应"
+    },
+    {
+      "feature": "MMSE_DELTA",
+      "label": "纵向 MMSE 变化",
+      "direction": "UP",
+      "contribution": 0.1,
+      "message": "纵向变化使排序分数上移",
+      "source": "graph-masked-synthetic-rule-v1",
+      "evidenceLevel": "PREDICTIVE_DEMO",
+      "interpretation": "预测贡献，不是因果效应"
+    },
+    {
+      "feature": "APOE_E4_COUNT",
+      "label": "APOE ε4 计数",
+      "direction": "UP",
+      "contribution": 0.045,
+      "message": "遗传模态作为个体化上下文进入排序",
+      "source": "graph-masked-synthetic-rule-v1",
+      "evidenceLevel": "PREDICTIVE_DEMO",
+      "interpretation": "预测贡献，不是因果效应"
+    },
+    {
+      "feature": "MRI_HIPPOCAMPUS",
+      "label": "MRI 海马数值",
+      "direction": "UP",
+      "contribution": 0.0154,
+      "message": "影像模态作为结构性上下文进入排序",
+      "source": "graph-masked-synthetic-rule-v1",
+      "evidenceLevel": "PREDICTIVE_DEMO",
+      "interpretation": "预测贡献，不是因果效应"
+    }
+  ],
+  "missingModalities": [],
+  "limitations": [
+    "合成数据的研究型排序，不是临床诊断或经外部验证的风险概率。",
+    "图谱箭头是先验约束下的条件性解释，不证明个体病因或干预效应。",
+    "本接口不调用或导出 ADNI 受控参与者数据；结果须人工复核。"
+  ],
+  "stages": [
+    {
+      "stage": "DATA_FUSION",
+      "status": "COMPLETED",
+      "durationMs": 0,
+      "summary": {
+        "visitCount": 2,
+        "featureCount": 3,
+        "excludedPostIndexFeatures": 0,
+        "missingModalities": [],
+        "indexDate": "2026-01-01",
+        "qualityRuleVersion": "synthetic-qa-v1"
+      }
+    },
+    {
+      "stage": "CAUSAL_GRAPH",
+      "status": "COMPLETED",
+      "durationMs": 0,
+      "summary": {
+        "activePaths": 4
+      }
+    },
+    {
+      "stage": "WARNING_MODEL",
+      "status": "COMPLETED",
+      "durationMs": 0,
+      "summary": {
+        "method": "graph-masked-synthetic-rule-v1"
+      }
+    },
+    {
+      "stage": "EXPLANATION",
+      "status": "COMPLETED",
+      "durationMs": 0,
+      "summary": {
+        "contributionCount": 6
+      }
+    }
+  ],
+  "dataSource": "SYNTHETIC_DEMO",
+  "reviewRequired": true
+}

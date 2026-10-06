@@ -1,0 +1,17 @@
+{
+  "contractVersion": "deepagent-v1",
+  "runId": "run-demo-001",
+  "subjectCode": "DEMO-001",
+  "dataVersion": "demo-2026-09",
+  "modelVersion": "deepagent-causal-warning-v1",
+  "predictionWindowMonths": 24,
+  "visits": [
+    {"visitCode": "BL", "visitDate": "2025-01-01", "mmse": 28, "moca": 25, "cdrSb": 0.5},
+    {"visitCode": "M12", "visitDate": "2026-01-01", "mmse": 25, "moca": 22, "cdrSb": 1.5}
+  ],
+  "features": [
+    {"featureName": "APOE_E4_COUNT", "featureValue": 1, "recordedAt": "2025-01-01", "unit": "count"},
+    {"featureName": "MRI_HIPPOCAMPUS_L", "featureValue": 0.35, "recordedAt": "2025-01-01", "unit": "normalized"},
+    {"featureName": "MRI_HIPPOCAMPUS_R", "featureValue": 0.36, "recordedAt": "2025-01-01", "unit": "normalized"}
+  ]
+}

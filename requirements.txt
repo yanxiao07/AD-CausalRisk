@@ -1,0 +1,2 @@
+# Python 3.11+; the runtime service uses only the standard library.
+# No external runtime packages are required.

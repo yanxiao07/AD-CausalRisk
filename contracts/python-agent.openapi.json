@@ -1,0 +1,769 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AD-CausalRisk implemented synthetic Agent API",
+    "version": "course-agent-http-v1"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8091"
+    }
+  ],
+  "x-implementation-state": "IMPLEMENTED_SYNTHETIC_ONLY",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "agentHealth",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/v1/runs": {
+      "post": {
+        "operationId": "createAgentRun",
+        "description": "同步完成。相同runId/请求幂等；缓存仅本进程有效。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRequest"
+              },
+              "example": {
+                "contractVersion": "deepagent-v1",
+                "runId": "run-demo-001",
+                "subjectCode": "DEMO-001",
+                "dataVersion": "demo-2026-09",
+                "modelVersion": "deepagent-causal-warning-v1",
+                "predictionWindowMonths": 24,
+                "visits": [
+                  {
+                    "visitCode": "BL",
+                    "visitDate": "2025-01-01",
+                    "mmse": 28,
+                    "moca": 25,
+                    "cdrSb": 0.5
+                  },
+                  {
+                    "visitCode": "M12",
+                    "visitDate": "2026-01-01",
+                    "mmse": 25,
+                    "moca": 22,
+                    "cdrSb": 1.5
+                  }
+                ],
+                "features": [
+                  {
+                    "featureName": "APOE_E4_COUNT",
+                    "featureValue": 1,
+                    "recordedAt": "2025-01-01",
+                    "unit": "count"
+                  },
+                  {
+                    "featureName": "MRI_HIPPOCAMPUS_L",
+                    "featureValue": 0.35,
+                    "recordedAt": "2025-01-01",
+                    "unit": "normalized"
+                  },
+                  {
+                    "featureName": "MRI_HIPPOCAMPUS_R",
+                    "featureValue": 0.36,
+                    "recordedAt": "2025-01-01",
+                    "unit": "normalized"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentError"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/v1/runs/{runId}": {
+      "get": {
+        "operationId": "getAgentRun",
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^run-[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentRequest": {
+        "type": "object",
+        "properties": {
+          "contractVersion": {
+            "const": "deepagent-v1"
+          },
+          "runId": {
+            "type": "string",
+            "pattern": "^run-[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+          },
+          "subjectCode": {
+            "type": "string",
+            "pattern": "^DEMO-[A-Za-z0-9-]{1,45}$"
+          },
+          "dataVersion": {
+            "type": "string",
+            "pattern": "^demo-",
+            "maxLength": 100
+          },
+          "modelVersion": {
+            "const": "deepagent-causal-warning-v1"
+          },
+          "predictionWindowMonths": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 60
+          },
+          "visits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "visitCode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 50
+                },
+                "visitDate": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                },
+                "mmse": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 30
+                },
+                "moca": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 30
+                },
+                "cdrSb": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 18
+                }
+              },
+              "required": [
+                "visitCode",
+                "visitDate"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 100
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "featureName": {
+                  "enum": [
+                    "APOE_E4_COUNT",
+                    "MRI_HIPPOCAMPUS_L",
+                    "MRI_HIPPOCAMPUS_R"
+                  ]
+                },
+                "featureValue": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "recordedAt": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                },
+                "unit": {
+                  "enum": [
+                    "count",
+                    "normalized"
+                  ]
+                }
+              },
+              "required": [
+                "featureName",
+                "recordedAt",
+                "unit"
+              ],
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "featureName": {
+                        "const": "APOE_E4_COUNT"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "unit": {
+                        "const": "count"
+                      },
+                      "featureValue": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 2
+                      }
+                    }
+                  },
+                  "else": {
+                    "properties": {
+                      "unit": {
+                        "const": "normalized"
+                      },
+                      "featureValue": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "maxItems": 500
+          }
+        },
+        "required": [
+          "contractVersion",
+          "runId",
+          "subjectCode",
+          "dataVersion",
+          "modelVersion",
+          "predictionWindowMonths",
+          "visits",
+          "features"
+        ],
+        "additionalProperties": false
+      },
+      "AgentResult": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string"
+          },
+          "currentStage": {
+            "type": "string"
+          },
+          "dataVersion": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "COMPLETED",
+              "BLOCKED"
+            ]
+          },
+          "contractVersion": {
+            "const": "deepagent-v1"
+          },
+          "workflowVersion": {
+            "const": "causalrisk-workflow-v1"
+          },
+          "modelVersion": {
+            "const": "deepagent-causal-warning-v1"
+          },
+          "qualityStatus": {
+            "enum": [
+              "PASS",
+              "WARN",
+              "BLOCKED"
+            ]
+          },
+          "riskScore": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "riskLevel": {
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "UNAVAILABLE"
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "graph": {
+            "type": "object",
+            "properties": {
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "ACTIVE",
+                        "MISSING"
+                      ]
+                    },
+                    "evidenceLevel": {
+                      "enum": [
+                        "PRIOR",
+                        "MODEL"
+                      ]
+                    },
+                    "observedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "status",
+                    "evidenceLevel"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "edges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "ACTIVE",
+                        "MISSING"
+                      ]
+                    },
+                    "evidenceLevel": {
+                      "const": "PRIOR"
+                    },
+                    "direction": {
+                      "const": "CONDITIONAL"
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to",
+                    "note",
+                    "status",
+                    "evidenceLevel",
+                    "direction"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "status": {
+                      "enum": [
+                        "ACTIVE",
+                        "MISSING"
+                      ]
+                    },
+                    "evidenceLevel": {
+                      "const": "PRIOR"
+                    }
+                  },
+                  "required": [
+                    "nodes",
+                    "status",
+                    "evidenceLevel"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "graphVersion": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodes",
+              "edges",
+              "paths"
+            ],
+            "additionalProperties": false
+          },
+          "explanations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "feature": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "interpretation": {
+                  "type": "string"
+                },
+                "direction": {
+                  "enum": [
+                    "UP",
+                    "DOWN",
+                    "NEUTRAL"
+                  ]
+                },
+                "contribution": {
+                  "type": "number"
+                },
+                "evidenceLevel": {
+                  "const": "PREDICTIVE_DEMO"
+                }
+              },
+              "required": [
+                "feature",
+                "label",
+                "message",
+                "source",
+                "interpretation",
+                "direction",
+                "contribution",
+                "evidenceLevel"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "missingModalities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "stage": {
+                  "enum": [
+                    "DATA_FUSION",
+                    "CAUSAL_GRAPH",
+                    "WARNING_MODEL",
+                    "EXPLANATION"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "COMPLETED",
+                    "BLOCKED"
+                  ]
+                },
+                "durationMs": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "summary": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "stage",
+                "status",
+                "durationMs",
+                "summary"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "dataSource": {
+            "const": "SYNTHETIC_DEMO"
+          },
+          "reviewRequired": {
+            "const": true
+          }
+        },
+        "required": [
+          "runId",
+          "currentStage",
+          "dataVersion",
+          "status",
+          "contractVersion",
+          "workflowVersion",
+          "modelVersion",
+          "qualityStatus",
+          "riskScore",
+          "riskLevel",
+          "warnings",
+          "graph",
+          "explanations",
+          "missingModalities",
+          "limitations",
+          "stages",
+          "dataSource",
+          "reviewRequired"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "BLOCKED"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "qualityStatus": {
+                  "const": "BLOCKED"
+                },
+                "riskScore": {
+                  "type": "null"
+                },
+                "riskLevel": {
+                  "const": "UNAVAILABLE"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "qualityStatus": {
+                  "enum": [
+                    "PASS",
+                    "WARN"
+                  ]
+                },
+                "riskScore": {
+                  "type": "number"
+                },
+                "riskLevel": {
+                  "enum": [
+                    "LOW",
+                    "MEDIUM",
+                    "HIGH"
+                  ]
+                },
+                "graph": {
+                  "required": [
+                    "graphVersion"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AgentError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "traceId",
+          "timestamp"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

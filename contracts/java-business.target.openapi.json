@@ -1,0 +1,3381 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AD-CausalRisk course Java API target; implementation pending",
+    "version": "course-srs-v3.2"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080"
+    }
+  ],
+  "x-implementation-state": "PLANNED_NOT_IMPLEMENTED_IN_BASELINE",
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "summary": "登录",
+        "operationId": "postApiAuthLogin",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CurrentUser"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Login"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "注销会话",
+        "operationId": "postApiAuthLogout",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "当前用户",
+        "operationId": "getApiMe",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CurrentUser"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/subjects": {
+      "get": {
+        "summary": "分页档案",
+        "operationId": "getApiSubjects",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PageSubject"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "创建档案",
+        "operationId": "postApiSubjects",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Subject"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubjectCreate"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/subjects/{subjectId}": {
+      "get": {
+        "summary": "授权范围内档案",
+        "operationId": "getApiSubjectssubjectId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SubjectDetail"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "subjectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "patch": {
+        "summary": "修改档案",
+        "operationId": "patchApiSubjectssubjectId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Subject"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "subjectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubjectCreate"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/subjects/{subjectId}/visits": {
+      "post": {
+        "summary": "创建访视",
+        "operationId": "postApiSubjectsVisitssubjectId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/VisitResult"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "subjectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Visit"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/subjects/{subjectId}/features": {
+      "post": {
+        "summary": "创建特征",
+        "operationId": "postApiSubjectsFeaturessubjectId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FeatureResult"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "subjectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Feature"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/import-jobs": {
+      "post": {
+        "summary": "CSV导入预览与质控",
+        "operationId": "postApiImport-jobs",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImportJob"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/import-jobs/{jobId}": {
+      "get": {
+        "summary": "导入任务状态",
+        "operationId": "getApiImport-jobsjobId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImportJob"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/import-jobs/{jobId}/commit": {
+      "post": {
+        "summary": "确认合格行入库",
+        "operationId": "postApiImport-jobsCommitjobId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ImportJob"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/subjects/{subjectId}/quality-checks": {
+      "post": {
+        "summary": "执行并保存质量检查",
+        "operationId": "postApiSubjectsQuality-checkssubjectId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/QualityCheck"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "subjectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/assessment-tasks": {
+      "post": {
+        "summary": "幂等创建持久化评估任务",
+        "operationId": "postApiAssessment-tasks",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AssessmentTask"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssessmentCreate"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/assessment-tasks/{taskId}": {
+      "get": {
+        "summary": "查询任务",
+        "operationId": "getApiAssessment-taskstaskId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AssessmentTask"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/assessments/{assessmentId}": {
+      "get": {
+        "summary": "按角色返回结果",
+        "operationId": "getApiAssessmentsassessmentId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/Assessment"
+                        },
+                        {
+                          "$ref": "#/components/schemas/PatientAssessmentSummary"
+                        }
+                      ]
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "assessmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/assessments/{assessmentId}/review": {
+      "post": {
+        "summary": "记录人工业务复核",
+        "operationId": "postApiAssessmentsReviewassessmentId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ReviewResult"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "assessmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewCreate"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/follow-ups": {
+      "post": {
+        "summary": "创建随访",
+        "operationId": "postApiFollow-ups",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FollowUpResult"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FollowUp"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/follow-ups/{followUpId}": {
+      "patch": {
+        "summary": "修改/完成/取消随访",
+        "operationId": "patchApiFollow-upsfollowUpId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FollowUpResult"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "followUpId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FollowUp"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/subjects/{subjectId}/follow-ups": {
+      "get": {
+        "summary": "随访列表",
+        "operationId": "getApiSubjectsFollow-upssubjectId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FollowUpResult"
+                      }
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "subjectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/reports/{assessmentId}": {
+      "get": {
+        "summary": "授权导出研究报告",
+        "operationId": "getApiReportsassessmentId",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Assessment"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "assessmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/audit-logs": {
+      "get": {
+        "summary": "管理员审计",
+        "operationId": "getApiAudit-logs",
+        "x-implementation-state": "TO_IMPLEMENT_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuditEvent"
+                      }
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Envelope": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {},
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "data",
+          "errorCode",
+          "traceId",
+          "timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "Login": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "SubjectCreate": {
+        "type": "object",
+        "properties": {
+          "subjectCode": {
+            "type": "string",
+            "pattern": "^DEMO-[A-Za-z0-9-]{1,45}$"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subjectCode",
+          "alias"
+        ],
+        "additionalProperties": false
+      },
+      "Visit": {
+        "type": "object",
+        "properties": {
+          "visitCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "visitDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "mmse": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 30
+          },
+          "moca": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 30
+          },
+          "cdrSb": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 18
+          }
+        },
+        "required": [
+          "visitCode",
+          "visitDate"
+        ],
+        "additionalProperties": false
+      },
+      "Feature": {
+        "type": "object",
+        "properties": {
+          "featureName": {
+            "enum": [
+              "APOE_E4_COUNT",
+              "MRI_HIPPOCAMPUS_L",
+              "MRI_HIPPOCAMPUS_R"
+            ]
+          },
+          "featureValue": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "normalized"
+            ]
+          }
+        },
+        "required": [
+          "featureName",
+          "recordedAt",
+          "unit"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "featureName": {
+                  "const": "APOE_E4_COUNT"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "unit": {
+                  "const": "count"
+                },
+                "featureValue": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 2
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "unit": {
+                  "const": "normalized"
+                },
+                "featureValue": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AssessmentCreate": {
+        "type": "object",
+        "properties": {
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "modelVersion": {
+            "const": "deepagent-causal-warning-v1"
+          },
+          "predictionWindowMonths": {
+            "type": "integer",
+            "minimum": 6,
+            "maximum": 60
+          }
+        },
+        "required": [
+          "subjectId",
+          "modelVersion",
+          "predictionWindowMonths"
+        ],
+        "additionalProperties": false
+      },
+      "ReviewCreate": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "enum": [
+              "ACKNOWLEDGED",
+              "NEEDS_DATA",
+              "REJECTED"
+            ]
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "decision",
+          "comment"
+        ],
+        "additionalProperties": false
+      },
+      "FollowUp": {
+        "type": "object",
+        "properties": {
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "scheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "status": {
+            "enum": [
+              "PLANNED",
+              "COMPLETED",
+              "CANCELLED"
+            ]
+          }
+        },
+        "required": [
+          "subjectId",
+          "scheduledAt",
+          "purpose"
+        ],
+        "additionalProperties": false
+      },
+      "AgentResult": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string"
+          },
+          "currentStage": {
+            "type": "string"
+          },
+          "dataVersion": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "COMPLETED",
+              "BLOCKED"
+            ]
+          },
+          "contractVersion": {
+            "const": "deepagent-v1"
+          },
+          "workflowVersion": {
+            "const": "causalrisk-workflow-v1"
+          },
+          "modelVersion": {
+            "const": "deepagent-causal-warning-v1"
+          },
+          "qualityStatus": {
+            "enum": [
+              "PASS",
+              "WARN",
+              "BLOCKED"
+            ]
+          },
+          "riskScore": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "riskLevel": {
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "UNAVAILABLE"
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "graph": {
+            "type": "object",
+            "properties": {
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "ACTIVE",
+                        "MISSING"
+                      ]
+                    },
+                    "evidenceLevel": {
+                      "enum": [
+                        "PRIOR",
+                        "MODEL"
+                      ]
+                    },
+                    "observedAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "status",
+                    "evidenceLevel"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "edges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "ACTIVE",
+                        "MISSING"
+                      ]
+                    },
+                    "evidenceLevel": {
+                      "const": "PRIOR"
+                    },
+                    "direction": {
+                      "const": "CONDITIONAL"
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to",
+                    "note",
+                    "status",
+                    "evidenceLevel",
+                    "direction"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "status": {
+                      "enum": [
+                        "ACTIVE",
+                        "MISSING"
+                      ]
+                    },
+                    "evidenceLevel": {
+                      "const": "PRIOR"
+                    }
+                  },
+                  "required": [
+                    "nodes",
+                    "status",
+                    "evidenceLevel"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "graphVersion": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "nodes",
+              "edges",
+              "paths"
+            ],
+            "additionalProperties": false
+          },
+          "explanations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "feature": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "interpretation": {
+                  "type": "string"
+                },
+                "direction": {
+                  "enum": [
+                    "UP",
+                    "DOWN",
+                    "NEUTRAL"
+                  ]
+                },
+                "contribution": {
+                  "type": "number"
+                },
+                "evidenceLevel": {
+                  "const": "PREDICTIVE_DEMO"
+                }
+              },
+              "required": [
+                "feature",
+                "label",
+                "message",
+                "source",
+                "interpretation",
+                "direction",
+                "contribution",
+                "evidenceLevel"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "missingModalities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "stage": {
+                  "enum": [
+                    "DATA_FUSION",
+                    "CAUSAL_GRAPH",
+                    "WARNING_MODEL",
+                    "EXPLANATION"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "COMPLETED",
+                    "BLOCKED"
+                  ]
+                },
+                "durationMs": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "summary": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "stage",
+                "status",
+                "durationMs",
+                "summary"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "dataSource": {
+            "const": "SYNTHETIC_DEMO"
+          },
+          "reviewRequired": {
+            "const": true
+          }
+        },
+        "required": [
+          "runId",
+          "currentStage",
+          "dataVersion",
+          "status",
+          "contractVersion",
+          "workflowVersion",
+          "modelVersion",
+          "qualityStatus",
+          "riskScore",
+          "riskLevel",
+          "warnings",
+          "graph",
+          "explanations",
+          "missingModalities",
+          "limitations",
+          "stages",
+          "dataSource",
+          "reviewRequired"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "BLOCKED"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "qualityStatus": {
+                  "const": "BLOCKED"
+                },
+                "riskScore": {
+                  "type": "null"
+                },
+                "riskLevel": {
+                  "const": "UNAVAILABLE"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "qualityStatus": {
+                  "enum": [
+                    "PASS",
+                    "WARN"
+                  ]
+                },
+                "riskScore": {
+                  "type": "number"
+                },
+                "riskLevel": {
+                  "enum": [
+                    "LOW",
+                    "MEDIUM",
+                    "HIGH"
+                  ]
+                },
+                "graph": {
+                  "required": [
+                    "graphVersion"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Subject": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "subjectCode": {
+            "type": "string",
+            "pattern": "^DEMO-[A-Za-z0-9-]{1,45}$"
+          },
+          "alias": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ACTIVE",
+              "ARCHIVED"
+            ]
+          },
+          "dataVersion": {
+            "type": "string",
+            "pattern": "^demo-",
+            "maxLength": 100
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "subjectCode",
+          "alias",
+          "status",
+          "dataVersion",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "CurrentUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "username": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "ADMIN",
+                "RESEARCHER",
+                "DOCTOR",
+                "PATIENT"
+              ]
+            }
+          },
+          "menus": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "roles",
+          "menus"
+        ],
+        "additionalProperties": false
+      },
+      "QualityCheck": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "qualityStatus": {
+            "enum": [
+              "PASS",
+              "WARN",
+              "BLOCKED"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ruleVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "subjectId",
+          "qualityStatus",
+          "issues",
+          "checkedAt",
+          "ruleVersion"
+        ],
+        "additionalProperties": false
+      },
+      "AssessmentTask": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "COMPLETED",
+              "BLOCKED",
+              "FAILED",
+              "CANCELLED"
+            ]
+          },
+          "runId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "assessmentId": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "stage": {
+                  "enum": [
+                    "DATA_FUSION",
+                    "CAUSAL_GRAPH",
+                    "WARNING_MODEL",
+                    "EXPLANATION"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "COMPLETED",
+                    "BLOCKED"
+                  ]
+                },
+                "durationMs": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "summary": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "stage",
+                "status",
+                "durationMs",
+                "summary"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "taskId",
+          "subjectId",
+          "status",
+          "runId",
+          "assessmentId",
+          "errorCode",
+          "message",
+          "createdAt",
+          "updatedAt",
+          "stages"
+        ],
+        "additionalProperties": false
+      },
+      "Assessment": {
+        "type": "object",
+        "properties": {
+          "assessmentId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "taskId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "agentResult": {
+            "$ref": "#/components/schemas/AgentResult"
+          },
+          "reviewStatus": {
+            "enum": [
+              "PENDING",
+              "ACKNOWLEDGED",
+              "NEEDS_DATA",
+              "REJECTED"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "assessmentId",
+          "subjectId",
+          "taskId",
+          "agentResult",
+          "reviewStatus",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "PatientAssessmentSummary": {
+        "type": "object",
+        "properties": {
+          "assessmentId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "summary": {
+            "type": "string"
+          },
+          "followUpSummary": {
+            "type": "string"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "assessmentId",
+          "summary",
+          "followUpSummary",
+          "limitations"
+        ],
+        "additionalProperties": false
+      },
+      "ImportJob": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "enum": [
+              "PREVIEW_READY",
+              "BLOCKED",
+              "COMMITTED",
+              "FAILED"
+            ]
+          },
+          "dataVersion": {
+            "type": "string",
+            "pattern": "^demo-",
+            "maxLength": 100
+          },
+          "totalRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "validRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "invalidRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rowNumber": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "field": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "rowNumber",
+                "field",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "jobId",
+          "status",
+          "dataVersion",
+          "totalRows",
+          "validRows",
+          "invalidRows",
+          "errors"
+        ],
+        "additionalProperties": false
+      },
+      "FollowUpResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "scheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "status": {
+            "enum": [
+              "PLANNED",
+              "COMPLETED",
+              "CANCELLED"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "subjectId",
+          "scheduledAt",
+          "purpose",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "VisitResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "visitCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "visitDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "mmse": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 30
+          },
+          "moca": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 30
+          },
+          "cdrSb": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 18
+          }
+        },
+        "required": [
+          "id",
+          "subjectId",
+          "visitCode",
+          "visitDate"
+        ],
+        "additionalProperties": false
+      },
+      "FeatureResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "featureName": {
+            "enum": [
+              "APOE_E4_COUNT",
+              "MRI_HIPPOCAMPUS_L",
+              "MRI_HIPPOCAMPUS_R"
+            ]
+          },
+          "featureValue": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "normalized"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "subjectId",
+          "featureName",
+          "recordedAt",
+          "unit"
+        ],
+        "additionalProperties": false
+      },
+      "ReviewResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "assessmentId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "decision": {
+            "enum": [
+              "ACKNOWLEDGED",
+              "NEEDS_DATA",
+              "REJECTED"
+            ]
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "reviewedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "assessmentId",
+          "decision",
+          "comment",
+          "reviewedAt"
+        ],
+        "additionalProperties": false
+      },
+      "AuditEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "actorId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "eventType": {
+            "type": "string"
+          },
+          "traceId": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "actorId",
+          "eventType",
+          "traceId",
+          "summary",
+          "timestamp"
+        ],
+        "additionalProperties": false
+      },
+      "PageSubject": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subject"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "additionalProperties": false
+      },
+      "SubjectDetail": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "$ref": "#/components/schemas/Subject"
+          },
+          "visits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VisitResult"
+            }
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeatureResult"
+            }
+          }
+        },
+        "required": [
+          "subject",
+          "visits",
+          "features"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "JSESSIONID"
+      }
+    }
+  }
+}

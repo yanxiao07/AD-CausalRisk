@@ -1,0 +1,1 @@
+"""Standalone synthetic course service."""

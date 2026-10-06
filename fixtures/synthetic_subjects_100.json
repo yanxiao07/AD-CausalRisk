@@ -1,0 +1,4407 @@
+{
+  "dataSource": "SYNTHETIC_DEMO",
+  "dataVersion": "demo-course-v1",
+  "purpose": "artificial_course_integration_fixture",
+  "subjects": [
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-001",
+      "subjectCode": "DEMO-001",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-002",
+      "subjectCode": "DEMO-002",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-003",
+      "subjectCode": "DEMO-003",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-004",
+      "subjectCode": "DEMO-004",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-005",
+      "subjectCode": "DEMO-005",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-006",
+      "subjectCode": "DEMO-006",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-007",
+      "subjectCode": "DEMO-007",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-008",
+      "subjectCode": "DEMO-008",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-009",
+      "subjectCode": "DEMO-009",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-010",
+      "subjectCode": "DEMO-010",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-011",
+      "subjectCode": "DEMO-011",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-012",
+      "subjectCode": "DEMO-012",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-013",
+      "subjectCode": "DEMO-013",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-014",
+      "subjectCode": "DEMO-014",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-015",
+      "subjectCode": "DEMO-015",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-016",
+      "subjectCode": "DEMO-016",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-017",
+      "subjectCode": "DEMO-017",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-018",
+      "subjectCode": "DEMO-018",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-019",
+      "subjectCode": "DEMO-019",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-020",
+      "subjectCode": "DEMO-020",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-021",
+      "subjectCode": "DEMO-021",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-022",
+      "subjectCode": "DEMO-022",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-023",
+      "subjectCode": "DEMO-023",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-024",
+      "subjectCode": "DEMO-024",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-025",
+      "subjectCode": "DEMO-025",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-026",
+      "subjectCode": "DEMO-026",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-027",
+      "subjectCode": "DEMO-027",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-028",
+      "subjectCode": "DEMO-028",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-029",
+      "subjectCode": "DEMO-029",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-030",
+      "subjectCode": "DEMO-030",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-031",
+      "subjectCode": "DEMO-031",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-032",
+      "subjectCode": "DEMO-032",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-033",
+      "subjectCode": "DEMO-033",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-034",
+      "subjectCode": "DEMO-034",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-035",
+      "subjectCode": "DEMO-035",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-036",
+      "subjectCode": "DEMO-036",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-037",
+      "subjectCode": "DEMO-037",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-038",
+      "subjectCode": "DEMO-038",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-039",
+      "subjectCode": "DEMO-039",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-040",
+      "subjectCode": "DEMO-040",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-041",
+      "subjectCode": "DEMO-041",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-042",
+      "subjectCode": "DEMO-042",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-043",
+      "subjectCode": "DEMO-043",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-044",
+      "subjectCode": "DEMO-044",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-045",
+      "subjectCode": "DEMO-045",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-046",
+      "subjectCode": "DEMO-046",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-047",
+      "subjectCode": "DEMO-047",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-048",
+      "subjectCode": "DEMO-048",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-049",
+      "subjectCode": "DEMO-049",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-050",
+      "subjectCode": "DEMO-050",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-051",
+      "subjectCode": "DEMO-051",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-052",
+      "subjectCode": "DEMO-052",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-053",
+      "subjectCode": "DEMO-053",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-054",
+      "subjectCode": "DEMO-054",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-055",
+      "subjectCode": "DEMO-055",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-056",
+      "subjectCode": "DEMO-056",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-057",
+      "subjectCode": "DEMO-057",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-058",
+      "subjectCode": "DEMO-058",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-059",
+      "subjectCode": "DEMO-059",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-060",
+      "subjectCode": "DEMO-060",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-061",
+      "subjectCode": "DEMO-061",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-062",
+      "subjectCode": "DEMO-062",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-063",
+      "subjectCode": "DEMO-063",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-064",
+      "subjectCode": "DEMO-064",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-065",
+      "subjectCode": "DEMO-065",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-066",
+      "subjectCode": "DEMO-066",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-067",
+      "subjectCode": "DEMO-067",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-068",
+      "subjectCode": "DEMO-068",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-069",
+      "subjectCode": "DEMO-069",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-070",
+      "subjectCode": "DEMO-070",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-071",
+      "subjectCode": "DEMO-071",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-072",
+      "subjectCode": "DEMO-072",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-073",
+      "subjectCode": "DEMO-073",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-074",
+      "subjectCode": "DEMO-074",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-075",
+      "subjectCode": "DEMO-075",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-076",
+      "subjectCode": "DEMO-076",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-077",
+      "subjectCode": "DEMO-077",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-078",
+      "subjectCode": "DEMO-078",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-079",
+      "subjectCode": "DEMO-079",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-080",
+      "subjectCode": "DEMO-080",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-081",
+      "subjectCode": "DEMO-081",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-082",
+      "subjectCode": "DEMO-082",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-083",
+      "subjectCode": "DEMO-083",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-084",
+      "subjectCode": "DEMO-084",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-085",
+      "subjectCode": "DEMO-085",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-086",
+      "subjectCode": "DEMO-086",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-087",
+      "subjectCode": "DEMO-087",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-088",
+      "subjectCode": "DEMO-088",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-089",
+      "subjectCode": "DEMO-089",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-090",
+      "subjectCode": "DEMO-090",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-091",
+      "subjectCode": "DEMO-091",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-092",
+      "subjectCode": "DEMO-092",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-093",
+      "subjectCode": "DEMO-093",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-094",
+      "subjectCode": "DEMO-094",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-095",
+      "subjectCode": "DEMO-095",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-096",
+      "subjectCode": "DEMO-096",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-097",
+      "subjectCode": "DEMO-097",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-098",
+      "subjectCode": "DEMO-098",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-099",
+      "subjectCode": "DEMO-099",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    },
+    {
+      "contractVersion": "deepagent-v1",
+      "runId": "run-demo-100",
+      "subjectCode": "DEMO-100",
+      "dataVersion": "demo-course-v1",
+      "modelVersion": "deepagent-causal-warning-v1",
+      "predictionWindowMonths": 24,
+      "visits": [
+        {
+          "visitCode": "BL",
+          "visitDate": "2025-01-01",
+          "mmse": 28,
+          "moca": 25,
+          "cdrSb": 0.5
+        },
+        {
+          "visitCode": "M12",
+          "visitDate": "2026-01-01",
+          "mmse": 25,
+          "moca": 22,
+          "cdrSb": 1.5
+        }
+      ],
+      "features": [
+        {
+          "featureName": "APOE_E4_COUNT",
+          "featureValue": 1,
+          "recordedAt": "2025-01-01",
+          "unit": "count"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_L",
+          "featureValue": 0.35,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        },
+        {
+          "featureName": "MRI_HIPPOCAMPUS_R",
+          "featureValue": 0.36,
+          "recordedAt": "2025-01-01",
+          "unit": "normalized"
+        }
+      ]
+    }
+  ]
+}
