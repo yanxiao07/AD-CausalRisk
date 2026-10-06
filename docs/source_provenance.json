@@ -17,5 +17,6 @@
     "score_java_synthetic_payload"
   ],
   "exported_workflow_sha256": "dd1c4c36601b415e206ae3526754d0fd24928c90b9132a80e2ad8cbd32962b32",
-  "exported_scoring_sha256": "43721b0559bc5d7a36e6fbf50a3229f5975ba8368c5e6696a6ee35b6c4f29763"
+  "exported_scoring_sha256": "3b60b11cb2368c597b28e9de9e28a738887d745aea8ee22da0448f068aea2244",
+  "export_line_endings": "LF"
 }
