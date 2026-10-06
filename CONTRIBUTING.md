@@ -2,11 +2,11 @@
 
 后端和前端负责人各自完整实现自己的模块，并承担测试与交付。Python负责人维护python_service、fixtures和共同算法契约。修改共同契约先提交单独PR，说明字段、兼容影响、请求/响应样例与新增测试；不直接改别人模块以回避讨论。
 
-建议建立一个私有共享仓库并添加团队成员写权限。每人从main创建功能分支，通过PR进入main。成员真实GitHub账号、远端URL和权限由仓库所有者设置；这份本地基底没有代设访问权限，也没有真正发送PR。
+共享仓库为https://github.com/yanxiao07/AD-CausalRisk。仓库拥有者添加团队成员写权限；每人从main创建功能分支，通过PR进入main。成员真实GitHub账号与权限由仓库所有者设置，本次源码上传不代设成员权限。
 
 ```bash
-git clone <共享仓库URL>
-cd ad-causalrisk-course-base
+git clone https://github.com/yanxiao07/AD-CausalRisk.git
+cd AD-CausalRisk
 git switch -c backend/auth-and-subjects
 # 在backend中实现、运行自己模块的测试
 git add backend
@@ -20,4 +20,4 @@ git push -u origin backend/auth-and-subjects
 
 Python基底CI绿灯只代表已提供的算法子服务与契约通过。backend/frontend开始加入代码后，各负责人须把构建、数据库测试、组件/页面测试接入CI；完整项目验收按Course_SRS_V3_2进行，不能把两个目录README计作完成开发。
 
-本地自动化交付提交署名为Codex local baseline，以标明自动整理来源；同学后续提交使用本人身份。许可证和公开发布范围未经指定，默认供本项目团队课程协作使用；公开再发布前确认权利与许可证。
+自动化交付提交署名为Codex local baseline，以标明整理来源；同学后续提交使用本人身份。仓库当前公开，但尚未指定开放源码许可证；公开可查看不自动授予再分发或商用许可，后续许可证由权利人确认。
