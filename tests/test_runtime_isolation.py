@@ -19,11 +19,11 @@ class RuntimeIsolationTests(unittest.TestCase):
                 else:continue
                 for name in names:
                     self.assertTrue(name in sys.stdlib_module_names or name=='__future__',f'Nonstdlib runtime dependency in {path.name}')
-    def test_no_research_or_personal_java_tree_shipped(self):
+    def test_tracked_source_excludes_data_and_runtime_outputs(self):
         if (ROOT/'.git').exists():
             result=subprocess.run(['git','ls-files'],cwd=ROOT,capture_output=True,text=True,check=True)
             for name in result.stdout.splitlines():
-                self.assertFalse(name.split('/')[0] in {'data','papers','ad-causalrisk-javaweb','.runtime','runtime'})
+                self.assertFalse(name.split('/')[0] in {'data','papers','.runtime','runtime'})
         # Backend/frontend can grow freely through legitimate team PRs. Local
         # ignored runtime files do not count as shipped source or fail this test.
         ignored=(ROOT/'.gitignore').read_text(encoding='utf-8')

@@ -1,16 +1,16 @@
 # AD-CausalRisk 课程协作需求基线
 
-版本V3.2，2026年10月6日。基于[历史V3.1](reference/Course_SRS_V3_1_Historical.md)保留业务要求，补充可运行Python交付和完整模块责任。本文件及contracts目录对新增课程工程的接口与验收具有优先级；历史需求中未被调整的业务目标仍适用，历史实现不能代替同学的开发成果。
+版本V3.2，更新于2026年10月7日。本文件规定课程功能、模块责任和验收目标；接口字段与请求/响应结构以contracts目录为准。业务实体和页面设计见[开发参考](Design_Guide.md)。
 
 ## 系统与人员责任
 
-用户承担Python、合成数据、算法契约及独立科研路线。已有Python提供四段合成流程：DATA_FUSION、CAUSAL_GRAPH、WARNING_MODEL、EXPLANATION。图的箭头、演示排序和贡献不证明疾病因果机制，不使用真实个体研究模型。
+Python负责人维护子服务、示例数据和算法契约。服务提供DATA_FUSION、CAUSAL_GRAPH、WARNING_MODEL、EXPLANATION四阶段流程；排序和条件图谱用于课程演示。
 
 后端同学完整负责新Java工程：Spring Boot、Controller/Service/Repository分层、MySQL表和迁移、登录权限、对象级数据范围、导入、质控、任务、Python客户端、结果、人工业务复核、随访、报告、审计、部署与接口测试。
 
 前端同学完整负责新前端工程：项目结构、路由、认证会话、角色菜单、受试者和访视、CSV预览、质量页、任务状态、图谱/解释、医生/患者视图、随访、报告、错误/空/加载/无权限状态、响应式、交互测试与部署。
 
-Python现成服务不会代替Java业务后端。作者已有Java工程和研究页面不作为同学接手的现成系统；backend与frontend从任务说明开始。同学独立完成整个模块，依照共同契约通过PR协作。
+后端和前端成员分别在backend与frontend中完成工程、测试、部署和使用说明。共同接口变更通过PR评审，并同步调用方与测试。
 
 ## 核心需求与验收归属
 
@@ -42,19 +42,19 @@ Java任务创建的Idempotency-Key与Python runId是两层不同机制。Java应
 
 Java成功Envelope固定code=0、errorCode=null；失败code为非零整数，errorCode为稳定字符串。统一message、data、traceId、timestamp。HTTP状态也必须正确，拒绝访问不能以HTTP200伪装成功。Python错误使用独立AgentError；AgentClient负责映射。
 
-当前用户路径/api/me；导入/api/import-jobs及/{jobId}/commit；质量POST /api/subjects/{subjectId}/quality-checks；随访POST /api/follow-ups；报告/api/reports/{assessmentId}。不要套用作者旧Java工程中的不同路径。
+当前用户路径/api/me；导入/api/import-jobs及/{jobId}/commit；质量POST /api/subjects/{subjectId}/quality-checks；随访POST /api/follow-ups；报告/api/reports/{assessmentId}。实现与调用遵循contracts中的路径。
 
-## 数据与研究事实
+## 数据约定
 
-本基底提供完全合成的100个档案、200条访视、300条特征。数据字典和CSV字段来自共同契约。没有真实姓名、患者标识、电话、住址、ADNI/NACC参与者记录或论文病例包。Java可将subjectCode映射为自己的数字主键，向Python仍传DEMO编号。
+fixtures目录提供100个档案、200条访视、300条特征的演示数据。字段和单位参照共同契约；Java将subjectCode映射为数据库数字主键，向Python仍传DEMO编号。输入版本采用demo-*，结果保存dataVersion、modelVersion和workflowVersion。
 
-旧需求将NACC列为等待获取已经过时；现有研究工作区已获得授权并完成固定模型的NACC映射终点迁移评估，但个体评分没有开放。课程不依赖这些受控材料，演示算法的规则不能冒充已训练模型或外部验证成果。课程人工业务复核也不同于论文独立终点审阅。
+新增联调数据应遵守相同格式，不能通过随机补分跳过质量规则。排序结果明确用于课程演示，人工业务复核记录操作者、时间和理由。
 
 ## 阶段验收
 
 1. 后端PR交付可运行新工程、数据库迁移、登录/角色与档案接口、接口测试；前端PR交付新工程、路由、会话、列表/详情和状态界面。
 2. 完成CSV预览入库、质控、持久化任务与AgentClient；界面展示四阶段返回结果和条件图、缺失及限制。
 3. 完成医生/患者权限、业务复核、随访、报告、审计，断开Python和重启Java仍能看历史结果。
-4. 全组录制无科研数据的端到端演示。模拟400/409/BLOCKED/超时/503、重复提交、越权和患者字段过滤；提交可重现启动与验收记录。
+4. 全组用fixtures完成端到端演示。模拟400/409/BLOCKED/超时/503、重复提交、越权和患者字段过滤；提交可重现启动与验收记录。
 
 建议Java 21、Spring Boot、MySQL 8以及Vue 3；同学自行建立工程与锁定依赖。选择替代前端技术不改变角色边界及验收要求。当前初始CI只证明Python基底和共同契约通过；完整课程系统开发尚未完成。

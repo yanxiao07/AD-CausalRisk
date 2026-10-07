@@ -1,6 +1,4 @@
-"""Synthetic scoring extracted from the original local demo adapter.
-No fitted research model, scientific aggregate or participant data is loaded.
-"""
+"""Deterministic course scoring rules and input validation."""
 from __future__ import annotations
 from datetime import date
 import math
@@ -71,12 +69,7 @@ def _blocked_result(warning: str) -> dict[str, Any]:
     }
 
 def score_java_synthetic_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Score only the de-identified synthetic payload used by JavaWeb.
-
-    This is a contract adapter for the existing demo research scorer. It is not
-    a second clinical model and must not be used to infer an individual cause
-    or treatment effect.
-    """
+    """Validate a Java request and compute its course ranking and explanations."""
     allowed = {
         "contractVersion", "subjectCode", "modelVersion", "dataVersion",
         "predictionWindowMonths", "visits", "features",

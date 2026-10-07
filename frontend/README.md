@@ -1,7 +1,9 @@
 # 前端负责人任务
 
-此目录由前端同学独立建立完整应用，包含项目配置、路由、认证会话、四类角色菜单、档案/访视、导入预览、质控、任务、图谱/解释、业务复核、随访、报告和审计界面。用户自己的页面没有复制到这里。
+在此目录建立前端应用，完成项目配置、路由、认证会话、四类角色菜单、档案/访视、导入预览、质控、任务、图谱/解释、业务复核、随访、报告和审计界面。
 
-前端对接Java业务API，Python服务由Java AgentClient调用。依据../contracts/java-business.target.openapi.json编写类型与客户端；Java尚未可用时只使用明确标记的合成Mock，不假装后端已完成。最终验收必须关闭Mock并联调真实Java和Python。
+前端对接Java业务API，Python由Java AgentClient调用。先阅读[需求](../docs/Course_SRS_V3_2.md)、[设计参考](../docs/Design_Guide.md)、[目标接口](../contracts/java-business.target.openapi.json)与[AI协作指南](../docs/AI_Collaboration.md)，再编写类型、客户端和页面。Java接口未就绪时使用明确标记的Mock，联调前关闭该功能的Mock。
 
 每页处理加载、空数据、失败、无权限状态。BLOCKED不显示数值排序；患者页面只接收通俗摘要和随访信息。图谱说明条件性解释，不能把箭头写成病因证明。完成桌面/手机、键盘、表单与任务失败流程测试，提交锁文件、构建启动说明、截图及自己的CI。
+
+首次PR建议完成工程、路由、API客户端、登录页和四种状态。模块README记录Node版本、安装、开发、构建和测试命令；配置Java API地址，注明Mock启停方式。组件与页面分开，接口调用集中管理，避免在各组件中重复定义字段和错误处理。

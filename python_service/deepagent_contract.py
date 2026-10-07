@@ -1,8 +1,4 @@
-"""Deterministic, synthetic-only deepagent-v1 research workflow.
-
-This adapter makes the four research stages inspectable for Java integration.
-The warning tool is a demonstration rule, not the fitted ADNI study model.
-"""
+"""Four-stage deepagent-v1 workflow for course integration."""
 
 from __future__ import annotations
 
@@ -24,7 +20,7 @@ SUBJECT_RE = re.compile(r"DEMO-[A-Za-z0-9-]{1,45}\Z")
 LIMITATIONS = [
     "合成数据的研究型排序，不是临床诊断或经外部验证的风险概率。",
     "图谱箭头是先验约束下的条件性解释，不证明个体病因或干预效应。",
-    "本接口不调用或导出 ADNI 受控参与者数据；结果须人工复核。",
+    "结果需结合资料完整性与人工复核意见使用。",
 ]
 ALLOWED_FIELDS = {
     "contractVersion", "runId", "subjectCode", "dataVersion", "modelVersion",

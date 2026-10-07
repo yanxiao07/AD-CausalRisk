@@ -23,7 +23,7 @@ predictionWindowMonths在请求层接受6–60整数，当前演示规则实际�
 
 graph包含nodes与edges，节点可为ACTIVE/MISSING，边和贡献标记研究演示范围。stages只包含实际执行阶段；BLOCKED可以只执行DATA_FUSION。阶段耗时是实际计算时间，界面不应按固定百分比替代。
 
-合成评分源自作者原演示适配器的明确函数闭包，未复制其科研服务入口。deepagent_contract.py与原合成编排字节一致，docs/source_provenance.json记录来源SHA。此独立入口不读取data、论文、科研聚合或本地Java目录。
+python_service/deepagent_contract.py负责输入校验和四阶段编排，demo_scoring.py负责演示排序。调整规则、请求字段或返回结构时，同步示例与契约测试。
 
 Java业务目标接口另见contracts/java-business.target.openapi.json：22个操作是待后端同学实现的目标。患者结果必须选PatientAssessmentSummary并在后端过滤；仅隐藏前端按钮不足以防止接口泄露。成功Envelope和PythonAgentResult格式不同，不能把data.data错当原Agent对象。
 
