@@ -9,6 +9,7 @@ import com.adcausalrisk.backend.common.PageResult;
 import com.adcausalrisk.backend.subject.dto.SubjectCreateRequest;
 import com.adcausalrisk.backend.subject.dto.SubjectDetailView;
 import com.adcausalrisk.backend.subject.dto.SubjectView;
+import com.adcausalrisk.backend.subject.dto.VisitResultView;
 import com.adcausalrisk.backend.subject.entity.Subject;
 import com.adcausalrisk.backend.subject.entity.Subject.Status;
 
@@ -45,15 +46,19 @@ public final class SubjectMapper {
     }
 
     /**
-     * Maps a {@link Subject} entity to {@link SubjectDetailView}. The
-     * {@code visits} and {@code features} lists are always empty arrays in this
-     * PR because the corresponding write endpoints do not exist yet - the
-     * contract still requires those keys to be present (not omitted, not null).
+     * Maps a {@link Subject} entity to {@link SubjectDetailView}.
+     *
+     * <p>{@code visits} is supplied by the caller, which owns the query and the ordering, so
+     * that this class stays a pure Entity → DTO converter: it performs no data access and does
+     * not depend on the visit entity.
+     *
+     * <p>{@code features} is still an empty array because the feature write endpoint has not
+     * been implemented - the contract requires the key to be present (not omitted, not null).
      */
-    public static SubjectDetailView toDetail(Subject subject) {
+    public static SubjectDetailView toDetail(Subject subject, List<VisitResultView> visits) {
         return new SubjectDetailView(
                 toView(subject),
-                List.of(),
+                visits,
                 List.of());
     }
 

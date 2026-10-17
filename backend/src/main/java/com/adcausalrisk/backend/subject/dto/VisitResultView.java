@@ -11,8 +11,12 @@ import java.time.LocalDate;
  * <pre>id, subjectId, visitCode, visitDate (date), mmse (number|null),
  * moca (number|null), cdrSb (number|null)</pre>
  *
- * <p>Population is owned by a later PR that implements {@code POST
- * /api/subjects/{subjectId}/visits}; this PR returns empty lists only.
+ * <p>Populated by {@code POST /api/subjects/{subjectId}/visits}, which persists the row,
+ * and read back through {@code SubjectDetail.visits}. The scores are {@code Double} here
+ * while the {@code Visit} entity stores {@link java.math.BigDecimal} - required by
+ * {@code ddl-auto: validate} against the DDL's {@code DECIMAL(4,1)} - so
+ * {@code VisitMapper} performs the conversion. A score that was never recorded stays
+ * {@code null} and is never reported as 0.
  */
 public record VisitResultView(
         Long id,

@@ -1,6 +1,7 @@
 package com.adcausalrisk.backend.subject;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -17,7 +18,10 @@ import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.dto.SubjectCreateRequest;
 import com.adcausalrisk.backend.subject.dto.SubjectDetailView;
 import com.adcausalrisk.backend.subject.dto.SubjectView;
+import com.adcausalrisk.backend.subject.dto.VisitResultView;
 import com.adcausalrisk.backend.subject.entity.Subject;
+import com.adcausalrisk.backend.visit.VisitMapper;
+import com.adcausalrisk.backend.visit.VisitRepository;
 
 /**
  * Business-logic service for the subject module. Implements the three endpoints
@@ -27,6 +31,10 @@ import com.adcausalrisk.backend.subject.entity.Subject;
  * the Controller only guarantees the caller is authenticated via Spring Security.
  * The two collaborate so that no endpoint ever returns a subject the caller is
  * not supposed to see (or create).
+ *
+ * <p>The detail lookup also assembles {@code SubjectDetail.visits} from the {@code visit}
+ * table (owned by the visit module), because the frozen contract exposes no separate visit
+ * collection endpoint.
  */
 @Service
 public class SubjectService {
@@ -35,10 +43,14 @@ public class SubjectService {
 
     private final SubjectRepository subjectRepository;
     private final SubjectAccessPolicy accessPolicy;
+    private final VisitRepository visitRepository;
 
-    public SubjectService(SubjectRepository subjectRepository, SubjectAccessPolicy accessPolicy) {
+    public SubjectService(SubjectRepository subjectRepository,
+                          SubjectAccessPolicy accessPolicy,
+                          VisitRepository visitRepository) {
         this.subjectRepository = subjectRepository;
         this.accessPolicy = accessPolicy;
+        this.visitRepository = visitRepository;
     }
 
     // ===================================================================
@@ -122,9 +134,12 @@ public class SubjectService {
      * DOCTOR / PATIENT path still returns 403 because the subject <i>does</i> exist;
      * it is just outside their grant.
      *
-     * <p>{@code visits} and {@code features} in the response are empty arrays in
-     * this PR (contract requires the keys to be present, not null and not omitted).
+     * <p>{@code visits} is populated from the {@code visit} table, ordered by visit date and
+     * then by id (the contract does not prescribe an order for that array). {@code features} is
+     * still an empty array because the feature write endpoint has not been implemented - the
+     * contract requires both keys to be present (not null, not omitted).
      */
+    @Transactional(readOnly = true)
     public SubjectDetailView getSubjectDetail(Long subjectId, AppUserPrincipal principal) {
         Subject subject = subjectRepository.findById(subjectId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR,
@@ -134,7 +149,15 @@ public class SubjectService {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权查看该档案");
         }
 
-        return SubjectMapper.toDetail(subject);
+        // Permission is checked before the visit query, so an unauthorised caller never even
+        // touches the visit table.
+        List<VisitResultView> visits = visitRepository
+                .findBySubjectIdOrderByVisitDateAscIdAsc(subjectId)
+                .stream()
+                .map(VisitMapper::toResultView)
+                .toList();
+
+        return SubjectMapper.toDetail(subject, visits);
     }
 
     // ===================================================================

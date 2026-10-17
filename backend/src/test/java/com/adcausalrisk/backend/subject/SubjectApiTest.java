@@ -326,6 +326,12 @@ class SubjectApiTest {
     // 3. GET /api/subjects/{subjectId} - detail
     // ===================================================================
 
+    /**
+     * The contract requires {@code visits} and {@code features} to be present arrays.
+     * This subject has no visits and no features, so both come back empty - since the visit
+     * endpoint landed, the emptiness is data-driven rather than the endpoint hardcoding empty
+     * lists. A subject that does have visits is covered by {@code VisitApiTest}.
+     */
     @Test
     void detailContainsEmptyVisitsAndFeaturesArrays() throws Exception {
         MockHttpSession admin = login("admin");
