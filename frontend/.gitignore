@@ -1,0 +1,10 @@
+# Dependencies and build output are never committed.
+node_modules/
+dist/
+.pnpm-store/
+.pnpm-debug.log*
+npm-debug.log*
+.DS_Store
+
+# Local visual-verification screenshots and the headless-Chrome driver.
+.shots/
