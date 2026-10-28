@@ -8,11 +8,13 @@ from importlib.metadata import version
 import hashlib
 import json
 from pathlib import Path
+import time
+import warnings
 
 import numpy as np
-from .discrete import person_period, predict_cif
+from .discrete import person_period, predict_cif, validate_contract
 from .evaluation import censor_survival, horizon_ipcw_weights, horizon_metrics, calibration_description
-from .graph import protocol
+from .graph import protocol, arm_edges
 from .graph_native import (FEATURES, PACKAGES, make_graph_estimator, save_graph, load_graph,
                            state_digest)
 from .graph_acceptance import peak_memory_bytes
@@ -24,6 +26,99 @@ class GraphJournal(Journal):
         self.limits = dict(predictive=54, calibration=0)
         self.counts = dict.fromkeys(self.limits, 0)
         self.stream = (folder/'Fit_Ledger.jsonl').open('x', encoding='utf-8')
+
+
+class GraphFitBudget:
+    """In-memory attempts/returns/accepted fits; a failure latches the budget.
+
+    Time/memory are checked before and after each fit, not a process watchdog.
+    The real-study host must supply independent counters and hard supervision.
+    """
+    def __init__(self, limit, *, max_fit_seconds=300., max_total_seconds=14400.,
+                 max_memory_bytes=2147483648, evaluation_event=None):
+        if (type(limit) is not int or not 0 <= limit <= 225
+                or any(type(v) not in (int,float) or not np.isfinite(v) or v <= 0
+                       for v in (max_fit_seconds,max_total_seconds))
+                or type(max_memory_bytes) is not int or max_memory_bytes <= 0
+                or (evaluation_event is not None and not callable(evaluation_event))):
+            raise ValueError('INVALID_GRAPH_FIT_BUDGET')
+        self.limit = limit; self.max_fit_seconds = float(max_fit_seconds)
+        self.max_total_seconds = float(max_total_seconds); self.max_memory_bytes = max_memory_bytes
+        self.evaluation_event = evaluation_event
+        self.attempts = self.fit_returns = self.completed = 0
+        self.total_fit_seconds = 0.; self.failed = False
+
+    def event(self, phase, arm, seed):
+        if self.evaluation_event is not None:
+            self.evaluation_event(dict(phase=phase, arm=arm, seed=seed, fit_attempts=self.attempts,
+                fit_returns=self.fit_returns, fits_completed=self.completed, total_fit_seconds=self.total_fit_seconds))
+
+    def reserve(self):
+        if self.failed:raise ValueError('GRAPH_FIT_FAILED_NO_RETRY')
+        if self.attempts >= self.limit:raise ValueError('GRAPH_FIT_BUDGET_EXCEEDED')
+        if self.total_fit_seconds >= self.max_total_seconds or peak_memory_bytes() > self.max_memory_bytes:
+            raise ValueError('GRAPH_FIT_RESOURCE_LIMIT')
+
+
+def fit_graph_subjects(frame, arm, seed, *, budget):
+    """Fit one original graph pipeline on caller-qualified training subjects.
+
+    No test/fold selection, calibration, parameter saving or final-model fit.
+    The caller isolates training subjects and verifies paired arm/seed schedules.
+    Imputation/scaling are still performed only by the unchanged native fit.
+    """
+    import pandas as pd
+    from sklearn.preprocessing._data import _is_constant_feature
+    spec, protocol_hash = protocol()
+    if (not isinstance(budget, GraphFitBudget) or arm not in spec['arms']
+            or type(seed) is not int or seed not in spec['future_initialization_seeds']
+            or not isinstance(frame,pd.DataFrame) or not frame.columns.is_unique):
+        raise ValueError('GRAPH_FIT_SCOPE_REQUIRED')
+    budget.reserve()
+    snapshot = frame.copy(deep=True)
+    work = validate_contract(frame, list(FEATURES)).reset_index(drop=True)
+    if (set(work.event_type) != {0,1,2} or np.isinf(work[list(FEATURES)].to_numpy(float)).any()
+            or not np.array_equal(work[FEATURES[8]].isna(), work[FEATURES[9]].isna())):
+        raise ValueError('GRAPH_FIT_CLASSES_VALUES_OR_BILATERAL_MASK')
+    periods, labels = person_period(work, list(FEATURES)); periods_before = periods.copy(deep=True)
+    labels_before = labels.copy(); budget.attempts += 1
+    started = time.perf_counter(); measured = False
+    try:
+        budget.event('FIT_ATTEMPT',arm,seed)
+        model = make_graph_estimator(arm,seed).fit(periods,labels)
+        budget.fit_returns += 1
+        elapsed = time.perf_counter()-started; budget.total_fit_seconds += elapsed; measured = True
+        budget.event('FIT_RETURN',arm,seed)
+        e = model.named_steps['hazards']
+        if (not frame.equals(snapshot) or not periods.equals(periods_before) or not np.array_equal(labels,labels_before)
+                or e.arm != arm or e.seed != seed or e.protocol_sha256_ != protocol_hash
+                or e.network_.arm != arm or tuple(e.network_.edges) != arm_edges(arm)
+                or not np.array_equal(e.classes_,[0,1,2])):
+            raise ValueError('GRAPH_FIT_INPUT_OR_MODEL_SCOPE_CHANGED')
+        values = periods[list(FEATURES)].to_numpy(float)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore',RuntimeWarning)
+            medians = np.nan_to_num(np.nanmedian(values,axis=0),nan=0.)
+        imputed = np.where(np.isnan(values),medians,values)
+        expected_mean = imputed.mean(0); variance = imputed.var(0)
+        expected_scale = np.sqrt(variance)
+        expected_scale[_is_constant_feature(variance,expected_mean,len(imputed))] = 1
+        if (any(np.shape(x)!=(10,) or not np.isfinite(x).all() for x in (e.medians_,e.mean_,e.scale_))
+                or (e.scale_<=0).any() or not np.array_equal(e.medians_,medians)
+                or not np.allclose(e.mean_,expected_mean,rtol=1e-12,atol=1e-12)
+                or not np.allclose(e.scale_,expected_scale,rtol=1e-12,atol=1e-12)):
+            raise ValueError('GRAPH_FIT_TRAINING_PREPROCESSING_MISMATCH')
+        if len(e.loss_history_) != spec['future_optimizer']['epochs'] or not np.isfinite(e.loss_history_).all():
+            raise ValueError('GRAPH_FIT_INCOMPLETE_OPTIMIZATION')
+        if (elapsed > budget.max_fit_seconds or budget.total_fit_seconds > budget.max_total_seconds
+                or peak_memory_bytes() > budget.max_memory_bytes):
+            raise ValueError('GRAPH_FIT_RESOURCE_LIMIT')
+        budget.completed += 1; budget.event('FIT_COMPLETE',arm,seed)
+        return model
+    except BaseException:
+        if not measured:budget.total_fit_seconds += time.perf_counter()-started
+        budget.failed = True
+        raise
 
 
 def conditional_interval(delta):

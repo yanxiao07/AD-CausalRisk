@@ -1,5 +1,11 @@
 # 离线研究计算、固定训练与图模型
 
+[图训练人员扰动真实研究](../docs/Graph_Training_Perturbation_Results.md)已完成225基础拟合/0校准、12780 CIF；累计真实673基础/36校准。两原因/双序聚合、固定共同排名分母及结果限制已交付；本固定问题关闭，不重复训练或切换默认。
+
+图训练扰动的[流式聚合接口](../docs/Graph_Training_Perturbation_Streaming.md)已加入现有图解释模块：三种子有符号贡献/CIF先平均、双序四游戏、共同排名分母及24 hash/12 Brier前置门槛，输出仅含聚合和尝试/完成计数。完整模拟使用解析回调，不执行优化器；225次真实矩阵已执行并聚合核验。
+
+图训练扰动新增[受控拟合与跨参考原语](../docs/Graph_Training_Perturbation_Primitives.md)：复用未改动的原生估计器/图协议，单次训练预算及两种原有顺序的显式参考入口已构造验收。37项无优化检查、9次人工子集拟合通过，真实新拟合0；225次真实图矩阵已完成固定执行，不自动运行旧构造训练或全量训练。
+
 新增[分组预测归因](../docs/Grouped_Prediction_Attribution.md)、[表格归因编排](../docs/Table_Grouped_Study_Execution.md)、[研究输入一致性门槛](../docs/Real_Input_Admission.md)与[单次内存CIF适配](../docs/InMemory_Research_Inference.md)。这些API接收宿主独立核实的内存输入和模型，不读取临床文件、不加载真实参数、不替换默认模型；元数据一致不授予预测许可，也不认证来源/临床/因果。图固定归因的结果和参考/局部忠实度限制见[既有图研究结果](../docs/Grouped_XAI_Results.md)。
 
 本目录提供表格估计器、人月展开、两原因24月CIF、固定训练/嵌套校准，以及三臂图预测和折外解释计算。公开CLI只接受明确标记的人工合成快照；图API接收调用方已合格的内存队列。没有临床源表读取器、Java业务服务或默认模型切换。
@@ -123,3 +129,7 @@ Python API：`run_nested(frame, output, specification, families, splits=..., exi
 ```
 
 图/完整表格研究编排复用既有图聚合模块，因此使用图环境；单独表格参考/归因适配不依赖Torch。Linux、其他Python版本及未验收机器须另行核对，现有课程CI不会自动运行上述可选研究检查。真实输入/参数/私有折、宿主单次读取封装及内部授权不随源码发布；本地构造通过不等于真实业务接通或临床验证。
+
+## 训练扰动研究原语（2026-10-28）
+
+同算法跨训练样本解释的[训练子集、交叉参考与流式内存编排](../docs/Training_Perturbation_Attribution.md)已构造验收：最终126项无拟合检查通过，人工回调走完150训练槽位/480游戏。后续[表格真实研究](../docs/Training_Perturbation_Results.md)完成150基础拟合/480游戏，[图真实研究](../docs/Graph_Training_Perturbation_Results.md)完成225基础拟合/720单模型游戏，累计673基础/36校准。固定研究关闭，个人因果与来源/时序等证据仍未完成，不为源码发布重训。原固定模型evaluate入口继续0拟合；新evaluate_training_perturbations入口明确委托既有训练实现，需由受控宿主绑定输入、来源、授权和硬停止。图接口与隔离验收见[图流式编排](../docs/Graph_Training_Perturbation_Streaming.md)。

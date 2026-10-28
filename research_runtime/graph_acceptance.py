@@ -9,6 +9,7 @@ from importlib.metadata import version
 import json
 from pathlib import Path
 import time
+from functools import lru_cache
 
 import numpy as np
 from .discrete import person_period, predict_cif
@@ -18,16 +19,25 @@ from .graph_native import FEATURES, PACKAGES, make_graph_estimator, save_graph, 
 from .training import checked_design, synthetic_cohort, input_fingerprint, write_json
 
 
+@lru_cache(maxsize=1)
+def _process_memory_counter_type():
+    """ctypes caches POINTER types: do not create a new structure per poll."""
+    import ctypes
+    from ctypes import wintypes
+    class Counters(ctypes.Structure):
+        _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD)] + [
+            (name, ctypes.c_size_t) for name in ('PeakWorkingSetSize', 'WorkingSetSize',
+            'QuotaPeakPagedPoolUsage', 'QuotaPagedPoolUsage', 'QuotaPeakNonPagedPoolUsage',
+            'QuotaNonPagedPoolUsage', 'PagefileUsage', 'PeakPagefileUsage')]
+    return Counters
+
+
 def peak_memory_bytes():
     import os
     if os.name == 'nt':
         import ctypes
         from ctypes import wintypes
-        class Counters(ctypes.Structure):
-            _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD)] + [
-                (name, ctypes.c_size_t) for name in ('PeakWorkingSetSize', 'WorkingSetSize',
-                'QuotaPeakPagedPoolUsage', 'QuotaPagedPoolUsage', 'QuotaPeakNonPagedPoolUsage',
-                'QuotaNonPagedPoolUsage', 'PagefileUsage', 'PeakPagefileUsage')]
+        Counters = _process_memory_counter_type()
         value = Counters(); value.cb = ctypes.sizeof(value)
         current = ctypes.windll.kernel32.GetCurrentProcess
         current.restype = wintypes.HANDLE
