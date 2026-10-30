@@ -19,3 +19,9 @@ research_runtime/table_explanation.py -text diff
 research_runtime/table_xai_study.py -text diff
 research_runtime/input_admission.py -text diff
 research_runtime/inmemory_inference.py -text diff
+
+# Training-perturbation studies bind these computational source bytes.
+research_runtime/training.py -text diff
+research_runtime/graph_training.py -text diff
+research_runtime/graph_explanation.py -text diff
+research_runtime/graph_acceptance.py -text diff

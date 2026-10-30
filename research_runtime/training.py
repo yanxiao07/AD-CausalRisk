@@ -85,9 +85,41 @@ def checked_design(frame, specification, splits=None):
         {'fit_positions':a.tolist(),'calibration_positions':b.tolist()} for a,b in full]}
 
 
+def subject_subsample(frame, train_positions, test_positions, *, fold, replicate):
+    """Fixed 80% event-stratified deletion within an existing outer train set.
+
+    Returns a copied, reset-index frame and original row positions. No fitting,
+    fold generation, redraw or persistence. Test values never set the sample.
+    Five replicates describe this deletion mechanism, not bootstrap intervals.
+    """
+    if (type(fold) is not int or not 1 <= fold <= 5
+            or type(replicate) is not int or not 1 <= replicate <= 5):
+        raise ValueError('SUBSAMPLE_FOLD_OR_REPLICATE')
+    work = validate_contract(frame, [])
+    a,b = np.asarray(train_positions),np.asarray(test_positions)
+    if (a.ndim != 1 or b.ndim != 1 or a.dtype.kind not in 'iu' or b.dtype.kind not in 'iu'
+            or not len(a) or not len(b) or len(set(a)) != len(a) or len(set(b)) != len(b)
+            or set(a)&set(b) or set(a)|set(b) != set(range(len(work)))):
+        raise ValueError('SUBSAMPLE_ORIGINAL_OUTER_PARTITION')
+    rng = np.random.Generator(np.random.PCG64(20261028+100*fold+replicate))
+    selected = []
+    for cause in (0,1,2):
+        positions = np.sort(a[work.iloc[a].event_type.to_numpy() == cause])
+        count = len(positions)*4//5
+        if count < 1:
+            raise ValueError('SUBSAMPLE_INSUFFICIENT_CAUSE')
+        selected.extend(rng.choice(positions,size=count,replace=False).tolist())
+    selected = np.asarray(sorted(selected),dtype=int)
+    return work.iloc[selected].copy(deep=True).reset_index(drop=True),selected
+
+
 class Journal:
-    def __init__(self, folder, families, reuse):
-        self.limits={'predictive':(18 if reuse else 24)*len(families),'calibration':6*len(families)}
+    def __init__(self, folder, families, reuse, *, limits=None):
+        default={'predictive':(18 if reuse else 24)*len(families),'calibration':6*len(families)}
+        if limits is not None and (not isinstance(limits,dict) or set(limits)!=set(default)
+                or any(type(x) is not int or x<0 for x in limits.values()) or not sum(limits.values())):
+            raise ValueError('INVALID_EXPLICIT_FIT_LIMITS')
+        self.limits=default if limits is None else dict(limits)
         self.counts=dict.fromkeys(self.limits,0)
         self.stream=(folder/'Fit_Ledger.jsonl').open('x',encoding='utf-8')
     def attempt(self, kind, **context):

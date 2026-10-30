@@ -124,12 +124,25 @@ def table_reference(model, frame, specification, reference_kind='median'):
 
 
 class _Game:
-    def __init__(self,model,frame,specification,reference_kind,limit):
+    def __init__(self,model,frame,specification,reference_kind,limit,reference_values=None,evaluation_event=None):
+        if evaluation_event is not None and not callable(evaluation_event):
+            raise ValueError('TABLE_EVALUATION_EVENT_CALLBACK')
+        self.evaluation_event = evaluation_event
         self.model = model; self.specification = specification
         self.snapshot,self.groups = _frame(frame,specification)
         self.names = list(SPECS[specification])
         self.identity = model_state_identity(model)
         self.reference = table_reference(model,self.snapshot,specification,reference_kind)
+        self.reference_policy = 'outer_training_person_month_'+reference_kind
+        if reference_values is not None:
+            supplied = np.asarray(reference_values)
+            if (reference_kind != 'median' or supplied.dtype.kind not in 'fi'
+                    or supplied.shape != (len(self.names),) or not np.isfinite(supplied).all()):
+                raise ValueError('TABLE_EXPLICIT_RAW_SCALE_MEDIAN_REFERENCE')
+            supplied = supplied.astype(float,copy=True)
+            for i,name in enumerate(self.names):
+                self.reference.loc[self.reference[name].notna(),name] = supplied[i]
+            self.reference_policy = 'caller_supplied_raw_scale_median_same_missingness'
         self.count = 0; self.state_rows = 0; self.limit = limit
 
     def predict(self,states):
@@ -144,26 +157,36 @@ class _Game:
             raise ValueError('TABLE_GAME_ROW_ALIGNMENT')
         current.loc[:,self.names] = states
         before = current.copy(deep=True)
+        if self.evaluation_event:self.evaluation_event('attempt',len(states))
         self.count += 1; self.state_rows += len(states)
         with threadpool_limits(limits=1):
             result = predict_cif(self.model,current,self.names)
         if not current.equals(before) or result.subject_id.tolist() != current.subject_id.tolist():
             raise ValueError('TABLE_CIF_INPUT_OR_ORDER_CHANGED')
+        if self.evaluation_event:self.evaluation_event('complete',len(states))
         return result[['ad_cif_24m','other_dementia_cif_24m']].to_numpy(float)
 
     def finish(self,frame,result,reference_kind):
         current,_ = _frame(frame,self.specification)
         if not current.equals(self.snapshot) or model_state_identity(self.model) != self.identity:
             raise ValueError('TABLE_EXPLANATION_INPUT_OR_MODEL_CHANGED')
-        result.update(model_identity=self.identity,reference_policy='outer_training_person_month_'+reference_kind,
+        result.update(model_identity=self.identity,reference_policy=self.reference_policy,
                       specification=self.specification,cif_calls=self.count,cif_state_rows=self.state_rows,
                       predictive_fits=0,calibration_fits=0,missingness_effects_explained=False)
         return result
 
 
-def explain_shapley(model,frame,specification,*,reference_kind='median',max_coalitions=512):
+def explain_shapley(model,frame,specification,*,reference_kind='median',max_coalitions=512,
+                    reference_values=None,evaluation_event=None):
+    """Use the model's reference by default, or an explicit raw-scale median.
+
+    A supplied finite feature vector supports crossed model/reference games.
+    Only observed cells are replaced; model preprocessing and missingness stay
+    untouched. The caller must establish the vector's training provenance.
+    This does not certify an external reference, fold eligibility or permission.
+    """
     _positive_int(max_coalitions,'COALITION_BUDGET',512)
-    game = _Game(model,frame,specification,reference_kind,max_coalitions)
+    game = _Game(model,frame,specification,reference_kind,max_coalitions,reference_values,evaluation_event)
     result = exact_values(game.predict,game.snapshot[game.names].to_numpy(),
                           game.reference[game.names].to_numpy(),game.groups,max_coalitions=max_coalitions)
     return game.finish(frame,result,reference_kind)
