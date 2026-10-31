@@ -1,0 +1,9 @@
+# build / dev 产物与临时目录
+dist/
+node_modules/
+.tmp/
+.npm-cache/
+dev.log
+dev.err
+# E2E 截图（本地证据，不入库）
+.shots/

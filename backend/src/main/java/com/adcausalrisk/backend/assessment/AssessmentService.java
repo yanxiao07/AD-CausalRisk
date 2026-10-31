@@ -110,7 +110,9 @@ public class AssessmentService {
     public Outcome create(
             Long subjectId, String modelVersion, int predictionWindowMonths,
             String idempotencyKey, AppUserPrincipal principal) {
-        if (!accessPolicy.canCreate(principal)) {
+        // ADMIN / RESEARCHER 可为任意档案发起；DOCTOR 只能为已授权（VIEW/MANAGE）的档案发起。
+        // 建档（POST /api/subjects）仍然只允许 ADMIN / RESEARCHER，两个权限刻意分开。
+        if (!accessPolicy.canRequestAssessment(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权发起评估");
         }
         // The header is opaque to HTTP, but " abc" and "abc" must not become two idempotency

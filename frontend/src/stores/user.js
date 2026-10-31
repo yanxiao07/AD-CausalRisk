@@ -1,17 +1,36 @@
 import { defineStore } from 'pinia'
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
-const PERSIST_KEY = USE_MOCK ? 'ad-causalrisk-user-mock' : 'ad-causalrisk-user-live'
-
+/**
+ * 登录用户。字段与 `POST /api/auth/login` 返回的 data 对齐：
+ * { id, username, roles, menus }
+ *
+ * roles 用于路由/按钮鉴权，menus 用于侧边栏渲染（后端已按角色下发），
+ * 两者必须分开存 —— 把 menus 塞进 permissions 会让权限判断失真。
+ */
 export const useUserStore = defineStore('user', {
   state: () => ({
+    id: null,
     username: '',
     roles: [],
+    menus: [],
     permissions: []
   }),
 
   getters: {
     isLoggedIn: (state) => !!state.username,
+    /** 主角色：用于布局与首页跳转，ADMIN > RESEARCHER > DOCTOR > PATIENT。 */
+    primaryRole: (state) => {
+      for (const role of ['ADMIN', 'RESEARCHER', 'DOCTOR', 'PATIENT']) {
+        if (state.roles.includes(role)) return role
+      }
+      return ''
+    },
+    /** 角色对应的落地页。 */
+    homePath: (state) => {
+      const map = { ADMIN: '/admin', RESEARCHER: '/researcher', DOCTOR: '/doctor', PATIENT: '/patient' }
+      const role = ['ADMIN', 'RESEARCHER', 'DOCTOR', 'PATIENT'].find(r => state.roles.includes(r))
+      return role ? map[role] : '/login'
+    },
     hasRole: (state) => (role) => {
       if (!role) return true
       const need = Array.isArray(role) ? role : [role]
@@ -20,35 +39,30 @@ export const useUserStore = defineStore('user', {
     hasPermission: (state) => (perm) => {
       if (!perm) return true
       const need = Array.isArray(perm) ? perm : [perm]
-      return need.some(p => state.permissions.includes(p))
-    }
+      return need.some(p => p === '*' || state.permissions.includes(p))
+    },
+    hasMenu: (state) => (key) => !key || state.menus.includes(key)
   },
 
   actions: {
-    setUser({ username, roles = [], permissions = [] }) {
-      this.username = username
-      this.roles = roles
-      this.permissions = permissions
+    setUser(payload = {}) {
+      this.id = payload.id ?? null
+      this.username = payload.username ?? ''
+      this.roles = Array.isArray(payload.roles) ? payload.roles : []
+      this.menus = Array.isArray(payload.menus) ? payload.menus : []
+      this.permissions = Array.isArray(payload.permissions) ? payload.permissions : []
     },
-    logout() {
+    clear() {
+      this.id = null
       this.username = ''
       this.roles = []
+      this.menus = []
       this.permissions = []
-    },
-    loginAsDemo(role = 'admin') {
-      const DEMO_ACCOUNTS = {
-        admin: { username: 'admin', roles: ['ADMIN'], permissions: ['*'] },
-        researcher: { username: 'researcher', roles: ['RESEARCHER'], permissions: ['subject:list', 'subject:import'] },
-        doctor: { username: 'doctor', roles: ['DOCTOR'], permissions: ['subject:list'] },
-        patient: { username: 'patient', roles: ['PATIENT'], permissions: [] }
-      }
-      const acc = DEMO_ACCOUNTS[role] || DEMO_ACCOUNTS.admin
-      this.setUser(acc)
     }
   },
 
   persist: {
-    key: PERSIST_KEY,
-    pick: ['username', 'roles', 'permissions']
+    key: 'ad-causalrisk-user',
+    pick: ['id', 'username', 'roles', 'menus', 'permissions']
   }
 })

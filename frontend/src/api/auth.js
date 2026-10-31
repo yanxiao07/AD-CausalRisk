@@ -1,49 +1,29 @@
 import request from './request.js'
-import { mockDelay } from '../mock/data.js'
 import { useUserStore } from '../stores/user.js'
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
-
+/**
+ * POST /api/auth/login
+ * 成功时 Envelope 已被 request 拦截器脱壳，这里拿到的是 data：
+ * { id, username, roles, menus }
+ */
 export async function login(username, password) {
-  if (USE_MOCK) {
-    await mockDelay(300)
-    if (username === 'admin' && password === 'admin') {
-      localStorage.setItem('token', 'mock-token-' + Date.now())
-      const store = useUserStore()
-      store.setUser({
-        username,
-        roles: ['ADMIN'],
-        permissions: []
-      })
-      return { username, roles: ['ADMIN'] }
-    }
-    return Promise.reject({ code: 401, errorCode: 'INVALID_CREDENTIALS', message: '用户名或密码错误' })
-  }
   const data = await request.post('/auth/login', { username, password })
-  const store = useUserStore()
-  store.setUser({
-    username: data.username,
-    roles: data.roles || [],
-    permissions: []
-  })
+  useUserStore().setUser(data)
   return data
 }
 
-export async function logout() {
-  localStorage.removeItem('token')
-  const store = useUserStore()
-  store.logout()
-  if (!USE_MOCK) {
-    try {
-      await request.post('/auth/logout')
-    } catch (_) {}
-  }
+/** GET /api/me —— 刷新页面后用它确认会话仍然有效。 */
+export async function fetchCurrentUser() {
+  const data = await request.get('/me')
+  useUserStore().setUser(data)
+  return data
 }
 
-export function isLoggedIn() {
-  if (USE_MOCK) {
-    return !!localStorage.getItem('token')
+/** POST /api/auth/logout —— 无论后端是否成功，本地登录态都要清掉。 */
+export async function logout() {
+  try {
+    await request.post('/auth/logout')
+  } finally {
+    useUserStore().clear()
   }
-  const store = useUserStore()
-  return store.isLoggedIn
 }

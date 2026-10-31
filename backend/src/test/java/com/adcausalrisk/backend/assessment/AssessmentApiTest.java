@@ -96,7 +96,8 @@ class AssessmentApiTest {
 
     @AfterEach
     void cleanUp() {
-        // Children first: both tables have ON DELETE RESTRICT towards subject.
+        // Children first: these tables have ON DELETE RESTRICT towards subject.
+        jdbc.update("DELETE FROM subject_permission WHERE subject_id = ?", subjectId);
         jdbc.update("DELETE FROM risk_assessment WHERE subject_id = ?", subjectId);
         jdbc.update("DELETE FROM assessment_task WHERE subject_id = ?", subjectId);
         jdbc.update("DELETE FROM subject WHERE id = ?", subjectId);
@@ -127,6 +128,32 @@ class AssessmentApiTest {
     @Test
     void predictionWindowAboveSixtyIsRejected() throws Exception {
         assertWindowRejected(login("admin"), 61);
+    }
+
+    /**
+     * A doctor holding a grant on the subject may start an assessment for it (V9 seeds exactly
+     * this for the demo subjects). Without a grant the same call is 403 - see the test below.
+     */
+    @Test
+    void doctorWithGrantCanCreateAssessment() throws Exception {
+        MockHttpSession doctor = login("doctor");
+        Long doctorId = jdbc.queryForObject(
+                "SELECT id FROM sys_user WHERE username = 'doctor'", Long.class);
+        jdbc.update("INSERT INTO subject_permission (subject_id, user_id, permission_type)"
+                + " VALUES (?, ?, 'VIEW')", subjectId, doctorId);
+
+        when(agentClient.createRun(any(AgentRequest.class))).thenReturn(completedResult("0.62"));
+
+        JsonNode body = bodyOf(mockMvc.perform(post("/api/assessment-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "doctor-granted")
+                        .content(createRequestJson(24))
+                        .session(doctor))
+                .andExpect(status().isOk())
+                .andReturn());
+
+        assertThat(body.get("data").get("status").asText()).isEqualTo("COMPLETED");
+        assertThat(body.get("data").get("assessmentId").isNull()).isFalse();
     }
 
     @Test

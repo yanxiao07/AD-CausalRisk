@@ -2,6 +2,8 @@ package com.adcausalrisk.backend.agent;
 
 import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.ResourceAccessException;
@@ -34,6 +36,12 @@ public class RestAgentClient {
     private static final String RUNS_PATH = "/api/agent/v1/runs";
     private static final int MAX_DETAIL_LENGTH = 300;
 
+    /**
+     * Jackson 的 ObjectMapper 是线程安全的，这里共用一个静态实例即可；
+     * 不改成构造器注入是为了让本类保持独立（AgentClientConfig 只负责注入 RestClient）。
+     */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private final RestClient restClient;
 
     public RestAgentClient(RestClient agentRestClient) {
@@ -42,14 +50,26 @@ public class RestAgentClient {
 
     /** {@code POST /api/agent/v1/runs}. Blocks until the four-stage workflow finishes. */
     public AgentResult createRun(AgentRequest request) {
+        // Python 端要求"带 Content-Length 的 JSON 请求"，所以先自己序列化成 byte[]，
+        // 把长度显式写进请求头，而不是让底层转换器选择 chunked 传输。
+        byte[] bodyBytes;
+        try {
+            bodyBytes = OBJECT_MAPPER.writeValueAsBytes(request);
+        } catch (JsonProcessingException failure) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    CODE_PROTOCOL_ERROR + ": 请求序列化失败 " + detail(failure));
+        }
+
         try {
             AgentResult result = restClient.post()
                     .uri(RUNS_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
-                    .body(request)
+                    .contentLength(bodyBytes.length)
+                    .body(bodyBytes)
                     .retrieve()
                     .body(AgentResult.class);
+
             AgentResultValidator.validate(request, result);
             return result;
         } catch (ResourceAccessException failure) {

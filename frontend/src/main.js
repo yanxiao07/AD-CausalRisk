@@ -1,14 +1,13 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
-import ArcoVue from '@arco-design/web-vue'
-import '@arco-design/web-vue/dist/arco.css'
+// Element Plus 样式：组件本身由 unplugin-vue-components 按需注册，
+// 这里只引一份完整样式，确保与 element-overrides.css 的覆盖顺序稳定。
+import 'element-plus/dist/index.css'
+import './styles/tokens.css'
+import './styles/element-overrides.css'
 import App from './App.vue'
 import router from './router'
-import { vPermission } from './directives/permission.js'
-import { useUserStore } from './stores/user.js'
-
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
 
 const pinia = createPinia()
 pinia.use(piniaPluginPersistedstate)
@@ -16,13 +15,5 @@ pinia.use(piniaPluginPersistedstate)
 const app = createApp(App)
 app.use(pinia)
 app.use(router)
-app.use(ArcoVue)
-
-app.directive('permission', vPermission)
-
-const userStore = useUserStore()
-if (USE_MOCK && !userStore.isLoggedIn) {
-  userStore.loginAsDemo('admin')
-}
 
 app.mount('#app')

@@ -1,23 +1,10 @@
 <template>
-  <router-view />
+  <el-config-provider :locale="zhCn">
+    <AppShell />
+  </el-config-provider>
 </template>
 
 <script setup>
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import AppShell from '@/layouts/AppShell.vue'
 </script>
-
-<style>
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: var(--color-fill-2, #f5f7fa);
-  transition: background-color 0.2s ease;
-}
-
-#app {
-  min-height: 100vh;
-}
-
-* {
-  box-sizing: border-box;
-}
-</style>

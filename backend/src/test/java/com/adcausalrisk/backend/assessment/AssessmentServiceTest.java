@@ -100,7 +100,7 @@ class AssessmentServiceTest {
 
         principal = new AppUserPrincipal(USER_ID, "researcher", "hash", List.of("RESEARCHER"), true);
 
-        when(accessPolicy.canCreate(principal)).thenReturn(true);
+        when(accessPolicy.canRequestAssessment(any(), any())).thenReturn(true);
         when(accessPolicy.canView(principal, SUBJECT_ID)).thenReturn(true);
         when(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(any(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
