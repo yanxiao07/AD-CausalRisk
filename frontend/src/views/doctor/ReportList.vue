@@ -15,7 +15,16 @@
     </PageHeader>
 
     <EmptyState
-      v-if="!report"
+      v-if="loadError"
+      :icon="WarningFilled"
+      title="报告载入失败"
+      :description="loadError"
+      action-text="重试"
+      @action="load"
+    />
+
+    <EmptyState
+      v-else-if="!report"
       :icon="Document"
       title="还没有生成报告"
       description="输入评估 ID 后生成；也可以从「待办复核」页直接跳转过来。"
@@ -132,7 +141,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Document, Printer } from '@element-plus/icons-vue'
+import { Document, Printer, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -146,6 +155,8 @@ const inputId = ref('')
 const loading = ref(false)
 const report = ref(null)
 const subject = ref(null)
+/** 载入失败的可读原因（null = 没有错误） */
+const loadError = ref('')
 
 /** 每次 load 自增；只有最新一次请求的响应才写状态。 */
 let requestSeq = 0
@@ -195,6 +206,7 @@ async function load() {
   // 只有最后一次发出的请求才允许写进 report/subject。
   const seq = ++requestSeq
   loading.value = true
+  loadError.value = ''
   report.value = null
   subject.value = null
 
@@ -214,8 +226,15 @@ async function load() {
         subject.value = null
       }
     }
-  } catch {
-    // request.js 已提示
+  } catch (problem) {
+    if (seq !== requestSeq) return
+    // 契约边界：不存在的 ID 是 400（不是 404），无权限是 403 —— 都落到页面上说明白
+    loadError.value =
+      problem?.errorCode === 'NETWORK_ERROR'
+        ? '无法连接服务器，请确认后端已启动。'
+        : problem?.code === 403
+          ? '当前账号无权读取该评估的报告。'
+          : problem?.message || `评估 #${id} 的报告载入失败，请稍后重试。`
   } finally {
     // 只有最新请求能关闭 loading，避免旧请求把新请求的转圈提前关掉
     if (seq === requestSeq) loading.value = false

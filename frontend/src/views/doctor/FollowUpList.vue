@@ -126,6 +126,9 @@ const error = ref('')
 const updating = ref(null)
 const dialogOpen = ref(false)
 
+/** 请求序号守卫：切换受试者时只认最后一次查询 */
+let requestSeq = 0
+
 const timeFormatter = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
   month: '2-digit',
@@ -157,18 +160,22 @@ async function loadFollowUps() {
     items.value = []
     return
   }
+  // 请求序号：快速切换受试者时，慢的旧响应不能覆盖新受试者的随访表
+  const seq = ++requestSeq
   loading.value = true
   error.value = ''
   try {
     const data = await listFollowUps(subjectId.value)
+    if (seq !== requestSeq) return
     items.value = (Array.isArray(data) ? data : []).slice().sort(
       (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)
     )
   } catch (problem) {
+    if (seq !== requestSeq) return
     items.value = []
     error.value = problem?.message || '请稍后重试'
   } finally {
-    loading.value = false
+    if (seq === requestSeq) loading.value = false
   }
 }
 

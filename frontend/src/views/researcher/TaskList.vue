@@ -23,8 +23,18 @@
       description="契约只有 POST /api/assessment-tasks 与 GET /api/assessment-tasks/{id}，所以这里按任务 ID 查询；批量评估的进度请用「受试者档案」页右上角的进度面板。"
     />
 
+    <el-alert
+      v-if="loadError"
+      class="note"
+      type="error"
+      :closable="false"
+      show-icon
+      title="任务载入失败"
+      :description="loadError"
+    />
+
     <EmptyState
-      v-if="!task"
+      v-if="!task && !loadError"
       :icon="Cpu"
       title="还没有查询任务"
       description="输入任务 ID 后查看状态与四个阶段的耗时。"
@@ -97,6 +107,11 @@ const router = useRouter()
 const inputId = ref('')
 const loading = ref(false)
 const task = ref(null)
+/** 载入失败的可读原因（空串 = 无错误） */
+const loadError = ref('')
+
+/** 请求序号守卫：快速切换任务 ID 时只认最后一次响应 */
+let requestSeq = 0
 
 const STAGE_LABELS = {
   DATA_FUSION: '数据融合',
@@ -133,13 +148,23 @@ async function load() {
     ElMessage.warning('请输入有效的任务 ID')
     return
   }
+  // 请求序号守卫：快速切换任务 ID 时只认最后一次
+  const seq = ++requestSeq
   loading.value = true
+  loadError.value = ''
   try {
-    task.value = await getAssessmentTask(id)
-  } catch {
-    // request.js 已提示
+    const data = await getAssessmentTask(id)
+    if (seq !== requestSeq) return
+    task.value = data
+  } catch (problem) {
+    if (seq !== requestSeq) return
+    task.value = null
+    loadError.value =
+      problem?.errorCode === 'NETWORK_ERROR'
+        ? '无法连接服务器，请确认后端已启动。'
+        : problem?.message || `任务 #${id} 载入失败，请稍后重试。`
   } finally {
-    loading.value = false
+    if (seq === requestSeq) loading.value = false
   }
 }
 

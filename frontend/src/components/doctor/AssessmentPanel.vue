@@ -19,8 +19,12 @@
         <span class="start__unit">个月（6–60）</span>
       </div>
       <el-button type="primary" size="large" :loading="starting" @click="start">
-        发起风险预测
+        {{ restoredIntent ? '恢复上次提交' : '发起风险预测' }}
       </el-button>
+      <p v-if="restoredIntent" class="start__notice">
+        检测到该档案有一次提交未确认结果：本次会复用原请求，后端不会重复建任务。
+        <el-button link type="primary" @click="discardIntentAndReset">改为新评估</el-button>
+      </p>
       <p class="start__hint">
         调用 Python 因果模型，通常需要数秒到数十秒；提交后可关闭抽屉，任务仍在后端运行。
       </p>
@@ -45,7 +49,7 @@
       <p class="running__hint">每 2 秒查询一次任务状态，直到完成或失败。</p>
     </div>
 
-    <!-- 3. 失败 -->
+    <!-- 3. 失败：区分「恢复原任务」与「新建评估」 -->
     <div v-else-if="phase === 'failed'" class="failed">
       <el-alert
         type="error"
@@ -54,7 +58,15 @@
         :title="errorTitle"
         :description="errorText"
       />
-      <el-button class="failed__retry" @click="reset">重新发起</el-button>
+      <div class="failed__actions">
+        <el-button v-if="canReplayIntent" class="failed__retry" @click="retrySameIntent">
+          重试原请求
+        </el-button>
+        <el-button type="primary" class="failed__new" @click="startNewIntent">
+          新建评估
+        </el-button>
+      </div>
+      <p class="failed__hint">{{ retryHint }}</p>
     </div>
 
     <!-- 4. 结果 -->
@@ -148,6 +160,11 @@ import {
   newIdempotencyKey,
   reviewAssessment
 } from '@/api/assessments.js'
+import {
+  clearAssessmentIntent,
+  readAssessmentIntent,
+  saveAssessmentIntent
+} from '@/utils/assessmentIntent.js'
 
 const props = defineProps({
   subjectId: { type: [Number, String], required: true }
@@ -173,25 +190,46 @@ const errorTitle = ref('评估失败')
 const errorText = ref('')
 const elapsed = ref(0)
 const reviewing = ref('')
+/** 本次打开抽屉时，是否从 sessionStorage 恢复了一次未闭环的提交。 */
+const restoredIntent = ref(false)
 
 let pollTimer = null
 let tickTimer = null
 let startedAt = 0
 
 /**
- * 幂等键：一次"业务意图"对应一个键，而不是一次 HTTP 请求。
+ * 幂等键：一次"业务意图"对应一个键，不是一次 HTTP 请求。
  *
- *  - 选中患者（或切换患者）时生成一次；
- *  - 超时/失败后点「重新发起」复用同一个键，后端会重放同一次任务而不是再建一个；
- *  - 只有成功拿到结果后才清空，下一次点击才是全新的评估。
+ *  - 打开抽屉时优先恢复该档案上次未闭环的键（关抽屉/刷新都不会丢）；
+ *  - 发请求**之前**就落盘：这样即使响应丢失，再提交也是同一个键 → 后端重放而不是新建；
+ *  - 参数（预测窗口）变了 = 换意图 → 换新键，避免"同键不同请求"被后端拒绝；
+ *  - 出结果后清空，下一次才是全新评估。
  */
 let idempotencyKey = newIdempotencyKey()
+/** 当前键绑定的预测窗口；null 表示这个键还没提交过。 */
+let keyWindow = null
+
+function adoptIntent(subjectId) {
+  const stored = readAssessmentIntent(subjectId)
+  if (stored?.key) {
+    idempotencyKey = stored.key
+    keyWindow = stored.windowMonths
+    restoredIntent.value = true
+    if (Number.isFinite(stored.windowMonths)) windowMonths.value = stored.windowMonths
+    return
+  }
+  idempotencyKey = newIdempotencyKey()
+  keyWindow = null
+  restoredIntent.value = false
+}
+
+adoptIntent(props.subjectId)
 
 watch(
   () => props.subjectId,
-  () => {
-    // 换患者 = 换意图，旧键作废
-    idempotencyKey = newIdempotencyKey()
+  (next) => {
+    // 换患者 = 换意图：各自恢复各自的键，互不串
+    adoptIntent(next)
   }
 )
 
@@ -252,6 +290,28 @@ function reset() {
   elapsed.value = 0
 }
 
+/** 把"这一次意图"落盘；必须在发请求之前调用。 */
+function persistIntent() {
+  saveAssessmentIntent(props.subjectId, {
+    key: idempotencyKey,
+    windowMonths: keyWindow
+  })
+  restoredIntent.value = true
+}
+
+/** 关闭当前意图：清掉持久化的键，下一次点击就是全新评估。 */
+function closeIntent() {
+  clearAssessmentIntent(props.subjectId)
+  idempotencyKey = ''
+  keyWindow = null
+  restoredIntent.value = false
+}
+
+function rotateIntent() {
+  idempotencyKey = newIdempotencyKey()
+  keyWindow = null
+}
+
 async function start() {
   if (phase.value === 'running') return
   reset()
@@ -263,8 +323,16 @@ async function start() {
   }, 1000)
 
   try {
-    // 复用同一幂等键：超时重试 / 点「重新发起」都不会在后端多建一条任务
     if (!idempotencyKey) idempotencyKey = newIdempotencyKey()
+    // 参数变了就是新意图：同一个键配不同 body 会被后端判成"同键不同请求"。
+    if (keyWindow !== null && keyWindow !== windowMonths.value) {
+      rotateIntent()
+      ElMessage.info('预测窗口已修改，本次按新参数创建评估')
+    }
+    keyWindow = windowMonths.value
+    // 先落盘再请求：万一响应丢了，重开抽屉还能拿回同一个键
+    persistIntent()
+
     const created = await createAssessmentTask({
       subjectId: Number(props.subjectId),
       predictionWindowMonths: windowMonths.value,
@@ -309,19 +377,57 @@ async function finish(latest) {
     try {
       assessment.value = await getAssessment(latest.assessmentId)
       phase.value = 'done'
-      // 已出结果：这次意图结束，下一次点击换新键（允许发起新评估）
-      idempotencyKey = ''
+      // 已出结果：这次意图闭环，清掉持久化键，下一次点击是全新评估
+      closeIntent()
       return
     } catch (problem) {
       fail('任务完成但结果读取失败', problem?.message || '请稍后重试。')
       return
     }
   }
+  if (latest.status === 'FAILED' || latest.status === 'CANCELLED') {
+    // 明确失败：重放只会拿回同一个失败任务，直接关掉这次意图，重试按"新建评估"走
+    closeIntent()
+    fail('评估未产生结果', latest.message || latest.errorCode || '请查看后端日志。')
+    return
+  }
   if (latest.status === 'BLOCKED') {
     fail('评估被阻断', latest.message || '数据不足以给出风险结果。')
     return
   }
   fail('评估未产生结果', latest.message || latest.errorCode || '请查看后端日志。')
+}
+
+/** 上次提交的响应是否丢失（没有拿到任务对象）——这种情况重放才有价值。 */
+const canReplayIntent = computed(() => {
+  const status = task.value?.status
+  return !status || !['FAILED', 'CANCELLED'].includes(status)
+})
+
+const retryHint = computed(() =>
+  canReplayIntent.value
+    ? '「重试原请求」复用同一个幂等键：若上次其实已在后端建好任务，会直接拿回那个任务，不会重复创建。'
+    : '该任务已明确失败，重放只会得到同样的失败结果。「新建评估」会换用新键，并按当前预测窗口重新提交。'
+)
+
+/** 恢复原任务：同一个键、同一组参数。 */
+function retrySameIntent() {
+  reset()
+  start()
+}
+
+/** 新建评估：换键 + 保留当前窗口，属于一次全新意图。 */
+function startNewIntent() {
+  closeIntent()
+  reset()
+  start()
+}
+
+/** 抽屉里主动放弃上次恢复的意图，改为全新评估。 */
+function discardIntentAndReset() {
+  closeIntent()
+  reset()
+  ElMessage.success('已切换为新建评估')
 }
 
 function fail(title, text) {
@@ -431,6 +537,18 @@ onBeforeUnmount(stopTimers)
   color: var(--soft);
 }
 
+/* 恢复上次未闭环提交时的提示条 */
+.start__notice {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--brand-700);
+  background: var(--brand-50);
+  border: 1px solid rgba(10, 115, 173, 0.18);
+  border-radius: var(--r-sm);
+}
+
 /* 进行中 */
 .running__head {
   display: flex;
@@ -484,8 +602,20 @@ onBeforeUnmount(stopTimers)
 }
 
 /* 失败 */
+.failed__actions {
+  display: flex;
+  gap: 10px;
+}
+
 .failed__retry {
   align-self: flex-start;
+}
+
+.failed__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--soft);
 }
 
 /* 结果 */

@@ -19,6 +19,11 @@
 | 2 | `ReportList` 报告"串人"竞态 | `load()` 引入 `requestSeq`：每次请求自增，`report`/`subject`/`loading` 只有最新序号的响应能写 |
 | 3 | 退出登录后批量评估轮询不停止 | `batch.js` 增加批次令牌 `session` 与 `abort()`；`user.js` 的 `clear()` 里调用 `abortBackgroundWork()`，`logout()` 为一个语义别名；两个布局的退出按钮改为走 `userStore.logout()` |
 | 4 | 重试/重新发起会重复建评估任务 | `api/assessments.js` 支持外部传入 `Idempotency-Key`；`AssessmentPanel` 在选中患者时生成一次，重试复用，成功出结果后清空 |
+| 5 | 关闭/重开抽屉会丢失幂等键（响应丢失时可重复建任务） | 新增 `utils/assessmentIntent.js`：按受试者把键 + 预测窗口存进 `sessionStorage`，**发请求之前**落盘；抽屉重开自动恢复，并提示"本次复用原请求"；退出登录时随 `clearAllAssessmentIntents()` 清空 |
+| 6 | 明确失败后「重新发起」只会重放旧失败任务；改窗口又会"同键不同请求" | 失败态拆成两个动作：「重试原请求」（同键，仅在没有拿到任务对象=响应丢失时出现）与「新建评估」（换新键）；`start()` 检测到窗口与键绑定的参数不一致时**自动换键**，避免同键不同 body |
+| 7 | 竞态守卫只覆盖了 `ReportList` / `PatientList` | 补齐 `GraphView`、`TaskList`、`FollowUpList`、`QcList` 的 `requestSeq`；切换 ID / 翻页 / 换受试者时旧响应一律丢弃（实测慢响应不再覆盖新数据） |
+| 8 | 按 ID 载入失败时页面只显示"还没有…"，把错误伪装成空态 | `ReportList` / `GraphView` / `TaskList` 增加错误态：把 400（不存在）/ 403（无权限）/ 网络错误翻译成可读文案，并提供「重试」；图谱失败时清空上一份图，避免"看起来是新 ID、其实还是旧数据" |
+| 9 | 登出后残留存储未验证 | 实测：批量轮询在登出后 7 秒窗口内 0 次请求；`sessionStorage` 中 `adc:*` 全部清空；`localStorage` 的 `adc-causalrisk-user` 已移除；`ScreenLayout` 时钟与 `AdminHome` 60s 刷新均在 `onBeforeUnmount` 清理 |
 
 ---
 

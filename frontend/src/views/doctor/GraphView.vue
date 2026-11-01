@@ -17,7 +17,16 @@
     </PageHeader>
 
     <EmptyState
-      v-if="!graph"
+      v-if="loadError"
+      :icon="WarningFilled"
+      title="图谱载入失败"
+      :description="loadError"
+      action-text="重试"
+      @action="load"
+    />
+
+    <EmptyState
+      v-else-if="!graph"
       :icon="Share"
       title="还没有载入图谱"
       description="输入评估 ID 后载入该受试者的个体因果网络；也可以从「待办复核」或「评估报告」跳转过来。"
@@ -52,7 +61,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { FullScreen, RefreshRight, Share } from '@element-plus/icons-vue'
+import { FullScreen, RefreshRight, Share, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -67,6 +76,11 @@ const assessment = ref(null)
 const immersive = ref(false)
 const graphKey = ref(0)
 const viewportHeight = ref(window.innerHeight)
+/** 载入失败的原文（null = 没有错误） */
+const loadError = ref('')
+
+/** 请求序号守卫：只让最新的载入请求写状态 */
+let requestSeq = 0
 
 const graph = computed(() => assessment.value?.agentResult?.graph || null)
 const nodes = computed(() => graph.value?.nodes || [])
@@ -95,18 +109,34 @@ async function load() {
     ElMessage.warning('请输入有效的评估 ID')
     return
   }
+  // 请求序号：连续载入两个 ID 时，只有最后一次的响应能写入页面
+  const seq = ++requestSeq
   loading.value = true
+  loadError.value = ''
   try {
     const data = await getAssessment(id)
+    if (seq !== requestSeq) return
     assessment.value = data
     if (!data?.agentResult?.graph?.nodes?.length) {
       ElMessage.warning('这次评估没有返回因果图（可能被 BLOCKED）')
     }
-  } catch {
-    // request.js 已提示
+  } catch (problem) {
+    if (seq !== requestSeq) return
+    // 失败时清掉上一份图，避免"看起来是新 ID、其实还是旧数据"
+    assessment.value = null
+    loadError.value = describeLoadError(problem, id)
   } finally {
-    loading.value = false
+    if (seq === requestSeq) loading.value = false
   }
+}
+
+/** 把后端的 400/403/404/网络错误翻译成页面上的可读提示。 */
+function describeLoadError(problem, id) {
+  if (!problem) return `评估 #${id} 载入失败，请稍后重试。`
+  if (problem.errorCode === 'NETWORK_ERROR') return '无法连接服务器，请确认后端已启动。'
+  if (problem.code === 403) return '当前账号无权读取该评估结果。'
+  if (problem.message) return problem.message
+  return `评估 #${id} 载入失败，请稍后重试。`
 }
 
 onMounted(() => {

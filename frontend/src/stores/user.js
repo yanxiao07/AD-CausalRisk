@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { useBatchAssessmentStore } from './batch.js'
+import { clearAllAssessmentIntents } from '@/utils/assessmentIntent.js'
 
 /**
  * 登录用户。字段与 `POST /api/auth/login` 返回的 data 对齐：
@@ -80,6 +81,8 @@ export const useUserStore = defineStore('user', {
       } catch {
         // Pinia 尚未激活（例如单元测试直接调用 store）时忽略
       }
+      // 幂等键也是"这个人的意图"，换人后不能继承
+      clearAllAssessmentIntents()
     }
   },
 

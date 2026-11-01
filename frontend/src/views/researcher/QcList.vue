@@ -108,6 +108,9 @@ const loading = ref(true)
 const error = ref('')
 const auditing = ref(null)
 
+/** 请求序号守卫：翻页/切筛选时只认最后一次查询 */
+let requestSeq = 0
+
 const timeFormatter = new Intl.DateTimeFormat('zh-CN', {
   month: '2-digit',
   day: '2-digit',
@@ -122,18 +125,22 @@ function formatTime(value) {
 }
 
 async function load() {
+  // 请求序号：翻页/切筛选很快时，旧页面的响应不能覆盖当前页
+  const seq = ++requestSeq
   loading.value = true
   error.value = ''
   try {
     const data = await listQcRecords({ status: status.value || undefined, page: page.value, pageSize: pageSize.value })
+    if (seq !== requestSeq) return
     items.value = Array.isArray(data?.items) ? data.items : []
     total.value = Number(data?.total ?? items.value.length)
   } catch (problem) {
+    if (seq !== requestSeq) return
     items.value = []
     total.value = 0
     error.value = problem?.message || '请稍后重试'
   } finally {
-    loading.value = false
+    if (seq === requestSeq) loading.value = false
   }
 }
 
