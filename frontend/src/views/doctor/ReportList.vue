@@ -147,6 +147,9 @@ const loading = ref(false)
 const report = ref(null)
 const subject = ref(null)
 
+/** 每次 load 自增；只有最新一次请求的响应才写状态。 */
+let requestSeq = 0
+
 const riskScore = computed(() => {
   const value = report.value?.agentResult?.riskScore
   return typeof value === 'number' ? value : null
@@ -187,25 +190,35 @@ async function load() {
     ElMessage.warning('请输入有效的评估 ID')
     return
   }
+
+  // 请求序号守卫：连续输入两个 ID 时，慢的那次返回会覆盖快的那次（"串人"）。
+  // 只有最后一次发出的请求才允许写进 report/subject。
+  const seq = ++requestSeq
   loading.value = true
   report.value = null
   subject.value = null
+
   try {
     const data = await getReport(id)
+    if (seq !== requestSeq) return
     report.value = data
+
     // 受试者信息单独取一次；读不到也不影响报告主体
     if (data?.subjectId) {
       try {
         const detail = await getSubjectDetail(data.subjectId)
+        if (seq !== requestSeq) return
         subject.value = detail?.subject ?? null
       } catch {
+        if (seq !== requestSeq) return
         subject.value = null
       }
     }
   } catch {
     // request.js 已提示
   } finally {
-    loading.value = false
+    // 只有最新请求能关闭 loading，避免旧请求把新请求的转圈提前关掉
+    if (seq === requestSeq) loading.value = false
   }
 }
 

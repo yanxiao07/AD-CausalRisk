@@ -11,6 +11,15 @@
 | 1 | 删除未使用的 `v-permission` 指令 | `main.js` 去掉 `app.directive(...)` 与 import，删除 `src/directives/permission.js` 及空目录；`npm run build` 通过 |
 | 2 | 重写 `views/researcher/ResearchHome.vue` | 过期拖拽占位区 → 四个入口卡片（`/imports`、`/subjects`、`/quality`、`/tasks`），支持键盘 Enter/Space，样式沿用 tokens |
 
+## 本轮已清理（2026-11-01，Code Review 反馈）
+
+| # | 缺陷 | 处理方式 |
+| --- | --- | --- |
+| 1 | `frontend/src/data/*.js` 从未进入 Git（干净环境构建必挂） | 根因是 `.gitignore` 的 `data/` 未锚定，匹配了任意层级；改为 `/data/` 后 `git add` 两个文件，并用"导出 Git 索引到临时目录"的干净树验证 `npm run build` 通过 |
+| 2 | `ReportList` 报告"串人"竞态 | `load()` 引入 `requestSeq`：每次请求自增，`report`/`subject`/`loading` 只有最新序号的响应能写 |
+| 3 | 退出登录后批量评估轮询不停止 | `batch.js` 增加批次令牌 `session` 与 `abort()`；`user.js` 的 `clear()` 里调用 `abortBackgroundWork()`，`logout()` 为一个语义别名；两个布局的退出按钮改为走 `userStore.logout()` |
+| 4 | 重试/重新发起会重复建评估任务 | `api/assessments.js` 支持外部传入 `Idempotency-Key`；`AssessmentPanel` 在选中患者时生成一次，重试复用，成功出结果后清空 |
+
 ---
 
 ## 0. 总体优先级建议

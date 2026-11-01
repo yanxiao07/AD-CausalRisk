@@ -8,6 +8,13 @@ const TERMINAL = ['COMPLETED', 'BLOCKED', 'FAILED', 'CANCELLED']
 /** 轮询定时器放在模块作用域，避免被 Pinia 的响应式包装。 */
 let timer = null
 
+/**
+ * 批次令牌：每次 start/abort 自增。
+ * 正在飞行的 poll/创建请求返回后如果发现令牌变了，就直接丢弃结果，
+ * 避免"退出登录后旧批次又把任务写回列表"。
+ */
+let session = 0
+
 function clearTimer() {
   if (timer) window.clearTimeout(timer)
   timer = null
@@ -17,7 +24,7 @@ function clearTimer() {
  * 批量发起评估。
  *
  * 后端没有"批量"端点，也没有任务列表端点，所以这里：
- *  - 逐个 POST /api/assessment-tasks（每个都带独立 Idempotency-Key）；
+ *  - 逐个 POST /api/assessment-tasks（每个都带独立 Idempotency-Key，各自是一次独立意图）；
  *  - 逐条轮询 GET /api/assessment-tasks/{taskId} 直到终态；
  *  - 进度面板挂在 AppShell 上，切页面也不会丢。
  */
@@ -55,6 +62,7 @@ export const useBatchAssessmentStore = defineStore('batchAssessment', {
       if (this.running || !Array.isArray(subjectIds) || subjectIds.length === 0) return
 
       clearTimer()
+      const batch = ++session
       this.tasks = subjectIds.map((subjectId) => ({
         subjectId,
         taskId: null,
@@ -69,14 +77,17 @@ export const useBatchAssessmentStore = defineStore('batchAssessment', {
 
       // 逐个创建；单个失败不影响其它受试者
       for (const task of this.tasks) {
+        if (batch !== session) return // 期间被 abort / 重新发起
         try {
           const created = await createAssessmentTask({
             subjectId: task.subjectId,
             predictionWindowMonths
           })
+          if (batch !== session) return
           task.taskId = created?.taskId ?? null
           task.status = created?.status ?? 'PENDING'
         } catch (problem) {
+          if (batch !== session) return
           task.status = 'FAILED'
           task.errorCode = problem?.errorCode || 'CREATE_FAILED'
           task.message = problem?.message || '创建任务失败'
@@ -87,16 +98,16 @@ export const useBatchAssessmentStore = defineStore('batchAssessment', {
         this.stop()
         return
       }
-      this.schedulePoll()
+      this.schedulePoll(batch)
     },
 
-    schedulePoll() {
+    schedulePoll(batch) {
       clearTimer()
-      timer = window.setTimeout(() => this.poll(), POLL_MS)
+      timer = window.setTimeout(() => this.poll(batch), POLL_MS)
     },
 
-    async poll() {
-      if (!this.running) return
+    async poll(batch) {
+      if (!this.running || batch !== session) return
       if (Date.now() - this.startedAt > MAX_WAIT_MS) {
         this.error = '等待超时：任务仍在后端运行，可稍后在档案抽屉里查看结果。'
         this.stop()
@@ -107,12 +118,15 @@ export const useBatchAssessmentStore = defineStore('batchAssessment', {
         (task) => task.taskId && !TERMINAL.includes(task.status)
       )
       for (const task of pending) {
+        if (batch !== session) return
         try {
           const latest = await getAssessmentTask(task.taskId)
+          if (batch !== session) return
           task.status = latest?.status ?? task.status
           task.errorCode = latest?.errorCode || ''
           task.message = latest?.message || ''
         } catch (problem) {
+          if (batch !== session) return
           task.errorCode = problem?.errorCode || 'POLL_FAILED'
           task.message = problem?.message || '轮询失败'
         }
@@ -122,12 +136,28 @@ export const useBatchAssessmentStore = defineStore('batchAssessment', {
         this.stop()
         return
       }
-      this.schedulePoll()
+      this.schedulePoll(batch)
     },
 
     stop() {
       clearTimer()
       this.running = false
+    },
+
+    /**
+     * 强制中止并清空：退出登录 / 401 时调用。
+     *
+     * 只 clearTimeout 是不够的——飞在路上的请求返回后仍会写 this.tasks，
+     * 所以同时自增 session，让旧批次的所有回调直接作废。
+     */
+    abort() {
+      session += 1
+      clearTimer()
+      this.running = false
+      this.visible = false
+      this.startedAt = 0
+      this.error = ''
+      this.tasks = []
     },
 
     dismiss() {

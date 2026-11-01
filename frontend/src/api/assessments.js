@@ -7,11 +7,33 @@ export const WINDOW_MAX = 60
 export const WINDOW_DEFAULT = 24
 
 /**
- * POST /api/assessment-tasks
- * 每次点击都生成新的 Idempotency-Key：同一秒内重复点击会被后端按"同 key"重放，
- * 但用户明确重新发起时应该是一次新任务。
+ * 生成一次幂等键。
+ *
+ * 幂等键的语义是"这一次业务意图"，不是"这一次网络请求"：
+ *  - 用户点一次「发起风险预测」→ 生成一次；
+ *  - 超时重试、点「重新发起」→ 必须复用同一个键，后端才不会重复建任务；
+ *  - 成功出结果（或换受试者）后才换新键，表示下一次是全新的评估。
+ * 所以调用方应当显式传入并自己持有这个值，而不是让这里每次随机生成。
  */
-export function createAssessmentTask({ subjectId, predictionWindowMonths = WINDOW_DEFAULT }) {
+export function newIdempotencyKey() {
+  return crypto?.randomUUID
+    ? crypto.randomUUID()
+    : `idem-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+/**
+ * POST /api/assessment-tasks
+ *
+ * @param {object}  options
+ * @param {number}  options.subjectId
+ * @param {number} [options.predictionWindowMonths]
+ * @param {string} [options.idempotencyKey] 复用同一键 = 同一次意图；缺省时新建一个。
+ */
+export function createAssessmentTask({
+  subjectId,
+  predictionWindowMonths = WINDOW_DEFAULT,
+  idempotencyKey
+}) {
   return request.post(
     '/assessment-tasks',
     {
@@ -19,7 +41,7 @@ export function createAssessmentTask({ subjectId, predictionWindowMonths = WINDO
       modelVersion: MODEL_VERSION,
       predictionWindowMonths
     },
-    { headers: { 'Idempotency-Key': crypto.randomUUID() } }
+    { headers: { 'Idempotency-Key': idempotencyKey || newIdempotencyKey() } }
   )
 }
 

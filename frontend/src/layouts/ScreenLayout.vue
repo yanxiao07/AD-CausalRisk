@@ -89,6 +89,8 @@ async function onLogout() {
     return
   }
   await logout()
+  // 清空本地会话，并中止仍在轮询的批量评估
+  userStore.logout()
   router.replace('/login')
 }
 </script>

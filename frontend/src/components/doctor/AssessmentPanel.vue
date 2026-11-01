@@ -133,7 +133,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import StatusTag from '@/components/common/StatusTag.vue'
@@ -145,6 +145,7 @@ import {
   createAssessmentTask,
   getAssessment,
   getAssessmentTask,
+  newIdempotencyKey,
   reviewAssessment
 } from '@/api/assessments.js'
 
@@ -176,6 +177,23 @@ const reviewing = ref('')
 let pollTimer = null
 let tickTimer = null
 let startedAt = 0
+
+/**
+ * 幂等键：一次"业务意图"对应一个键，而不是一次 HTTP 请求。
+ *
+ *  - 选中患者（或切换患者）时生成一次；
+ *  - 超时/失败后点「重新发起」复用同一个键，后端会重放同一次任务而不是再建一个；
+ *  - 只有成功拿到结果后才清空，下一次点击才是全新的评估。
+ */
+let idempotencyKey = newIdempotencyKey()
+
+watch(
+  () => props.subjectId,
+  () => {
+    // 换患者 = 换意图，旧键作废
+    idempotencyKey = newIdempotencyKey()
+  }
+)
 
 const terminal = (status) => ['COMPLETED', 'BLOCKED', 'FAILED', 'CANCELLED'].includes(status)
 
@@ -245,9 +263,12 @@ async function start() {
   }, 1000)
 
   try {
+    // 复用同一幂等键：超时重试 / 点「重新发起」都不会在后端多建一条任务
+    if (!idempotencyKey) idempotencyKey = newIdempotencyKey()
     const created = await createAssessmentTask({
       subjectId: Number(props.subjectId),
-      predictionWindowMonths: windowMonths.value
+      predictionWindowMonths: windowMonths.value,
+      idempotencyKey
     })
     task.value = created
     if (terminal(created.status)) {
@@ -288,6 +309,8 @@ async function finish(latest) {
     try {
       assessment.value = await getAssessment(latest.assessmentId)
       phase.value = 'done'
+      // 已出结果：这次意图结束，下一次点击换新键（允许发起新评估）
+      idempotencyKey = ''
       return
     } catch (problem) {
       fail('任务完成但结果读取失败', problem?.message || '请稍后重试。')
