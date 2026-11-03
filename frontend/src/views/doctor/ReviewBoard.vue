@@ -205,13 +205,22 @@ async function submitReview(decision) {
     ElMessage.warning('复核意见不能为空')
     return
   }
+  // 固定本次提交的评估：等响应期间用户可能已打开另一条，响应只允许写到这一条上
+  const target = current.value
   submitting.value = decision
   try {
-    await reviewAssessment(current.value.assessmentId, decision, comment.value.trim())
-    const updated = { ...current.value, reviewStatus: decision }
+    await reviewAssessment(target.assessmentId, decision, comment.value.trim())
+    const updated = { ...target, reviewStatus: decision }
+
+    // 列表按 assessmentId 精确定位，不会误伤其它行
     const index = items.value.findIndex((item) => item.assessmentId === updated.assessmentId)
     if (index >= 0) items.value[index] = updated
-    current.value = updated
+
+    // 抽屉里显示的仍是同一条才更新；已经切到别的评估就保持不动
+    if (current.value?.assessmentId === updated.assessmentId) {
+      current.value = updated
+      drawerOpen.value = false
+    }
     ElMessage.success('复核已记录')
   } catch {
     // request.js 已提示

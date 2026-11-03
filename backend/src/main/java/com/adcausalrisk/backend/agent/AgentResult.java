@@ -24,7 +24,10 @@ public record AgentResult(
         String workflowVersion,
         String modelVersion,
         QualityStatus qualityStatus,
-        BigDecimal riskScore,
+        // BLOCKED results carry riskScore=null: the contract allows null but not a missing field,
+        // so this one component overrides the record-level NON_NULL. Everything else keeps
+        // omitting absent optionals instead of emitting nulls.
+        @JsonInclude(JsonInclude.Include.ALWAYS) BigDecimal riskScore,
         RiskLevel riskLevel,
         List<String> warnings,
         Graph graph,

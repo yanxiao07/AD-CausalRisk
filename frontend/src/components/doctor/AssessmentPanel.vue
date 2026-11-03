@@ -439,6 +439,11 @@ function fail(title, text) {
 
 async function review(decision) {
   if (!assessment.value) return
+  // 记录这次提交究竟属于哪条评估：等待期间用户可能换了患者/换了评估，
+  // 响应回来时必须核对，否则会把 A 的"已确认"写到 B 的界面上。
+  const targetAssessmentId = assessment.value.assessmentId
+  const targetSubjectId = Number(props.subjectId)
+
   const label = decision === 'ACKNOWLEDGED' ? '确认复核' : '要求补充数据'
   let comment = ''
   try {
@@ -459,16 +464,30 @@ async function review(decision) {
     return
   }
 
+  // 弹窗期间也可能已经切换了患者，提交前再核对一次
+  if (assessment.value?.assessmentId !== targetAssessmentId
+    || Number(props.subjectId) !== targetSubjectId) {
+    return
+  }
+
   reviewing.value = decision
   try {
-    await reviewAssessment(assessment.value.assessmentId, decision, comment)
+    await reviewAssessment(targetAssessmentId, decision, comment)
+
+    // 响应回来时再核对：不是同一条评估就整段丢弃，绝不跨评估写状态
+    if (Number(props.subjectId) !== targetSubjectId
+      || assessment.value?.assessmentId !== targetAssessmentId) {
+      ElMessage.info('已记录复核；当前显示的是另一条评估，未刷新其状态。')
+      return
+    }
+
     assessment.value = { ...assessment.value, reviewStatus: decision }
     ElMessage.success('复核已记录')
     emit('reviewed')
   } catch {
     // request.js 已提示
   } finally {
-    reviewing.value = ''
+    if (Number(props.subjectId) === targetSubjectId) reviewing.value = ''
   }
 }
 

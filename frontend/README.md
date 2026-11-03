@@ -129,10 +129,11 @@ Element Plus 通过 `styles/element-overrides.css` 覆盖：主色、12px 圆角
 ## 端到端冒烟（可选）
 
 `scripts/e2e-roles.mjs` 用无头 Chrome 跑四种角色：登录 → 落地页 → 布局 → 菜单 → 守卫，
-不依赖后端（拦截 `/api/auth/login` 与 `/api/me`）。运行前需要：
+不依赖后端（拦截 `/api/auth/login` 与 `/api/me`）。`puppeteer-core` 已在 `devDependencies` 中声明，
+`npm install` 后即可运行：
 
 ```bash
-npm i --no-save puppeteer-core
+npm install
 npm run dev -- --port 5199      # 另开终端
 node scripts/e2e-roles.mjs      # 截图输出到 .shots/（已 gitignore）
 ```

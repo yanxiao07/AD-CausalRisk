@@ -51,6 +51,10 @@ public class AssessmentService {
 
     private static final int MAX_KEY_LENGTH = 100;
 
+    /** Java-side stable code for a task that failed while its result was being stored. */
+    static final String CODE_PERSIST_FAILED = "TASK_PERSIST_FAILED";
+    static final String MESSAGE_PERSIST_FAILED = "评估结果保存失败，请重试或联系管理员";
+
     private final AssessmentTaskRepository taskRepository;
     private final RiskAssessmentRepository assessmentRepository;
     private final SubjectRepository subjectRepository;
@@ -162,7 +166,9 @@ public class AssessmentService {
         } catch (RuntimeException failure) {
             // Anything that escapes from here would leave the row PENDING forever, so the task is
             // closed out first and the original failure is what the caller sees.
-            AssessmentTask failed = markFailedOrThrow(seeded.getId(), failure);
+            String errorCode = stableErrorCode(failure);
+            AssessmentTask failed = markFailedOrThrow(
+                    seeded.getId(), failure, errorCode, userFacingMessage(errorCode));
             if (failure instanceof BusinessException business) {
                 // The contract declares only 200/400/401/403 for this operation, so an agent
                 // failure is a FAILED task in a 200 response, not an HTTP error.
@@ -181,7 +187,10 @@ public class AssessmentService {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权查看该评估任务");
         }
         RiskAssessment assessment = assessmentRepository.findByTaskId(taskId).orElse(null);
-        return new Outcome(task, assessment, assessment == null ? null : parse(assessment), null, null);
+        // A FAILED task keeps its persisted code/reason, so a re-fetch (or an idempotent replay)
+        // explains the failure instead of returning a bare status.
+        return new Outcome(task, assessment, assessment == null ? null : parse(assessment),
+                task.getErrorCode(), task.getErrorMessage());
     }
 
     /**
@@ -273,8 +282,12 @@ public class AssessmentService {
 
     private Outcome outcomeOf(AssessmentTask task, String errorCode, String errorMessage) {
         RiskAssessment assessment = assessmentRepository.findByTaskId(task.getId()).orElse(null);
+        // No explicit code? Fall back to what the row recorded when it was closed as FAILED,
+        // so replays and concurrent-winner lookups keep the original explanation.
+        String code = errorCode != null ? errorCode : task.getErrorCode();
+        String message = errorCode != null ? errorMessage : task.getErrorMessage();
         return new Outcome(task, assessment, assessment == null ? null : parse(assessment),
-                errorCode, errorMessage);
+                code, message);
     }
 
     private Outcome persist(Long taskId, Long subjectId, AgentResult result) {
@@ -312,17 +325,17 @@ public class AssessmentService {
         } catch (RuntimeException failure) {
             // Serialisation, an unknown qualityStatus, a unique-constraint clash: all of them
             // would roll the transaction back and leave the task PENDING. Close it out first.
-            markFailedOrThrow(taskId, failure);
+            markFailedOrThrow(taskId, failure, CODE_PERSIST_FAILED, MESSAGE_PERSIST_FAILED);
             throw failure;
         }
     }
 
-    private AssessmentTask markFailed(Long taskId) {
+    private AssessmentTask markFailed(Long taskId, String errorCode, String errorMessage) {
         Instant now = Instant.now(clock);
         return writeTransaction.execute(status -> {
             AssessmentTask task = taskRepository.findById(taskId)
                     .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "评估任务丢失"));
-            task.markFailed(now);
+            task.markFailed(now, errorCode, errorMessage);
             return taskRepository.saveAndFlush(task);
         });
     }
@@ -331,10 +344,16 @@ public class AssessmentService {
      * Marks the task FAILED in its own committed transaction and returns the reloaded row.
      * If the update itself fails (the database is gone), the original failure is the one
      * propagated, and the PENDING row is left for the reconciliation task instead of hidden.
+     *
+     * <p>The stable code and the fixed reason are persisted with the row, so a later
+     * {@code GET /api/assessment-tasks/{id}} or an idempotent replay can still explain why the
+     * task failed. Only the code and a whitelisted sentence are stored - never a stack trace,
+     * an upstream response body or a host address.
      */
-    private AssessmentTask markFailedOrThrow(Long taskId, RuntimeException failure) {
+    private AssessmentTask markFailedOrThrow(
+            Long taskId, RuntimeException failure, String errorCode, String errorMessage) {
         try {
-            return markFailed(taskId);
+            return markFailed(taskId, errorCode, errorMessage);
         } catch (RuntimeException secondary) {
             failure.addSuppressed(secondary);
             log.error("评估任务 {} 无法标记为 FAILED，保持 PENDING 等待对账", taskId, secondary);
@@ -398,6 +417,39 @@ public class AssessmentService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                     "Idempotency-Key 长度须为 1-" + MAX_KEY_LENGTH);
         }
+    }
+
+    /**
+     * The stable code persisted on a FAILED row. Business exceptions already carry an
+     * {@code AGENT_*} prefix that {@link RestAgentClient#errorCodeOf(Throwable)} extracts;
+     * anything else (an unexpected runtime failure) is reported as {@code AGENT_FAILED}.
+     */
+    static String stableErrorCode(Throwable failure) {
+        String code = RestAgentClient.errorCodeOf(failure);
+        return code == null || code.isBlank() ? RestAgentClient.CODE_FAILED : code;
+    }
+
+    /**
+     * A fixed, user-facing sentence for a persisted failure code.
+     *
+     * <p>Deliberately a whitelist: the stored message never contains a stack trace, an exception
+     * class name, an upstream response body, or a host/port. Two requests failing the same way
+     * therefore produce byte-identical {@code error_message} values.
+     */
+    static String userFacingMessage(String errorCode) {
+        String code = errorCode == null ? "" : errorCode;
+        return switch (code) {
+            case RestAgentClient.CODE_TIMEOUT -> "调用算法服务超时，未在时限内返回结果";
+            case RestAgentClient.CODE_UNAVAILABLE -> "无法连接算法服务，请确认 Python 服务已启动";
+            case RestAgentClient.CODE_VALIDATION -> "算法服务判定请求数据不合法";
+            case RestAgentClient.CODE_RUN_CONFLICT -> "该 runId 已有结果，已按重放处理";
+            case RestAgentClient.CODE_RUN_NOT_FOUND -> "算法服务未找到该 runId";
+            case RestAgentClient.CODE_PAYLOAD_TOO_LARGE -> "请求体超过算法服务限制";
+            case RestAgentClient.CODE_PROTOCOL_ERROR -> "算法服务返回的结构不符合契约";
+            case RestAgentClient.CODE_CAPACITY -> "算法服务繁忙，请稍后重试";
+            case CODE_PERSIST_FAILED -> MESSAGE_PERSIST_FAILED;
+            default -> "算法服务执行失败";
+        };
     }
 
     static String digestOf(Long subjectId, String modelVersion, int predictionWindowMonths, String dataVersion) {

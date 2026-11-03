@@ -74,7 +74,7 @@ class SchemaMigrationTest {
 
         // Every new migration file must be appended here; the list is deliberately explicit so a
         // gap, a re-ordering or a forgotten migration fails loudly instead of silently passing.
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
     }
 
     /**

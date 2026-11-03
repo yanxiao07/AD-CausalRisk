@@ -23,14 +23,30 @@
     <!-- 卡片 2：下次复诊 -->
     <section class="hcard" aria-labelledby="visit-title">
       <p id="visit-title" class="hcard__label">下次复诊</p>
-      <p class="hcard__value" :class="{ 'is-empty': !nextVisit }">
+      <p
+        class="hcard__value"
+        :class="{ 'is-empty': !nextVisit, 'is-error': followUpState === 'failed' }"
+      >
         {{ nextVisitText }}
       </p>
       <p class="hcard__note">
         <template v-if="nextVisit">复诊事项：{{ nextVisit.purpose }}</template>
-        <template v-else-if="state === 'loading'">正在读取随访安排…</template>
+        <template v-else-if="followUpState === 'loading'">正在读取随访安排…</template>
+        <template v-else-if="followUpState === 'failed'">
+          读取复诊安排失败，请稍后重试；这不代表医生没有安排复诊。
+        </template>
+        <template v-else-if="state === 'degraded'">
+          绑定健康档案后，这里会显示医生安排的复诊时间。
+        </template>
         <template v-else>医生尚未安排复诊；如有变化会电话通知。</template>
       </p>
+      <el-button
+        v-if="followUpState === 'failed'"
+        class="hcard__retry"
+        @click="load"
+      >
+        重新读取
+      </el-button>
     </section>
 
     <!-- 卡片 3：联系医生 -->
@@ -57,6 +73,8 @@ const state = ref('loading') // loading | ready | degraded
 const subject = ref(null)
 const nextVisit = ref(null)
 const degradeReason = ref('')
+/** 复诊安排的独立状态：读失败不能被当成"医生没安排" */
+const followUpState = ref('idle') // idle | loading | ready | failed
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
@@ -66,6 +84,8 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
 })
 
 const nextVisitText = computed(() => {
+  if (followUpState.value === 'failed') return '读取复诊安排失败'
+  if (followUpState.value === 'loading') return '正在读取…'
   if (!nextVisit.value?.scheduledAt) return '暂无安排'
   const date = new Date(nextVisit.value.scheduledAt)
   return Number.isNaN(date.getTime()) ? '暂无安排' : dateFormatter.format(date)
@@ -75,6 +95,7 @@ async function load() {
   state.value = 'loading'
   degradeReason.value = ''
   nextVisit.value = null
+  followUpState.value = 'idle'
   try {
     const page = await listSubjects({ page: 1, pageSize: 1 })
     const first = Array.isArray(page?.items) ? page.items[0] : null
@@ -85,19 +106,23 @@ async function load() {
     }
     subject.value = first
 
+    followUpState.value = 'loading'
     try {
       const list = await listFollowUps(first.id)
       const planned = (Array.isArray(list) ? list : [])
         .filter((item) => item.status === 'PLANNED' && item.scheduledAt)
         .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
       nextVisit.value = planned[0] ?? null
+      followUpState.value = 'ready'
     } catch {
-      // 随访读不到不影响主状态卡；这里静默降级为"暂无安排"
+      // 读失败 ≠ 没有安排：单独标成 failed，让卡片说"读取失败"而不是"医生尚未安排"
       nextVisit.value = null
+      followUpState.value = 'failed'
     }
 
     state.value = 'ready'
   } catch (problem) {
+    followUpState.value = 'idle'
     state.value = 'degraded'
     if (problem?.code === 403) degradeReason.value = '暂时无法查看您的档案，请联系医生确认授权'
     else if (problem?.errorCode === 'NETWORK_ERROR') degradeReason.value = '网络连接异常，请稍后重试'
@@ -172,6 +197,10 @@ onMounted(load)
 .hcard__value.is-empty {
   font-size: clamp(24px, 4vw, 28px);
   color: var(--muted);
+}
+
+.hcard__value.is-error {
+  color: var(--danger);
 }
 
 .hcard__note {

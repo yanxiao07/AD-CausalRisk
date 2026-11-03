@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 import com.adcausalrisk.backend.agent.AgentRequest;
 import com.adcausalrisk.backend.agent.AgentResult;
 import com.adcausalrisk.backend.agent.RestAgentClient;
+import com.adcausalrisk.backend.common.BusinessException;
+import com.adcausalrisk.backend.common.ErrorCode;
 import com.adcausalrisk.backend.contract.ContractSchemas;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.SubjectRepository;
@@ -169,6 +171,49 @@ class AssessmentApiTest {
                 .andReturn());
 
         assertThat(body.get("errorCode").asText()).isEqualTo("ACCESS_DENIED");
+    }
+
+    /**
+     * A failed agent call must keep its stable code and readable reason across a re-fetch.
+     *
+     * <p>Before V10 the pair only existed in the first response: {@code GET /assessment-tasks/{id}}
+     * came back FAILED with {@code errorCode=null}. This test pins the persisted contract and also
+     * checks that the stored message stays a fixed sentence (no exception body, no host address).
+     */
+    @Test
+    void failedTaskKeepsErrorCodeAndMessageOnRefetch() throws Exception {
+        when(agentClient.createRun(any(AgentRequest.class))).thenThrow(new BusinessException(
+                ErrorCode.INTERNAL_ERROR,
+                RestAgentClient.CODE_TIMEOUT + ": I/O error on POST request for "
+                        + "\"http://127.0.0.1:8091/api/agent/v1/runs\": Read timed out"));
+        MockHttpSession admin = login("admin");
+
+        JsonNode created = bodyOf(mockMvc.perform(post("/api/assessment-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "assessment-timeout")
+                        .content(createRequestJson(24))
+                        .session(admin))
+                .andExpect(status().isOk())
+                .andReturn());
+
+        assertThat(created.get("data").get("status").asText()).isEqualTo("FAILED");
+        assertThat(created.get("data").get("errorCode").asText())
+                .isEqualTo(RestAgentClient.CODE_TIMEOUT);
+        long taskId = created.get("data").get("taskId").asLong();
+
+        JsonNode refetched = bodyOf(mockMvc.perform(
+                        get("/api/assessment-tasks/" + taskId).session(admin))
+                .andExpect(status().isOk())
+                .andReturn());
+
+        assertThat(refetched.get("data").get("status").asText()).isEqualTo("FAILED");
+        assertThat(refetched.get("data").get("errorCode").asText())
+                .isEqualTo(RestAgentClient.CODE_TIMEOUT);
+        String message = refetched.get("data").get("message").asText();
+        assertThat(message).isEqualTo("调用算法服务超时，未在时限内返回结果");
+        // never leak internals into the persisted reason
+        assertThat(message).doesNotContain("127.0.0.1").doesNotContain("8091")
+                .doesNotContain("I/O error").doesNotContain("BusinessException");
     }
 
     /** End-to-end write: PENDING -> agent mock -> COMPLETED task plus a stored result. */
