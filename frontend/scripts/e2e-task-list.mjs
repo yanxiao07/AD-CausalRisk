@@ -15,10 +15,22 @@
  *   node scripts/e2e-task-list.mjs
  */
 import puppeteer from 'puppeteer-core'
+import { mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const BASE = process.env.E2E_BASE || 'http://127.0.0.1:5199'
 const CHROME =
   process.env.E2E_CHROME || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+
+/**
+ * 截图目录：用 fileURLToPath 而不是 URL.pathname。
+ * pathname 在 Windows 上会给出 "/C:/Users/..."，直接传给 fs 会拼出错误路径；而且 .shots/
+ * 是 gitignore 的，干净检出时并不存在，不先建目录就会在保存截图时 ENOENT、后面的用例全部不执行。
+ */
+const shotDir = fileURLToPath(new URL('../.shots/', import.meta.url))
+mkdirSync(shotDir, { recursive: true })
+const shotPath = join(shotDir, 'task-list-failed.png')
 
 const env = (data) =>
   JSON.stringify({
@@ -174,7 +186,13 @@ try {
   check('失败态不出现任务卡标题', !/任务 #999/.test(failed.bodyText), failed.bodyText.slice(0, 60))
   check('失败态页面未白屏', failed.hasPage && failed.bodyText.length > 20, `len=${failed.bodyText.length}`)
 
-  await page.screenshot({ path: new URL('../.shots/task-list-failed.png', import.meta.url).pathname.replace(/^\//, '') })
+  // 截图只是证据，不该打断后续断言：目录已预建，失败也只记一条 check
+  try {
+    await page.screenshot({ path: shotPath })
+    check('失败态截图已保存', true, shotPath)
+  } catch (error) {
+    check('失败态截图已保存', false, `截图失败但不影响其它断言：${String(error.message).slice(0, 80)}`)
+  }
 
   // ---------- 3. 成功态 ----------
   await page.goto(`${BASE}/tasks?taskId=7`, { waitUntil: 'domcontentloaded' })

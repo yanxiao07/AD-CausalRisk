@@ -163,6 +163,17 @@ public class AssessmentService {
         try {
             AgentResult result = agentClient.createRun(request);
             return persist(seeded.getId(), subject.getId(), result);
+        } catch (TaskClosedAsFailed closed) {
+            // persist() already closed the row with a precise code (TASK_PERSIST_FAILED,
+            // AGENT_CONTRACT_MISMATCH, ...). Re-marking it here would overwrite that code with the
+            // generic AGENT_FAILED and the re-fetch would misreport the cause.
+            AssessmentTask failed = closed.task();
+            Throwable cause = closed.getCause();
+            if (cause instanceof BusinessException) {
+                return new Outcome(failed, null, null,
+                        failed.getErrorCode(), failed.getErrorMessage());
+            }
+            throw cause instanceof RuntimeException runtime ? runtime : closed;
         } catch (RuntimeException failure) {
             // Anything that escapes from here would leave the row PENDING forever, so the task is
             // closed out first and the original failure is what the caller sees.
@@ -324,10 +335,49 @@ public class AssessmentService {
             });
         } catch (RuntimeException failure) {
             // Serialisation, an unknown qualityStatus, a unique-constraint clash: all of them
-            // would roll the transaction back and leave the task PENDING. Close it out first.
-            markFailedOrThrow(taskId, failure, CODE_PERSIST_FAILED, MESSAGE_PERSIST_FAILED);
-            throw failure;
+            // would roll the transaction back and leave the task PENDING. Close it out first with
+            // the most precise code available, then let create() know the row is already closed.
+            String errorCode = persistFailureCode(failure);
+            AssessmentTask failed = markFailedOrThrow(
+                    taskId, failure, errorCode, userFacingMessage(errorCode));
+            throw new TaskClosedAsFailed(failed, failure);
         }
+    }
+
+    /**
+     * Marker raised after a row has already been closed as FAILED with a precise code.
+     *
+     * <p>{@link #create} uses it to skip its generic "mark FAILED" step: overwriting
+     * {@code TASK_PERSIST_FAILED} (or {@code AGENT_CONTRACT_MISMATCH}) with {@code AGENT_FAILED}
+     * would make a later re-fetch report the wrong cause.
+     */
+    private static final class TaskClosedAsFailed extends RuntimeException {
+
+        private final transient AssessmentTask task;
+
+        TaskClosedAsFailed(AssessmentTask task, RuntimeException cause) {
+            super(cause.getMessage(), cause);
+            this.task = task;
+        }
+
+        AssessmentTask task() {
+            return task;
+        }
+    }
+
+    /**
+     * The code to persist when the result could not be stored: keep an explicit
+     * {@code AGENT_*} prefix when the failure carries one (serialisation/contract mismatch),
+     * otherwise fall back to the Java-side {@code TASK_PERSIST_FAILED}.
+     */
+    static String persistFailureCode(Throwable failure) {
+        if (failure instanceof BusinessException) {
+            String code = RestAgentClient.errorCodeOf(failure);
+            if (code != null && !code.isBlank() && !RestAgentClient.CODE_FAILED.equals(code)) {
+                return code;
+            }
+        }
+        return CODE_PERSIST_FAILED;
     }
 
     private AssessmentTask markFailed(Long taskId, String errorCode, String errorMessage) {
@@ -447,6 +497,7 @@ public class AssessmentService {
             case RestAgentClient.CODE_PAYLOAD_TOO_LARGE -> "请求体超过算法服务限制";
             case RestAgentClient.CODE_PROTOCOL_ERROR -> "算法服务返回的结构不符合契约";
             case RestAgentClient.CODE_CAPACITY -> "算法服务繁忙，请稍后重试";
+            case AgentResultValidator.CODE -> "算法服务返回的结果不符合契约，已拒绝入库";
             case CODE_PERSIST_FAILED -> MESSAGE_PERSIST_FAILED;
             default -> "算法服务执行失败";
         };

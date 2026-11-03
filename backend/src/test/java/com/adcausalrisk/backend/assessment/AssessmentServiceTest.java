@@ -36,6 +36,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -137,7 +138,30 @@ class AssessmentServiceTest {
         assertThat(outcome.task().getStatus()).isEqualTo(AssessmentTask.Status.FAILED);
         assertThat(outcome.errorCode()).isEqualTo("AGENT_CONTRACT_MISMATCH");
         assertThat(outcome.result()).isNull();
+        // the precise code survives on the row as well, so a re-fetch does not downgrade it
+        assertThat(task.getErrorCode()).isEqualTo("AGENT_CONTRACT_MISMATCH");
         verify(assessmentRepository, never()).saveAndFlush(any(RiskAssessment.class));
+    }
+
+    /**
+     * The result could not be stored: the row is closed as {@code TASK_PERSIST_FAILED} and that
+     * code must survive the outer handler. It used to be overwritten with the generic
+     * {@code AGENT_FAILED}, which made a re-fetch claim "算法服务执行失败" for a database problem.
+     */
+    @Test
+    void persistFailureKeepsItsOwnCodeInsteadOfBeingOverwritten() {
+        when(agentClient.createRun(any(AgentRequest.class)))
+                .thenReturn(completedResult(new BigDecimal("0.5")));
+        when(assessmentRepository.saveAndFlush(any(RiskAssessment.class)))
+                .thenThrow(new DataIntegrityViolationException("uq_risk_assessment_task"));
+
+        assertThatThrownBy(() -> service.create(
+                SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, KEY, principal))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThat(task.getStatus()).isEqualTo(AssessmentTask.Status.FAILED);
+        assertThat(task.getErrorCode()).isEqualTo(AssessmentService.CODE_PERSIST_FAILED);
+        assertThat(task.getErrorMessage()).isEqualTo(AssessmentService.MESSAGE_PERSIST_FAILED);
     }
 
     /** P1-3: " key " and "key" are the same idempotency scope, so the padded call must replay. */
