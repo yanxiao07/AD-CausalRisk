@@ -136,3 +136,15 @@ npm i --no-save puppeteer-core
 npm run dev -- --port 5199      # 另开终端
 node scripts/e2e-roles.mjs      # 截图输出到 .shots/（已 gitignore）
 ```
+
+### 「评估任务」页的渲染回归
+
+`scripts/e2e-task-list.mjs`（`npm run test:task-page`）覆盖三种渲染状态：初始空态、
+**查询失败态**（后端 400 时只渲染错误提示、绝不渲染任务卡）与成功态。它锁的是一个真实
+缺陷：任务卡的 `v-else` 曾经挂在空态的 `v-if` 上，失败时 `task` 为 `null` 仍进卡片分支，
+渲染期抛错导致白屏。改动该模板结构后请重跑这条测试（需 dev server 运行在 5199）：
+
+```bash
+npm run dev -- --port 5199
+npm run test:task-page
+```

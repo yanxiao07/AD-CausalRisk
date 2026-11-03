@@ -40,7 +40,8 @@
       description="输入任务 ID 后查看状态与四个阶段的耗时。"
     />
 
-    <template v-else>
+    <!-- v-else-if="task"：载入失败时 task 为 null，这里绝不能进 DataCard 分支 -->
+    <template v-else-if="task">
       <DataCard :title="`任务 #${task.taskId}`" :subtitle="`受试者 #${task.subjectId}`">
         <template #header-extra>
           <StatusTag :type="task.status" />
