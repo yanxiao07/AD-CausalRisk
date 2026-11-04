@@ -35,8 +35,27 @@
 
 这些缺口属于不同证据层，ADNI回复不是本轮工程准入的统一前置条件，四份材料核对也不消除ADNI/因果识别、真实监控双批或独立/临床依赖。
 
+## 后续本地查找已定位的输入材料
+
+后续按本地查找范围沿训练脚本和计划定位，已有资料可供下一次有界核验。下表路径均相对受控主机根目录，原文件不进入Git；本次只读非临床映射/授权元数据与CSV表头，不读逐人内容：
+
+| 本地材料 | 已核实内容与限制 |
+| --- | --- |
+| data/adni/processed/v2_phase_aware_candidate/mapping_report.json | 原字节SHA256为7b2d4f0d733c51d23830ca13f63a0a7d9e509e3577fe1927a3f9ac737dbaa432，与多模态Comparison_Plan中原输入绑定一致；状态仍candidate_unadjudicated。有UCSFFSX/ST29SV、ST88SV对应双侧海马mm3的字典证据；这份完整报告的文件摘要不是新8字段sourceMappings的规范摘要 |
+| data/adni/processed/core_input_coverage_2026-10-24/Scale_Sources.private.csv | 表头包含subject_id、feature_name、source_visit、measured、score、qc_status、date_semantics、available_at等，可定位逐人量表来源；具体记录/覆盖/值/日期/QC尚未读取核验 |
+| data/adni/processed/core_multimodal_comparison_2026-10-24/Selected_Sources.private.csv | 表头包含subject_id、source_visit、measured、source_table、APOE/双侧MRI数值列、processed，可定位遗传/MRI选中来源；不因文件名或生成器过滤规则就认证每条观测 |
+| data/adni/processed/core_input_coverage_2026-10-24/Input_Candidate.private.csv | 表头提供原快照身份/索引与数值，并包含event_type；不能整体复制为预测请求，更不能把结局作为输入 |
+| data/adni/processed/provenance.csv及v2_phase_aware_candidate/provenance.csv | 表头均是source/source_version/file_name/row_count/transform_version/checksum/license，属于文件级来源目录，不能直接当逐条观测evidence |
+| data/adni/processed/core_algorithm_training_2026-10-24/User_Authorization.json | 真实存在的历史授权，decision限定两原表DXSUM/PTDEMOG及六次开发训练，绑定另一训练计划；它不是当前研究宿主的通用许可，不重新启用历史训练 |
+
+两份来源表的表头不直接提供完整instrumentVersion/language/completion/evidenceRef/scanId等新上下文要求；是否能从独立材料补证尚未核验。Scale_Sources生成器曾给date_semantics赋代理标签并将available_at置空，后续scale输入门槛明确保留ASSESSMENT_DATE_OR_REGISTRY_FALLBACK_ROW_BRANCH_UNKNOWN，不能把旧标签升级为逐行实际测量日或首次可用证据。本次没有重新审计日期问题或执行已关闭研究。
+
+旧版data/adni/processed/mapping_report.json也已找到，其状态review_required，不能代替上述绑定的V2材料。定向索引了配置/文档/处理区/runtime文件名，并对.runtime/output/schemas/tmp补充文件名查找；未发现特定命名的完整trusted-context文件不构成全工作区不存在的证明。
+
+本地定位的14项元数据/表头/源码核对通过，5份CSV仅读表头，0临床记录/私有折/参数/模型/CIF/拟合。已将“材料位置未知”细化为具体文件及其尚未验收的字段，不生成新的可信上下文、不将来件复制为证据，也不为此增加通用读取器。后续记录级核验应限定这批已定位来源及缺证据项；当前查找不自动授权扩读其逐人内容。
+
 ## 验收终点
 
 20项标准库元数据核对通过，另用既有环境版本探针；没有新增计算模块、通用读取器/身份生成器或HTTP契约。此为文档和实际材料核对，不把它写成模型推理回归；未重跑P1/P2/P3、733课程回归或已关闭研究。0临床/私有折/模型参数读取、模型加载、原CIF和拟合；原673/36及旧图阴性/结构不可估/CSF NO_GO/阈值SUPPRESSED保持。
 
-本次四材料准入子任务按有限结论关闭，不再重复扫描同一批或追加包装层。下一唯一工程接入为**指定宿主的独立快照映射、逐条证据与执行权限来源准入**，待具体材料/调用反馈；本轮不自动扩读记录或参数。随后实际参数/完整状态/保存参考只能在明确范围内另验，当前不伪称通过。P1—P3仍为已关闭的本地候选；继续本地积累，远端发布按用户明确指令执行。
+原四材料准入及后续本地定位子任务均按有限结论关闭，不重复扫描或追加包装层。下一唯一工程接入为**已定位来源对新上下文的记录级资格与缺证据项核验**：范围须明确后只核既有来源及独立元数据，不自动扩读记录或参数、回放旧授权；宿主执行许可仍待适用依据。随后实际参数/完整状态/保存参考也只能在明确范围内另验，当前不伪称通过。P1—P3仍为已关闭的本地候选；继续本地积累，远端发布按用户明确指令执行。
