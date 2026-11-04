@@ -50,6 +50,14 @@ public class AssessmentTask {
     @Column(name = "request_digest", nullable = false, length = 64)
     private String requestDigest;
 
+    /** Stable failure code (AGENT_TIMEOUT, AGENT_UNAVAILABLE, TASK_PERSIST_FAILED, ...). */
+    @Column(name = "error_code", length = 60)
+    private String errorCode;
+
+    /** Fixed user-facing reason; never a stack trace, upstream body or host address. */
+    @Column(name = "error_message", length = 500)
+    private String errorMessage;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -71,17 +79,38 @@ public class AssessmentTask {
 
     public void markCompleted(Instant now) {
         this.status = Status.COMPLETED;
+        clearError();
         this.updatedAt = now;
     }
 
     public void markBlocked(Instant now) {
         this.status = Status.BLOCKED;
+        clearError();
         this.updatedAt = now;
     }
 
     public void markFailed(Instant now) {
+        markFailed(now, null, null);
+    }
+
+    /**
+     * Closes the task as FAILED and records why.
+     *
+     * <p>Both values are meant to be stable and safe to re-read later: {@code errorCode} is one of
+     * the published {@code AGENT_*} constants and {@code errorMessage} is a fixed sentence, so a
+     * re-fetch (or an idempotent replay) can explain the failure without persisting a stack trace,
+     * an upstream response body or a host address.
+     */
+    public void markFailed(Instant now, String errorCode, String errorMessage) {
         this.status = Status.FAILED;
+        this.errorCode = errorCode;
+        this.errorMessage = errorMessage;
         this.updatedAt = now;
+    }
+
+    private void clearError() {
+        this.errorCode = null;
+        this.errorMessage = null;
     }
 
     public Long getId() {
@@ -102,6 +131,14 @@ public class AssessmentTask {
 
     public String getRequestDigest() {
         return requestDigest;
+    }
+
+    public String getErrorCode() {
+        return errorCode;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
     }
 
     public Instant getCreatedAt() {

@@ -63,6 +63,28 @@ public class SubjectAccessPolicy {
     }
 
     /**
+     * Whether the given principal may start an assessment for <i>this</i> subject
+     * ({@code POST /api/assessment-tasks}).
+     *
+     * <p>ADMIN / RESEARCHER may start one for any subject. A DOCTOR may start one only for a
+     * subject they hold a grant on - the same {@code VIEW}/{@code MANAGE} rule that already lets
+     * them open the drawer and read raw scores. PATIENT is refused outright.
+     *
+     * <p>This is deliberately narrower than {@link #canCreate}: creating <i>subjects</i> stays
+     * restricted to ADMIN / RESEARCHER, while creating an <i>assessment</i> is a clinical action a
+     * treating doctor is allowed to take inside the subjects they are authorised for.
+     */
+    public boolean canRequestAssessment(AppUserPrincipal principal, Long subjectId) {
+        if (principal.roleCodes().stream().anyMatch(CREATOR_ROLES::contains)) {
+            return true;
+        }
+        if (!principal.roleCodes().contains("DOCTOR")) {
+            return false;
+        }
+        return canReadRawScores(principal, subjectId);
+    }
+
+    /**
      * Whether the given principal bypasses {@code subject_permission} and may see
      * every subject in the table.
      */

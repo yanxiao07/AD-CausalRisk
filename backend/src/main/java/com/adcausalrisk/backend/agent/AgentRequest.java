@@ -75,5 +75,18 @@ public record AgentRequest(
     /** One feature row. Only {@code featureName}, {@code recordedAt} and {@code unit} are required. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Feature(String featureName, BigDecimal featureValue, String recordedAt, String unit) {
+
+        /**
+         * APOE ε4 count is an integer in the shared contract, but the column is DECIMAL, so a
+         * database value of {@code 1.000000} would serialise as {@code 1.000000} and be rejected
+         * by Python. Only this feature is normalised, and only by dropping trailing zeros:
+         * nothing is rounded, no missing value is invented, and MRI decimals keep full precision
+         * ({@code 1.500000} stays {@code 1.5}, which Python correctly rejects as a count).
+         */
+        public Feature {
+            if (FEATURE_APOE_E4_COUNT.equals(featureName) && featureValue != null) {
+                featureValue = featureValue.stripTrailingZeros();
+            }
+        }
     }
 }

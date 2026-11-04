@@ -1,0 +1,129 @@
+/* ============================================================
+ * element-overrides.css —— Element Plus 主题覆盖
+ *
+ * 目标：把 EP 的默认观感对齐设计令牌 —— 主色 #0a73ad、按钮/输入框 12px 圆角、
+ * 大按钮 56px 高、卡片 20px 圆角。只覆盖变量与少量结构属性，不改组件内部布局。
+ * ============================================================ */
+
+:root {
+  /* 主色阶（EP 用 light-3/5/7/8/9 与 dark-2 派生 hover/禁用/浅底） */
+  --el-color-primary: #0a73ad;
+  --el-color-primary-light-3: #3f92bf;
+  --el-color-primary-light-5: #79b4d3;
+  --el-color-primary-light-7: #b3d5e6;
+  --el-color-primary-light-8: #cfe4ee;
+  --el-color-primary-light-9: #e7f4fb;
+  --el-color-primary-dark-2: #075c8a;
+
+  --el-color-success: #137d5b;
+  --el-color-warning: #b7791f;
+  --el-color-danger: #c53c46;
+  --el-color-error: #c53c46;
+  --el-color-info: #637f91;
+
+  /* 圆角：EP 默认 4px，这里统一到 12px，圆角胶囊单独给 999px */
+  --el-border-radius-base: 12px;
+  --el-border-radius-small: 10px;
+  --el-border-radius-round: 999px;
+
+  /* 字体与文字色 */
+  --el-font-family: var(--font-sans);
+  --el-font-size-base: 15px;
+  --el-text-color-primary: var(--ink);
+  --el-text-color-regular: var(--ink-700);
+  --el-text-color-secondary: var(--muted);
+  --el-text-color-placeholder: var(--placeholder);
+
+  /* 描边与背景 */
+  --el-border-color: var(--line);
+  --el-border-color-light: var(--line);
+  --el-border-color-lighter: var(--line);
+  --el-fill-color-blank: var(--surface);
+  --el-bg-color: var(--surface);
+  --el-bg-color-page: var(--bg-soft);
+  --el-box-shadow-light: var(--shadow-card);
+  --el-box-shadow: var(--shadow-panel);
+}
+
+/* ---- 按钮 ---- */
+.el-button {
+  border-radius: var(--r-md);
+  font-weight: 600;
+  transition: background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.el-button:not(.is-disabled):active {
+  transform: scale(0.985);
+}
+
+.el-button--large {
+  height: 56px;
+  padding: 0 28px;
+  font-size: 16px;
+  border-radius: var(--r-md);
+}
+
+.el-button--primary {
+  box-shadow: 0 10px 24px -12px rgba(10, 115, 173, 0.6);
+}
+
+/* ---- 输入类 ---- */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: var(--r-md);
+}
+
+.el-input--large .el-input__wrapper {
+  min-height: 48px;
+  padding: 0 14px;
+}
+
+.el-input--large .el-input__inner {
+  font-size: 16px;
+}
+
+/* ---- 容器类 ---- */
+.el-card {
+  border-radius: var(--r-lg);
+  border-color: var(--line);
+  box-shadow: var(--shadow-card);
+}
+
+.el-card__header {
+  border-bottom-color: var(--line);
+  font-weight: 700;
+}
+
+.el-dialog {
+  border-radius: var(--r-xl);
+}
+
+.el-drawer {
+  border-radius: var(--r-xl) 0 0 var(--r-xl);
+}
+
+.el-tag {
+  border-radius: var(--r-pill);
+  font-weight: 600;
+}
+
+.el-table {
+  --el-table-border-color: var(--line);
+  --el-table-header-bg-color: var(--bg-soft);
+  --el-table-header-text-color: var(--ink);
+  border-radius: var(--r-md);
+}
+
+.el-pagination {
+  --el-pagination-button-bg-color: transparent;
+  justify-content: flex-end;
+}
+
+.el-message {
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}

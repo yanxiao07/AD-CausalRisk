@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit;
 import com.adcausalrisk.backend.agent.AgentRequest;
 import com.adcausalrisk.backend.agent.AgentResult;
 import com.adcausalrisk.backend.agent.RestAgentClient;
+import com.adcausalrisk.backend.common.BusinessException;
+import com.adcausalrisk.backend.common.ErrorCode;
 import com.adcausalrisk.backend.contract.ContractSchemas;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.SubjectRepository;
@@ -96,7 +98,8 @@ class AssessmentApiTest {
 
     @AfterEach
     void cleanUp() {
-        // Children first: both tables have ON DELETE RESTRICT towards subject.
+        // Children first: these tables have ON DELETE RESTRICT towards subject.
+        jdbc.update("DELETE FROM subject_permission WHERE subject_id = ?", subjectId);
         jdbc.update("DELETE FROM risk_assessment WHERE subject_id = ?", subjectId);
         jdbc.update("DELETE FROM assessment_task WHERE subject_id = ?", subjectId);
         jdbc.update("DELETE FROM subject WHERE id = ?", subjectId);
@@ -129,6 +132,32 @@ class AssessmentApiTest {
         assertWindowRejected(login("admin"), 61);
     }
 
+    /**
+     * A doctor holding a grant on the subject may start an assessment for it (V9 seeds exactly
+     * this for the demo subjects). Without a grant the same call is 403 - see the test below.
+     */
+    @Test
+    void doctorWithGrantCanCreateAssessment() throws Exception {
+        MockHttpSession doctor = login("doctor");
+        Long doctorId = jdbc.queryForObject(
+                "SELECT id FROM sys_user WHERE username = 'doctor'", Long.class);
+        jdbc.update("INSERT INTO subject_permission (subject_id, user_id, permission_type)"
+                + " VALUES (?, ?, 'VIEW')", subjectId, doctorId);
+
+        when(agentClient.createRun(any(AgentRequest.class))).thenReturn(completedResult("0.62"));
+
+        JsonNode body = bodyOf(mockMvc.perform(post("/api/assessment-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "doctor-granted")
+                        .content(createRequestJson(24))
+                        .session(doctor))
+                .andExpect(status().isOk())
+                .andReturn());
+
+        assertThat(body.get("data").get("status").asText()).isEqualTo("COMPLETED");
+        assertThat(body.get("data").get("assessmentId").isNull()).isFalse();
+    }
+
     @Test
     void doctorCannotCreateAssessment() throws Exception {
         MockHttpSession doctor = login("doctor");
@@ -142,6 +171,49 @@ class AssessmentApiTest {
                 .andReturn());
 
         assertThat(body.get("errorCode").asText()).isEqualTo("ACCESS_DENIED");
+    }
+
+    /**
+     * A failed agent call must keep its stable code and readable reason across a re-fetch.
+     *
+     * <p>Before V10 the pair only existed in the first response: {@code GET /assessment-tasks/{id}}
+     * came back FAILED with {@code errorCode=null}. This test pins the persisted contract and also
+     * checks that the stored message stays a fixed sentence (no exception body, no host address).
+     */
+    @Test
+    void failedTaskKeepsErrorCodeAndMessageOnRefetch() throws Exception {
+        when(agentClient.createRun(any(AgentRequest.class))).thenThrow(new BusinessException(
+                ErrorCode.INTERNAL_ERROR,
+                RestAgentClient.CODE_TIMEOUT + ": I/O error on POST request for "
+                        + "\"http://127.0.0.1:8091/api/agent/v1/runs\": Read timed out"));
+        MockHttpSession admin = login("admin");
+
+        JsonNode created = bodyOf(mockMvc.perform(post("/api/assessment-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "assessment-timeout")
+                        .content(createRequestJson(24))
+                        .session(admin))
+                .andExpect(status().isOk())
+                .andReturn());
+
+        assertThat(created.get("data").get("status").asText()).isEqualTo("FAILED");
+        assertThat(created.get("data").get("errorCode").asText())
+                .isEqualTo(RestAgentClient.CODE_TIMEOUT);
+        long taskId = created.get("data").get("taskId").asLong();
+
+        JsonNode refetched = bodyOf(mockMvc.perform(
+                        get("/api/assessment-tasks/" + taskId).session(admin))
+                .andExpect(status().isOk())
+                .andReturn());
+
+        assertThat(refetched.get("data").get("status").asText()).isEqualTo("FAILED");
+        assertThat(refetched.get("data").get("errorCode").asText())
+                .isEqualTo(RestAgentClient.CODE_TIMEOUT);
+        String message = refetched.get("data").get("message").asText();
+        assertThat(message).isEqualTo("调用算法服务超时，未在时限内返回结果");
+        // never leak internals into the persisted reason
+        assertThat(message).doesNotContain("127.0.0.1").doesNotContain("8091")
+                .doesNotContain("I/O error").doesNotContain("BusinessException");
     }
 
     /** End-to-end write: PENDING -> agent mock -> COMPLETED task plus a stored result. */

@@ -3,7 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AD-CausalRisk</title>
+    <meta name="description" content="AD-CausalRisk · 阿尔茨海默病因果风险预测平台" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" href="/favicon.ico" />
+    <title>AD-CausalRisk · 因果风险评估平台</title>
+    <style>
+      /*
+        3D 登录页的 .screen / .brain-stage 需要直接落在 body 下才能铺满视口，
+        挂载点因此不参与布局；业务页各自用 min-height:100vh 自理。
+      */
+      #app { display: contents; }
+      html, body { margin: 0; padding: 0; }
+    </style>
   </head>
   <body>
     <div id="app"></div>

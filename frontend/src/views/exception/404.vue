@@ -1,36 +1,11 @@
 <template>
-  <div class="exception-page">
-    <a-result status="404" title="404" sub-title="抱歉，您访问的页面不存在。">
-      <template #extra>
-        <a-space>
-          <a-button type="primary" @click="goHome">
-            <icon-home /> 返回首页
-          </a-button>
-          <a-button @click="goBack">
-            <icon-arrow-left /> 返回上一页
-          </a-button>
-        </a-space>
-      </template>
-    </a-result>
-  </div>
+  <ExceptionPage
+    code="404"
+    title="页面不存在"
+    description="地址可能已经变更，或者这条链接不属于当前系统。回到工作台继续操作即可。"
+  />
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
-import { IconHome, IconArrowLeft } from '@arco-design/web-vue/es/icon'
-const router = useRouter()
-function goHome() { router.push('/dashboard') }
-function goBack() {
-  router.length > 1 ? router.back() : router.push('/dashboard')
-}
+import ExceptionPage from './ExceptionPage.vue'
 </script>
-
-<style scoped>
-.exception-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: calc(100vh - 56px - 40px);
-  padding: 40px;
-}
-</style>
