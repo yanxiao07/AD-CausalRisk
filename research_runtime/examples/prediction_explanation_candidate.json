@@ -1,0 +1,238 @@
+{
+  "schemaVersion": "constructed-prediction-explanation-example-v1",
+  "status": "CONSTRUCTED_BINDING_CHECKED",
+  "basis": {
+    "inputSha256": "74325a312a944106af9941bb2dbe4e9db0ab05896bf4d7e439a5bc6e8549f58d",
+    "trustedContextSha256": "1b3f2741ba35b4714079b4e73f0c887ce5fe46c1b37926f77aff3c634eb93dfa",
+    "observedValuesSha256": "17895b1ec9f6e9e90f1fd21d3de866a0d62b2c4bb0588a9f9373207e83744f98",
+    "model": {
+      "family": "logistic",
+      "specification": "multimodal_values",
+      "role": "MULTIMODAL_FULL_COHORT_RESEARCH",
+      "features": [
+        "age_years",
+        "education_years",
+        "mmse",
+        "cdr_sb",
+        "cdr_global",
+        "adas__total13",
+        "faq__faqtotal",
+        "apoe4_count",
+        "mri_left_hippocampus_volume",
+        "mri_right_hippocampus_volume"
+      ],
+      "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "trainingPlanSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "runtimeSourceSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "softwareLockSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "sourceMappingSha256": "19cb500dd884c9e6d9fe69a234bfab65a52996ba86943ae621466485d07d265e",
+      "graphProtocolSha256": null,
+      "predictionPolicy": "raw_uncalibrated_24month_CIF"
+    },
+    "formulaStateToken": "4850fcce9f2abcf71d5d6ead7b5b35d859cb5e9b2034d06a9335925ace58eb1f",
+    "subjectCode": "CONSTRUCTED-001",
+    "dataVersion": "constructed-snapshot-v1",
+    "indexDate": "2020-01-02",
+    "availabilityPolicy": "RETROSPECTIVE_SNAPSHOT",
+    "predictionWindowMonths": 24,
+    "predictionPolicy": "raw_uncalibrated_24month_CIF",
+    "causeOrder": [
+      "AD",
+      "OTHER_DEMENTIA"
+    ],
+    "featureOrder": [
+      "age_years",
+      "education_years",
+      "mmse",
+      "cdr_sb",
+      "cdr_global",
+      "adas__total13",
+      "faq__faqtotal",
+      "apoe4_count",
+      "mri_left_hippocampus_volume",
+      "mri_right_hippocampus_volume"
+    ],
+    "units": [
+      "years",
+      "years",
+      "score",
+      "score",
+      "score",
+      "score",
+      "score",
+      "count",
+      "mm3",
+      "mm3"
+    ],
+    "referencePolicy": "CONSTRUCTED_RAW_SCALE_REFERENCE_SAME_MISSINGNESS",
+    "referenceValues": [
+      [
+        60,
+        14,
+        30,
+        1.5,
+        0.5,
+        18,
+        4,
+        1,
+        3500,
+        3500
+      ]
+    ],
+    "referenceSha256": "3c1b6d2f2d74de850d94ccd6d90f2c94c9bbf3b5a15b4fd9b14651bfecd1e15b",
+    "groups": [
+      [
+        "age_years",
+        [
+          0
+        ]
+      ],
+      [
+        "education_years",
+        [
+          1
+        ]
+      ],
+      [
+        "mmse",
+        [
+          2
+        ]
+      ],
+      [
+        "cdr_sb",
+        [
+          3
+        ]
+      ],
+      [
+        "cdr_global",
+        [
+          4
+        ]
+      ],
+      [
+        "adas__total13",
+        [
+          5
+        ]
+      ],
+      [
+        "faq__faqtotal",
+        [
+          6
+        ]
+      ],
+      [
+        "apoe4_count",
+        [
+          7
+        ]
+      ],
+      [
+        "bilateral_hippocampus",
+        [
+          8,
+          9
+        ]
+      ]
+    ]
+  },
+  "prediction": [
+    {
+      "subject_id": "CONSTRUCTED-001",
+      "ad_cif_24m": 0.13790000000000002,
+      "other_dementia_cif_24m": 0.046
+    }
+  ],
+  "explanation": {
+    "method": "exact-single-reference-group-shapley-v1",
+    "referencePolicy": "CONSTRUCTED_RAW_SCALE_REFERENCE_SAME_MISSINGNESS",
+    "referenceCif": [
+      [
+        0.1,
+        0.04
+      ]
+    ],
+    "groups": [
+      "age_years",
+      "education_years",
+      "mmse",
+      "cdr_sb",
+      "cdr_global",
+      "adas__total13",
+      "faq__faqtotal",
+      "apoe4_count",
+      "bilateral_hippocampus"
+    ],
+    "contributions": [
+      [
+        [
+          0.013200000000000003,
+          0.0059999999999999975
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.017200000000000007,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0075000000000000015,
+          0.0
+        ]
+      ]
+    ],
+    "reconstructionMaxError": 0.0,
+    "lime": null,
+    "limeStatus": "NOT_EVALUATED_NO_LOCAL_FIT"
+  },
+  "actualResearchModelEvaluated": false,
+  "realHostEvidenceEvaluated": false,
+  "sourceAuthenticityCertified": false,
+  "historicalAvailabilityCertified": false,
+  "individualCausalEffectIdentified": false,
+  "clinicalUse": false,
+  "defaultModelChanged": false,
+  "executionCounts": {
+    "dispatchCallbacks": 1,
+    "shapleyCoalitions": 8,
+    "analyticCalls": 9,
+    "actualModelLoads": 0,
+    "originalCifCalls": 0,
+    "riskFits": 0,
+    "calibrationFits": 0,
+    "localFits": 0
+  },
+  "limitations": [
+    "All identities, sources, permission and reference are constructed.",
+    "The logistic identity is a metadata fixture; this formula is not logistic regression.",
+    "Digests bind this example only; P2 real host evidence is NOT_EVALUATED.",
+    "Replacement states are not interventions or a conditional population distribution.",
+    "Missingness is fixed; zero dummy attribution does not mean no clinical effect.",
+    "No HTTP, Java persistence, patient report or real model binding is established."
+  ]
+}

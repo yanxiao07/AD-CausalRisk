@@ -1,5 +1,9 @@
 # 离线研究计算、固定训练与图模型
 
+新七/十变量模型的[Python接入候选](../docs/Research_Model_Integration_Candidate.md)区分课程/旧V8 HTTP、离线CLI与现有内存API，提供字段差异和纯标准库人工请求/响应示例。候选不新增服务或共享契约；离线九组合与内存表格六组合的支持边界分别保留。
+
+同一人工解析案例的[预测/解释绑定候选](../docs/Prediction_Explanation_Binding_Candidate.md)复用原精确分组Shapley与单次调度，附固定JSON及16项错绑/数值检查；只需原锁NumPy。它不是实际研究模型运行或生产报告API，LIME与真实宿主证据保持未执行/未核验。
+
 ## 新增离线评价与监测
 
 本次交付复用已完成实现，为第2→3环节的结构/评价与第1→3→4环节的监测提供纯内存接口。不新增文件读取器、训练器或HTTP服务，也不改变业务默认模型。
@@ -41,7 +45,7 @@ python -B -S -m unittest research_runtime.tests.test_competing_event_functional 
 | 层 | 显式测试模块（`research_runtime.tests`下） | 依赖与范围 |
 | --- | --- | --- |
 | 标准库，35项 | `test_competing_event_functional`、`test_decision_curve` | `-S`禁用site packages；精确核功能量及未知结局界限 |
-| NumPy，123项 | `test_feature_drift`、`test_performance_monitor`、`test_lifecycle_monitor`、`test_graph_structure_stability` | 仅安装原锁中的NumPy 2.4.6；人工监测/隐私/结构稳定性检查 |
+| NumPy，139项 | `test_feature_drift`、`test_performance_monitor`、`test_lifecycle_monitor`、`test_graph_structure_stability`、`test_prediction_explanation_candidate` | 仅安装原锁中的NumPy 2.4.6；人工监测/隐私/结构稳定性及预测/解释错绑检查 |
 
 最小NumPy环境可用以下命令建立；Linux/macOS将解释器路径换成`.venv-primitives/bin/python`：
 
@@ -49,7 +53,7 @@ python -B -S -m unittest research_runtime.tests.test_competing_event_functional 
 py -3.11 -m venv .venv-primitives
 .venv-primitives/Scripts/python.exe -m pip install --only-binary=:all: --constraint research_runtime/requirements.lock numpy
 .venv-primitives/Scripts/python.exe -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve -v
-.venv-primitives/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability -v
+.venv-primitives/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability research_runtime.tests.test_prediction_explanation_candidate -v
 ```
 
 `--constraint`复用现有NumPy版本，不安装锁中其余训练依赖。不要用全目录发现替代这些模块列表，其他专题可能需要pandas/sklearn/Torch或执行人工拟合。
@@ -59,6 +63,8 @@ py -3.11 -m venv .venv-primitives
 此CI不覆盖图/表格训练、全部研究编排或临床验证；固定图阴性、结构不可估、CSF NO_GO、阈值SUPPRESSED及真实监控输入未准入的结论保持。
 
 发布前的本地验收从只含Git源码的副本，在新建Windows/Python 3.11.9和3.12.13环境分别通过35+123项检查，零跳过；数值环境除环境自带工具外只安装NumPy 2.4.6。工作流通过actionlint检查。该本地记录不包含Linux与GitHub托管环境结果；远端记录以对应提交的Actions为准。
+
+接入候选发布时将16项人工预测/解释绑定测试加入现有NumPy作业，没有新增依赖或执行真实模型。Windows/Python 3.11.9和3.12.13的Git源码副本各通过35+139项，零跳过；原35+123项记录保留为上一发布的范围。
 
 ## 既有研究与源码移植范围
 
