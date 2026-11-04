@@ -16,7 +16,7 @@ import torch
 
 from . import graph
 from .graph_native import FEATURES, state_digest
-from .graph_training import checked_cif
+from .graph_training import checked_cif, subgroup_masks
 from .training import checked_design, input_fingerprint, prediction_hash
 from .evaluation import censor_survival, horizon_ipcw_weights
 from .graph_acceptance import peak_memory_bytes
@@ -25,6 +25,284 @@ GROUPS = tuple((name, (name,)) for name in FEATURES[:8]) + (('bilateral_hippocam
 ORDERS = ('forward', 'reverse')
 TOLERANCE = 1e-12
 MATERIAL = 1e-6
+
+
+def aggregate_modality_strata(frame, contributions):
+    """Summarize fixed-model order sensitivity; never read, fit or predict.
+
+    Inputs are the nine-group signed arrays keyed by (seed, arm, order),
+    each shaped (people, groups, causes). Natural strata use the frozen input
+    masks. Rank/sign diagnostics share eligibility across all three arms;
+    L1 summaries always retain every person, including rank-ineligible people.
+    """
+    import pandas as pd
+    if (not isinstance(frame, pd.DataFrame) or not 1 <= len(frame) <= 1160
+            or not frame.columns.is_unique or not set(FEATURES) <= set(frame)):
+        raise ValueError('INVALID_MODALITY_STRATA_FRAME')
+    for name in FEATURES:
+        dtype = frame[name].dtype
+        if (not pd.api.types.is_numeric_dtype(dtype) or pd.api.types.is_bool_dtype(dtype)
+                or pd.api.types.is_complex_dtype(dtype)):
+            raise ValueError('INVALID_MODALITY_STRATA_VALUES')
+    if np.isinf(frame[list(FEATURES)].to_numpy(dtype=float, na_value=np.nan)).any():
+        raise ValueError('INVALID_MODALITY_STRATA_VALUES')
+    observed = observation_groups(frame)
+    masks = subgroup_masks(frame)
+    if not np.all(np.stack(list(masks.values())).sum(0) == 1):
+        raise ValueError('MODALITY_STRATA_NOT_A_PARTITION')
+    spec, _ = graph.protocol(); arms = spec['arms']; seeds = spec['future_initialization_seeds']
+    keys = {(seed, arm, order) for seed in seeds for arm in arms for order in ORDERS}
+    if not isinstance(contributions, dict) or set(contributions) != keys:
+        raise ValueError('INCOMPLETE_MODALITY_CONTRIBUTIONS')
+    values = {}
+    for key in keys:
+        array = np.asarray(contributions[key])
+        if (array.shape != (len(frame), 9, 2) or array.dtype.kind not in 'fi'
+                or not np.isfinite(array).all() or np.any(array[~observed] != 0)):
+            raise ValueError('INVALID_MODALITY_CONTRIBUTIONS')
+        values[key] = array
+    for seed in seeds:
+        for arm in arms:
+            if np.max(np.abs(values[seed, arm, 'forward'].sum(1)
+                             - values[seed, arm, 'reverse'].sum(1))) > TOLERANCE:
+                raise ValueError('MODALITY_ORDER_TOTALS_DIFFER')
+    means = {(arm, order):np.stack([values[seed, arm, order] for seed in seeds]).mean(0)
+             for arm in arms for order in ORDERS}
+    l1 = {arm:np.abs(means[arm, 'forward']-means[arm, 'reverse']).sum(1) for arm in arms}
+    core = {arm:np.abs(means[arm, 'forward'][:, :7]-means[arm, 'reverse'][:, :7]).sum(1)
+            for arm in arms}
+    ranks = {}; common_rank = {}; constant = {}; common_material = {}
+    insufficient = observed.sum(1) < 3
+    for cause in range(2):
+        for arm in arms:
+            rank_values = np.full(len(frame), np.nan)
+            is_constant = np.zeros(len(frame), bool)
+            for i, mask in enumerate(observed):
+                if insufficient[i]:continue
+                value = rank(np.abs(means[arm, 'forward'][i, mask, cause]),
+                             np.abs(means[arm, 'reverse'][i, mask, cause]))
+                if value is None:is_constant[i] = True
+                else:rank_values[i] = value
+            ranks[arm, cause] = rank_values; constant[arm, cause] = is_constant
+        common_rank[cause] = np.logical_and.reduce([np.isfinite(ranks[a, cause]) for a in arms])
+        common_material[cause] = observed & np.logical_and.reduce([
+            (np.abs(means[a, o][:, :, cause]) > MATERIAL) for a in arms for o in ORDERS])
+
+    def summary(mask):
+        n = int(mask.sum()); rows = []; contrasts = []
+        for cause, cause_name in enumerate(('AD', 'OTHER')):
+            eligible = mask & common_rank[cause]
+            material = common_material[cause] & mask[:, None]
+            denominator = int(material.sum())
+            for arm in arms:
+                flips = (means[arm, 'forward'][:, :, cause]*means[arm, 'reverse'][:, :, cause] < 0)
+                numerator = int((flips & material).sum())
+                rows.append(dict(arm=arm, cause=cause_name,
+                    order_l1=descriptive(l1[arm][mask, cause]),
+                    clinical_core_l1=descriptive(core[arm][mask, cause]),
+                    common_rank_spearman=descriptive(ranks[arm, cause][eligible]),
+                    rank_eligibility=dict(subjects=n, common_eligible=int(eligible.sum()),
+                        insufficient_observed_groups=int((mask & insufficient).sum()),
+                        any_arm_constant=int((mask & ~insufficient & ~common_rank[cause]).sum()),
+                        this_arm_constant=int((mask & constant[arm, cause]).sum())),
+                    sign_flips=dict(common_eligible_person_groups=denominator, flips=numerator,
+                                    fraction=numerator/denominator if denominator else None)))
+            for other in ('self_only', 'semantic_permutation'):
+                contrasts.append(dict(contrast='prior_minus_'+other, cause=cause_name,
+                    paired_order_l1_difference=descriptive((l1['prior']-l1[other])[mask, cause]),
+                    paired_clinical_core_l1_difference=descriptive((core['prior']-core[other])[mask, cause])))
+        return dict(subjects=n, status='DESCRIPTIVE' if n else 'EMPTY_STRATUM',
+                    observed_groups=descriptive(observed[mask].sum(1)),
+                    observed_clinical_core_groups=descriptive(observed[mask, :7].sum(1)),
+                    models=rows, contrasts=contrasts)
+
+    strata = [dict(name=name, **summary(mask)) for name, mask in masks.items()]
+    pooled = summary(np.ones(len(frame), bool)); maximum = 0.
+    for j, row in enumerate(pooled['models']):
+        for metric in ('order_l1', 'clinical_core_l1'):
+            weighted = sum(s['subjects']*s['models'][j][metric]['mean']
+                           for s in strata if s['subjects'])/len(frame)
+            maximum = max(maximum, abs(weighted-row[metric]['mean']))
+    if maximum > TOLERANCE:raise ValueError('MODALITY_POOLED_MEAN_RECONSTRUCTION')
+    return dict(schemaVersion='graph-natural-modality-strata-summary-v1', subjects=len(frame),
+                strata=strata, pooled=pooled, pooled_mean_reconstruction_max_error=maximum,
+                interpretation='Post hoc fixed-prediction explanation sensitivity; no modality effects or fairness identification',
+                fits=0, cif_calls=0, individual_causal_effect_identified=False)
+
+
+def evaluate_modality_strata(frame, splits, loader, candidates, expected, expected_explanation, *,
+        expected_input_fingerprint, expected_counts, constructed=False, progress=None,
+        max_cif_calls=855, max_state_rows=198360, max_elapsed_seconds=1800.,
+        max_memory_bytes=2147483648):
+    """One fixed-weight, two-order evaluation; host owns trusted reads and hard stop.
+
+    All original prediction/performance gates precede explanation. The unchanged
+    Calls/telescoping APIs perform 1+17+1 evaluations per outer model. No fitting,
+    readers, route deletion, tracing, reference search or participant outputs.
+    A constructed result describes analytic callbacks, never real reproduction.
+    """
+    import weakref
+    if (type(constructed) is not bool or not callable(loader)
+            or (progress is not None and not callable(progress))
+            or type(max_cif_calls) is not int or not 0 <= max_cif_calls <= 855
+            or type(max_state_rows) is not int or not 0 <= max_state_rows <= 198360
+            or type(max_memory_bytes) is not int or not 0 < max_memory_bytes <= 2147483648
+            or type(max_elapsed_seconds) not in (int, float)
+            or not np.isfinite(max_elapsed_seconds) or not 0 < max_elapsed_seconds <= 1800):
+        raise ValueError('INVALID_MODALITY_EVALUATION_SCOPE')
+    work, splits, _ = checked_design(frame, 'multimodal_values', splits)
+    original = work.copy(deep=True); observation_groups(work)
+    masks = subgroup_masks(work); counts = {name:int(mask.sum()) for name, mask in masks.items()}
+    if (counts != expected_counts or sum(counts.values()) != len(work)
+            or any(type(v) is not int or v < 0 for v in expected_counts.values())
+            or input_fingerprint(work, 'multimodal_values') != expected_input_fingerprint
+            or (not constructed and (len(work) != 1160 or counts != dict(both=276,apoe_only=152,mri_only=0,neither=732)))
+            or any(len(b) > 256 for _, b in splits)):
+        raise ValueError('MODALITY_FROZEN_INPUT_OR_COUNTS_CHANGED')
+    spec, protocol_hash = graph.protocol(); seeds = spec['future_initialization_seeds']; arms = spec['arms']
+    keys = {(f,s,a) for f in range(1,6) for s in seeds for a in arms}; bound = {}
+    for row in candidates:
+        key = (row.get('outer_fold'),row.get('seed'),row.get('arm'))
+        if (key not in keys or key in bound or row.get('role') != 'GRAPH_OUTER_VALIDATION'
+                or any(not isinstance(row.get(k), str) or len(row[k]) != 64
+                       or any(c not in '0123456789abcdef' for c in row[k])
+                       for k in ('sha256','scope_identity','training_input_sha256'))):
+            raise ValueError('MODALITY_OUTER_BINDING_REQUIRED')
+        bound[key] = row.copy()
+    if set(bound) != keys:raise ValueError('MODALITY_OUTER_MATRIX_INCOMPLETE')
+    rows = {r['arm']:r for r in expected['models']}
+    if len(expected['models']) != 3 or set(rows) != set(arms):raise ValueError('MODALITY_BASELINE_MATRIX')
+    if not all(k in expected_explanation for k in ('importance','order_sensitivity')):
+        raise ValueError('MODALITY_ORIGINAL_EXPLANATION_REQUIRED')
+    started = time.perf_counter(); torch.set_num_threads(1)
+    counters = dict(model_load_attempts=0,model_loads_completed=0,baseline_hashes_verified=0,
+                    baseline_briers_verified=0,stratum_metrics_verified=0,single_model_games=0)
+    calls = Calls(max_cif_calls,max_state_rows=max_state_rows)
+    def emit(phase):
+        if progress is not None:
+            progress(dict(phase=phase,**counters,cif_attempts=calls.count,cif_completed=calls.completed,
+                cif_state_rows_attempted=calls.state_rows_attempted,cif_state_rows_completed=calls.state_rows_completed))
+    def guard():
+        if time.perf_counter()-started > max_elapsed_seconds or peak_memory_bytes() > max_memory_bytes:
+            raise ValueError('MODALITY_RESOURCE_LIMIT')
+    def callback(event):guard();emit(event['phase'])
+    calls.evaluation_event = callback
+    def close_numeric(actual, prior):
+        # Compare complete aggregate structures, including empty cells and counts.
+        if isinstance(actual, dict):
+            return (isinstance(prior, dict) and set(actual) == set(prior)
+                    and all(close_numeric(v,prior[k]) for k,v in actual.items()))
+        if isinstance(actual, list):
+            return isinstance(prior,list) and len(actual)==len(prior) and all(close_numeric(a,b) for a,b in zip(actual,prior))
+        if actual is None or isinstance(actual,(str,bool)):return actual == prior
+        return type(prior) in (int,float) and np.isfinite(prior) and abs(actual-prior) <= TOLERANCE
+    raw = {(s,a):np.full((len(work),2),np.nan) for s in seeds for a in arms}
+    references = {key:np.full((len(work),2),np.nan) for key in raw}
+    contributions = {(s,a,o):np.full((len(work),9,2),np.nan) for s,a in raw for o in ORDERS}
+    weights = np.full(len(work),np.nan); target = work.event_type.eq(1).to_numpy(float)
+    models = {}; identities = {}; seen = []; networks = []; maximum = 0.
+    try:
+        guard()
+        for fold,(a,b) in enumerate(splits,1):
+            weights[b] = horizon_ipcw_weights(work.iloc[b],censor_survival(work.iloc[a]))
+            preprocessing = None
+            for seed in seeds:
+                for arm in arms:
+                    guard();key=(fold,seed,arm);counters['model_load_attempts'] += 1
+                    emit('MODEL_LOAD_ATTEMPT');model=loader(arm,seed,fold);e=model.named_steps['hazards']
+                    if any(ref() is model for ref in seen) or any(ref() is e.network_ for ref in networks):
+                        raise ValueError('MODALITY_MODEL_OR_NETWORK_REUSED')
+                    seen.append(weakref.ref(model));networks.append(weakref.ref(e.network_))
+                    if (e.arm != arm or e.seed != seed or e.network_.arm != arm
+                            or tuple(e.network_.edges) != graph.arm_edges(arm)
+                            or e.protocol_sha256_ != protocol_hash or not np.array_equal(e.classes_,[0,1,2])
+                            or e.training_input_sha256_ != bound[key]['training_input_sha256']):
+                        raise ValueError('MODALITY_MODEL_ROLE_OR_TRAINING_BINDING')
+                    stats=np.r_[e.medians_,e.mean_,e.scale_]
+                    if preprocessing is None:preprocessing=stats.copy()
+                    if not np.array_equal(stats,preprocessing):raise ValueError('MODALITY_UNPAIRED_PREPROCESSING')
+                    models[key]=model;identities[key]=model_identity(model);counters['model_loads_completed'] += 1
+                    raw[seed,arm][b]=calls(model,work.iloc[b]);del model,e
+        performance=[]
+        for arm in arms:
+            row=rows[arm];per_seed={r['seed']:r for r in row['per_seed']}
+            if len(row['per_seed'])!=3 or set(per_seed)!=set(seeds):raise ValueError('MODALITY_SEED_MATRIX')
+            for seed in (*seeds,None):
+                value=raw[seed,arm] if seed is not None else np.stack([raw[s,arm] for s in seeds]).mean(0)
+                old=per_seed[seed] if seed is not None else row
+                if any(prediction_hash(value[:,c]) != old[k] for c,k in enumerate(('ad_oof_sha256','other_oof_sha256'))):
+                    raise ValueError('MODALITY_ORIGINAL_TWO_CAUSE_OOF_CHANGED')
+                counters['baseline_hashes_verified'] += 2
+                error=weights*(target-value[:,0])**2
+                if not np.isfinite(old['pooled_oof_brier']) or abs(float(error.mean())-old['pooled_oof_brier'])>TOLERANCE:
+                    raise ValueError('MODALITY_ORIGINAL_BRIER_CHANGED')
+                counters['baseline_briers_verified'] += 1
+            group_rows=[dict(name=name,subjects=int(mask.sum()),
+                brier=float(error[mask].mean()) if mask.any() else None,
+                mean_ad_cif=float(value[mask,0].mean()) if mask.any() else None) for name,mask in masks.items()]
+            if not close_numeric(group_rows,row['missing_subgroups']):raise ValueError('MODALITY_ORIGINAL_SUBGROUP_CHANGED')
+            counters['stratum_metrics_verified'] += 8
+            performance.append(dict(arm=arm,missing_subgroups=group_rows))
+        if not work.equals(original):raise ValueError('MODALITY_INPUT_MUTATED')
+        emit('ALL_BASELINE_AND_STRATUM_GATES_PASSED')
+        for fold,(_,b) in enumerate(splits,1):
+            for seed in seeds:
+                for arm in arms:
+                    guard();key=(fold,seed,arm);model=models[key];baseline=raw[seed,arm][b]
+                    start,values,error=telescoping(model,work.iloc[b],baseline,calls)
+                    references[seed,arm][b]=start
+                    for order in ORDERS:contributions[seed,arm,order][b]=values[order]
+                    maximum=max(maximum,error);counters['single_model_games'] += 1
+                    if not np.array_equal(calls(model,work.iloc[b]),baseline) or model_identity(model)!=identities[key]:
+                        raise ValueError('MODALITY_ORIGINAL_MODEL_OR_CIF_CHANGED')
+                    del models[key];del model,start,values
+            emit('FOLD_COMPLETE')
+        # Reproduce the exact old pooled summaries; old rank/sign denominators
+        # remain separate from the new cross-arm common denominators.
+        importance=[];sensitivity=[];observed=observation_groups(work);seed_reconstruction=0.
+        for arm in arms:
+            means={o:np.stack([contributions[s,arm,o] for s in seeds]).mean(0) for o in ORDERS}
+            mean_reference=np.stack([references[s,arm] for s in seeds]).mean(0)
+            mean_prediction=np.stack([raw[s,arm] for s in seeds]).mean(0)
+            for order in ORDERS:
+                mean=means[order]
+                seed_reconstruction=max(seed_reconstruction,float(np.max(np.abs(mean_reference+mean.sum(1)-mean_prediction))))
+                if seed_reconstruction>TOLERANCE:raise ValueError('MODALITY_SIGNED_SEED_RECONSTRUCTION')
+                importance.append(dict(arm=arm,order=order,method='fixed-reference ordered telescoping CIF',
+                    groups=[dict(group=name,observed_subjects=int(observed[:,j].sum()),
+                        mean_signed_ad=float(mean[:,j,0].mean()),mean_abs_ad=float(np.abs(mean[:,j,0]).mean()),
+                        mean_signed_other=float(mean[:,j,1].mean()),mean_abs_other=float(np.abs(mean[:,j,1]).mean()),
+                        observed_mean_abs_ad=float(np.abs(mean[observed[:,j],j,0]).mean()) if observed[:,j].any() else None)
+                        for j,(name,_) in enumerate(GROUPS)]))
+            f,r=means['forward'][:,:,0],means['reverse'][:,:,0];difference=np.abs(f-r).sum(1)
+            material=(np.abs(f)>MATERIAL)&(np.abs(r)>MATERIAL)&observed
+            sensitivity.append(dict(arm=arm,local_order_l1=descriptive(difference),
+                subjects_above_1e_6=int((difference>MATERIAL).sum()),material_group_contributions=int(material.sum()),
+                sign_flips=int(((f*r<0)&material).sum()),local_order_ranks=local_rank_summary(f,r,observed)))
+        if (not close_numeric(importance,expected_explanation['importance'])
+                or not close_numeric(sensitivity,expected_explanation['order_sensitivity'])):
+            raise ValueError('MODALITY_ORIGINAL_POOLED_EXPLANATION_CHANGED')
+        summary=aggregate_modality_strata(work,contributions)
+        guard()
+        if (not work.equals(original) or counters['single_model_games']!=45
+                or calls.count!=855 or calls.completed!=855
+                or calls.state_rows_completed!=len(work)*171 or calls.state_rows_attempted!=len(work)*171):
+            raise ValueError('MODALITY_INCOMPLETE_OPERATION_ACCOUNTING')
+        emit('COMPLETE')
+        return dict(status='CONSTRUCTED_MODALITY_PATH_COMPLETE' if constructed else 'FIXED_MODALITY_EVALUATION_COMPLETE',
+            constructed=constructed,**counters,cif_attempts=calls.count,cif_completed=calls.completed,
+            cif_state_rows_attempted=calls.state_rows_attempted,cif_state_rows_completed=calls.state_rows_completed,
+            derived_person_month_rows=calls.state_rows_completed*24,protocol_sha256=protocol_hash,
+            performance=performance,importance=importance,order_sensitivity=sensitivity,modality_strata=summary,
+            original_pooled_explanation_verified=True,reconstruction_max_error=maximum,
+            signed_seed_reconstruction_max_error=seed_reconstruction,
+            elapsed_seconds=time.perf_counter()-started,peak_process_memory_bytes=peak_memory_bytes(),
+            fits=0,calibration_fits=0,clinical_use=False,individual_causal_effect_identified=False,
+            participant_outputs_saved=False,default_model_changed=False)
+    except BaseException:
+        calls.failed=True;emit('FAILED_NO_RETRY');raise
+    finally:
+        models.clear();raw.clear();references.clear();contributions.clear()
 
 
 def model_identity(model):

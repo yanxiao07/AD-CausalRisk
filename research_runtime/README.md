@@ -1,5 +1,39 @@
 # 离线研究计算、固定训练与图模型
 
+## 新增离线评价与监测
+
+本次交付复用已完成实现，为第2→3环节的结构/评价与第1→3→4环节的监测提供纯内存接口。不新增文件读取器、训练器或HTTP服务，也不改变业务默认模型。
+
+| 模块 | 接口与限制 |
+| --- | --- |
+| [自然模态分层](../docs/Graph_Modality_Strata.md) | `graph_explanation.aggregate_modality_strata` / `evaluate_modality_strata`，保留三臂共同排序分母与空MRI-only组 |
+| [结构选择稳定性](../docs/Graph_Structure_Stability_Primitives.md) | 固定正则秩精度分数、100抽样/至少90共同有效、无向候选及不可估null；四折不可估，后续选边预测比较NO_GO |
+| [固定阈值评价](../docs/Table_Threshold_Evaluation.md) | `table_xai_study.evaluate_thresholds`，九方案原外折身份先核对，再按联合小组门槛发布；固定真实报告整表SUPPRESSED |
+| [未知结局补全界限](../docs/Decision_Curve_Bounds.md) | `decision_curve`，固定24月分类/DCA及同人差界限，早截尾不补0，非置信区间 |
+| [已知概率核功能量](../docs/Competing_Event_Causal_Functional.md) | `competing_event_functional`，精确Fraction传播；只检查规定数学模型，不识别观察数据的因果效应 |
+| [漂移/缺失](../docs/Feature_Drift_Monitoring.md) | `feature_drift`，固定参考分箱、十特征/单位/版本及跨批联合隐私门槛，缺支持保留null |
+| [性能/亚组](../docs/Performance_Monitoring.md) | `performance_monitor`，无拟合Brier/固定箱校准/ECE补全界限及预定义亚组，不估计KM/IPCW |
+| [联合生命周期报告](../docs/Lifecycle_Monitoring.md) | `lifecycle_monitor`，同一快照绑定并先做统一联合隐私门槛，再调用上述两个计算器 |
+
+监测依赖仅标准库及现有NumPy 2.4.6；不加载模型、预测、拟合、自动告警或更新。来源、历史可用性、真实双批及临床资格不由元数据相符认证。真实监控输入尚未准入，没有部署监测结论。
+
+使用现有锁定环境，从仓库根目录验证本次增量：
+
+```powershell
+# 标准库专题
+python -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve -v
+
+# NumPy专题，无需Torch/预测依赖
+.venv-research/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability -v
+
+# 图/表格编排需现有图锁环境；人工参数与模拟回调，不重放真实研究
+.venv-research-graph/Scripts/python.exe -B -m unittest research_runtime.tests.test_graph_modality_strata research_runtime.tests.test_graph_modality_evaluation research_runtime.tests.test_table_thresholds -v
+```
+
+本次只提交计算源码、人工测试与技术说明；真实临床、权重、OOF、私有折、执行授权和机器审计不在Git中。以下既有训练/加载工具的范围保持，不能因源码交付自动执行训练或部署。
+
+本次在Windows/Python 3.11的既有环境运行上述9个专题及原`test_graph_explanation`、`test_table_xai_study`回归，共241项通过；课程标准库/契约回归733项通过。有pandas `astype(copy=...)`弃用提示，未修改数值实现；未执行Linux、Python 3.12或远端CI。
+
 [图训练人员扰动真实研究](../docs/Graph_Training_Perturbation_Results.md)已完成225基础拟合/0校准、12780 CIF；累计真实673基础/36校准。两原因/双序聚合、固定共同排名分母及结果限制已交付；本固定问题关闭，不重复训练或切换默认。
 
 图训练扰动的[流式聚合接口](../docs/Graph_Training_Perturbation_Streaming.md)已加入现有图解释模块：三种子有符号贡献/CIF先平均、双序四游戏、共同排名分母及24 hash/12 Brier前置门槛，输出仅含聚合和尝试/完成计数。完整模拟使用解析回调，不执行优化器；225次真实矩阵已执行并聚合核验。

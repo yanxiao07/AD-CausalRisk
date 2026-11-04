@@ -7,6 +7,8 @@ Reuses existing aggregation helpers in the pinned graph-capable environment;
 their import does not run graph models, optimizers or graph explanations.
 """
 from itertools import combinations
+from collections import Counter
+from copy import deepcopy
 import re
 import time
 
@@ -19,7 +21,8 @@ from threadpoolctl import threadpool_limits
 from adni_algorithm_candidates import StrictHazards
 from . import table_explanation as table
 from .discrete import predict_cif
-from .estimators import SPECS, FAMILIES
+from .estimators import SPECS, FAMILIES, information_arm
+from .decision_curve import CurveProtocol, HorizonObservation, evaluate_decision_curves
 from .training import checked_design, input_fingerprint, prediction_hash
 from .evaluation import censor_survival, horizon_ipcw_weights
 from .grouped_xai_study import distribution, paired, CONFIGS, REFERENCES
@@ -32,6 +35,8 @@ import weakref
 import warnings
 
 SPECIFICATIONS = ('seven','multimodal_values')
+THRESHOLD_SPECIFICATIONS = ('seven','modality_availability','multimodal_values')
+THRESHOLDS = (.05, .10, .20, .30, .40, .50)
 
 
 def _rank_rows(left,right,active):
@@ -368,14 +373,15 @@ def _checked_family(model,family):
         raise ValueError('TABLE_OUTER_ESTIMATOR_FAMILY')
 
 
-def checked_outer_bundle(bundle, candidate):
+def checked_outer_bundle(bundle, candidate, *, allow_availability=False):
     """Validate already-deserialized outer metadata against a caller-pinned row.
 
     The caller must verify trusted archive bytes BEFORE deserialization. A valid
     metadata declaration alone does not attest the archive, rows or model.
     """
+    supported=THRESHOLD_SPECIFICATIONS if allow_availability is True else SPECIFICATIONS
     spec=candidate.get('specification');family=candidate.get('family');fold=candidate.get('outer_fold')
-    if (spec not in SPECIFICATIONS or family not in FAMILIES or type(fold) is not int or not 1<=fold<=5
+    if (type(allow_availability) is not bool or spec not in supported or family not in FAMILIES or type(fold) is not int or not 1<=fold<=5
             or not isinstance(candidate.get('plan_sha256'),str)
             or re.fullmatch(r'[0-9a-f]{64}',candidate['plan_sha256']) is None
             or not isinstance(bundle,dict)):
@@ -387,10 +393,13 @@ def checked_outer_bundle(bundle, candidate):
             or type(bundle.get('outer_fold')) is not int or bundle.get('columns')!=list(SPECS[spec])
             or bundle.get(key)!=candidate.get('plan_sha256') or bundle.get('clinical_use') is not False):
         raise ValueError('TABLE_OUTER_IDENTITY')
-    if spec=='multimodal_values' and (bundle.get('arm')!=spec or bundle.get('retrospective_only') is not True
+    if spec in ('multimodal_values','modality_availability') and (bundle.get('arm')!=spec or bundle.get('retrospective_only') is not True
             or bundle.get('prediction_policy')!='raw_uncalibrated_24month_CIF'):
         raise ValueError('TABLE_OUTER_RAW_POLICY')
-    model=bundle.get('model');table.training_reference_statistics(model,spec)
+    # Both ten-column arms share the saved preprocessing layout. Only the
+    # layout check uses this alias; the arm identity and values stay distinct.
+    layout='multimodal_values' if spec=='modality_availability' else spec
+    model=bundle.get('model');table.training_reference_statistics(model,layout)
     _checked_family(model,family)
     return model
 
@@ -425,6 +434,166 @@ def checked_baseline(model, frame, specification, *, evaluation_event=None):
         raise ValueError('TABLE_BASELINE_TWO_CAUSE_CIF')
     if evaluation_event:evaluation_event('complete',len(frame))
     return values
+
+
+def evaluate_thresholds(frame, splits, loader, candidates, expected_AD, *, protocol,
+                        expected_input_fingerprint, original_folds, expected_subjects=1160,
+                        max_elapsed_seconds=1200, max_memory_bytes=2147483648, progress=None):
+    """Replay 45 original outer slots, then gate and describe fixed thresholds.
+
+    No readers, fitting or attribution. The trusted host verifies archive bytes
+    before loader deserialization and enforces independent hard resource limits.
+    Small joint outcome/threshold cells suppress the entire numeric report.
+    """
+    started=time.perf_counter();original=frame.copy(deep=True)
+    if (type(protocol) is not CurveProtocol or type(protocol.thresholds) is not tuple
+            or protocol.thresholds!=THRESHOLDS or any(type(t) is not float for t in protocol.thresholds)
+            or type(protocol.horizon_months) is not int
+            or protocol.horizon_months!=24
+            or any(type(x) is not str or not x.strip() or len(x)>128
+                   for x in (protocol.data_version,protocol.endpoint_id))):
+        raise ValueError('THRESHOLD_PROTOCOL')
+    if (type(expected_subjects) is not int or not 1<=expected_subjects<=10000
+            or type(expected_input_fingerprint) is not str
+            or re.fullmatch(r'[0-9a-f]{64}',expected_input_fingerprint) is None
+            or type(max_elapsed_seconds) not in (int,float) or not 0<=max_elapsed_seconds<=1200
+            or not np.isfinite(max_elapsed_seconds) or type(max_memory_bytes) is not int
+            or not 0<=max_memory_bytes<=2147483648 or splits is None):
+        raise ValueError('THRESHOLD_SCOPE')
+    work,splits,_=checked_design(frame.copy(deep=True),'multimodal_values',splits)
+    if len(work)!=expected_subjects or input_fingerprint(work,'multimodal_values')!=expected_input_fingerprint:
+        raise ValueError('THRESHOLD_INPUT_FINGERPRINT')
+    stored=checked_original_folds(work,deepcopy(original_folds))
+    if any(not np.array_equal(a,x) or not np.array_equal(b,y) for (a,b),(x,y) in zip(splits,stored)):
+        raise ValueError('THRESHOLD_ORIGINAL_FOLD_SEQUENCE')
+    candidates,expected_AD=deepcopy(candidates),deepcopy(expected_AD)
+    keys={(s,f,k) for s in THRESHOLD_SPECIFICATIONS for f in FAMILIES for k in range(1,6)}
+    if (not isinstance(candidates,list) or len(candidates)!=45
+            or any(not isinstance(c,dict) or type(c.get('outer_fold')) is not int
+                   or c.get('specification') not in THRESHOLD_SPECIFICATIONS
+                   or c.get('family') not in FAMILIES for c in candidates)):
+        raise ValueError('THRESHOLD_CANDIDATE_MATRIX')
+    index={(c['specification'],c['family'],c['outer_fold']):c for c in candidates}
+    if set(index)!=keys:raise ValueError('THRESHOLD_CANDIDATE_MATRIX')
+    for (spec,_,_),candidate in index.items():
+        role='NESTED_OUTER_RESEARCH_VALIDATION' if spec=='seven' else 'MULTIMODAL_OUTER_VALIDATION'
+        if (candidate.get('role')!=role or candidate.get('clinical_use') is not False
+                or type(candidate.get('plan_sha256')) is not str
+                or re.fullmatch(r'[0-9a-f]{64}',candidate['plan_sha256']) is None):
+            raise ValueError('THRESHOLD_CANDIDATE_IDENTITY')
+    if not isinstance(expected_AD,dict) or set(expected_AD)!=set(THRESHOLD_SPECIFICATIONS):
+        raise ValueError('THRESHOLD_NINE_EXPECTATIONS')
+    for spec in THRESHOLD_SPECIFICATIONS:
+        rows=expected_AD[spec]
+        if (not isinstance(rows,dict) or set(rows)!=set(FAMILIES)|{'historical_other_cause_OOF_hash'}
+                or rows['historical_other_cause_OOF_hash'] is not None):
+            raise ValueError('THRESHOLD_NINE_EXPECTATIONS')
+        for family in FAMILIES:
+            e=rows[family]
+            try:finite_brier=isinstance(e,dict) and bool(np.isfinite(float(e.get('pooled_oof_brier'))))
+            except (TypeError,ValueError,OverflowError):finite_brier=False
+            if (not isinstance(e,dict) or type(e.get('oof_prediction_sha256')) is not str
+                    or re.fullmatch(r'[0-9a-f]{64}',e['oof_prediction_sha256']) is None
+                    or type(e.get('pooled_oof_brier')) not in (int,float)
+                    or not finite_brier or e['pooled_oof_brier']<0):
+                raise ValueError('THRESHOLD_NINE_EXPECTATIONS')
+    counts=dict(model_load_attempts=0,model_load_returns=0,model_loads_completed=0,
+                cif_attempts=0,cif_returns=0,cif_completed=0,
+                cif_state_rows_attempted=0,cif_state_rows_completed=0,training_KM_replays=0)
+    def guard():
+        if time.perf_counter()-started>max_elapsed_seconds or peak_memory_bytes()>max_memory_bytes:
+            raise ValueError('THRESHOLD_TIME_OR_MEMORY_LIMIT')
+        if not frame.equals(original):raise ValueError('THRESHOLD_CALLER_INPUT_MUTATED')
+    def emit(phase,**labels):
+        if progress:
+            try:progress(dict(phase=phase,**labels,**counts))
+            except Exception:raise ValueError('THRESHOLD_PROGRESS_FAILED') from None
+        guard()
+    try:
+        guard()
+        raw={(s,f):np.full((len(work),2),np.nan) for s in THRESHOLD_SPECIFICATIONS for f in FAMILIES}
+        weights=np.empty(len(work));seen=[]
+        for fold,(train,test) in enumerate(splits,1):
+            guard();weights[test]=horizon_ipcw_weights(work.iloc[test],censor_survival(work.iloc[train]))
+            counts['training_KM_replays']+=1
+            for spec in THRESHOLD_SPECIFICATIONS:
+                for family in FAMILIES:
+                    guard();counts['model_load_attempts']+=1
+                    try:bundle=loader(spec,family,fold)
+                    except Exception:raise ValueError('THRESHOLD_MODEL_LOAD_FAILED') from None
+                    counts['model_load_returns']+=1
+                    guard();model=checked_outer_bundle(bundle,index[spec,family,fold],allow_availability=True)
+                    objects=(model,model.named_steps['preprocess'],model.named_steps['hazards'].estimator_)
+                    if any(ref() is obj for obj in objects for ref in seen):
+                        raise ValueError('THRESHOLD_MODEL_OBJECT_REUSE')
+                    seen.extend(weakref.ref(obj) for obj in objects)
+                    del objects
+                    counts['model_loads_completed']+=1
+                    part=information_arm(work.iloc[test],spec);before=part.copy(deep=True)
+                    identity=table.model_state_identity(model)
+                    guard();counts['cif_attempts']+=1;counts['cif_state_rows_attempted']+=len(test)
+                    try:values=checked_baseline(model,part,spec)
+                    except Exception:raise ValueError('THRESHOLD_CIF_FAILED') from None
+                    counts['cif_returns']+=1
+                    guard()
+                    if not part.equals(before) or table.model_state_identity(model)!=identity:
+                        raise ValueError('THRESHOLD_CIF_SIDE_EFFECT')
+                    values=np.asarray(values)
+                    if (values.shape!=(len(test),2) or not np.isfinite(values).all()
+                            or (values<0).any() or (values>1).any() or (values.sum(axis=1)>1+1e-12).any()):
+                        raise ValueError('THRESHOLD_TWO_CAUSE_CIF')
+                    if not np.isnan(raw[spec,family][test]).all():raise ValueError('THRESHOLD_REPEATED_OOF')
+                    raw[spec,family][test]=values
+                    counts['cif_completed']+=1;counts['cif_state_rows_completed']+=len(test)
+                    del model,bundle,part,before,values
+                    emit('BASELINE',specification=spec,family=family,fold=fold)
+        target=work.event_type.eq(1).to_numpy(float)
+        for (spec,family),values in raw.items():
+            guard();expected=expected_AD[spec][family]
+            if not np.isfinite(values).all() or prediction_hash(values[:,0])!=expected['oof_prediction_sha256']:
+                raise ValueError('THRESHOLD_AD_OOF_CHANGED')
+            if abs(float(np.mean(weights*(target-values[:,0])**2))-expected['pooled_oof_brier'])>1e-12:
+                raise ValueError('THRESHOLD_AD_BRIER_CHANGED')
+        if (counts['model_load_attempts']!=45 or counts['model_load_returns']!=45 or counts['model_loads_completed']!=45
+                or counts['cif_attempts']!=45 or counts['cif_returns']!=45 or counts['cif_completed']!=45
+                or counts['cif_state_rows_completed']!=9*len(work)):
+            raise ValueError('THRESHOLD_INCOMPLETE_MATRIX')
+        emit('ALL_NINE_AD_OOF_VERIFIED')
+        labels=tuple(int(e==1) if e or m==24 else None
+                     for e,m in zip(work.event_type,work.observed_month))
+        # Every released count/rate/DCA is a function of these joint cells.
+        # Checking marginal tables alone misses cross-threshold/model leakage.
+        cells=Counter((labels[i],*(bool(raw[s,f][i,0]>=t) for s in THRESHOLD_SPECIFICATIONS
+                                  for f in FAMILIES for t in THRESHOLDS)) for i in range(len(work)))
+        suppressed=any(0<n<5 for n in cells.values());families=None
+        if not suppressed:
+            observations=tuple(HorizonObservation(str(s),int(e),int(m)) for s,e,m in
+                               zip(work.subject_id,work.event_type,work.observed_month))
+            families={}
+            for family in FAMILIES:
+                guard()
+                panels={spec:dict(zip(work.subject_id,raw[spec,family][:,0].tolist()))
+                        for spec in THRESHOLD_SPECIFICATIONS}
+                families[family]=evaluate_decision_curves(protocol,observations,panels)
+        emit('REPORT_SUPPRESSED' if suppressed else 'COMPLETE')
+        return dict(status='FIXED_TABLE_THRESHOLD_REPLAY_COMPLETE',subjects=len(work),
+            policy='raw_uncalibrated_24month_CIF',thresholds=list(THRESHOLDS),
+            dataVersion=protocol.data_version,endpointId=protocol.endpoint_id,
+            primaryComparisons=[['seven','multimodal_values'],['modality_availability','multimodal_values']],
+            secondaryComparisons=[['seven','modality_availability']],comparisonDirection='RIGHT_MINUS_LEFT',
+            historical_AD_OOF_and_Brier_gates=9,historical_other_cause_OOF_hash_verified=False,
+            operations=dict(counts,inference_person_months=24*counts['cif_state_rows_completed']),
+            privacyStatus='SUPPRESSED' if suppressed else 'JOINT_CELLS_AT_LEAST_FIVE',
+            privacyPolicy='GLOBAL_OUTCOME_AND_ALL_NINE_MODEL_THRESHOLD_PATTERNS_MINIMUM_FIVE',
+            familyResults=families,participant_outputs_saved=False,
+            model_archive_provenance_verified=False,out_of_fold_source_independently_verified=False,
+            fits=0,clinical_use=False,causal_effect_identified=False,
+            population_confidence_interval=False,clinical_threshold_recommendation=None)
+    except Exception:
+        if progress:
+            try:progress(dict(phase='FAILED',**counts))
+            except Exception:pass
+        raise
 
 
 def _masks(frame, model, specification, reference):
