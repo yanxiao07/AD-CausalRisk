@@ -114,7 +114,7 @@ Python API：`run_nested(frame, output, specification, families, splits=..., exi
   --request research_runtime/examples/seven.synthetic.json
 ```
 
-入口只向标准输出返回JSON，不保存结果或请求，也不启动HTTP服务。失败以退出码1和不含输入值的类型化错误返回。三个已有HTTP通道及Java契约保持原行为；该命令不意味着Java AgentClient已经实现。
+入口只向标准输出返回JSON，不保存结果或请求，也不启动HTTP服务。失败以退出码1和不含输入值的类型化错误返回。三个已有HTTP通道及Java契约保持原行为；该CLI不提供Java研究模型适配，现有AgentClient仍调用课程合成服务。
 
 受控维护主机现另有同一工作台内的“模型与研究审查”页面，以独立进程调用本模块进行九模型合成计算，并展示既有聚合研究结果。它属于维护主机的本地Python演示接入，未成为Java共享API；本仓库的CLI继续保持上述离线范围。
 
