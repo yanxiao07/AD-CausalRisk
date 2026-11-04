@@ -14,6 +14,8 @@ P3的[预测/解释绑定候选](Prediction_Explanation_Binding_Candidate.md)已
 
 三文件记录级核验随后已按固定范围完成：各原字节一次、同缓冲hash及4/10/8列投影；所核身份/值/日期检查PASS，完整准入NO_GO_MISSING_INDEPENDENT_METADATA。先行8人工检查、单次worker/父进程成功、0守卫拒绝/模型/CIF/拟合；真实来源中的未知可用性、晚处理及复合QC标签未升级。仅Selected_Sources核过原历史pin，另两文件只固定本轮快照；不宣称最终模型输入/完整上下文已认证。此限定任务关闭，下一唯一工程为具体新增适用来源/宿主权限依据到位后的独立元数据补证准入，不重读三文件或代填缺项。
 
+本地三份对象说明补证已核14项：ADAS/FAQ定义LANGUAGE_CODE/DD_CRF_VERSION_LABEL/HAS_QC_ERROR，UCSFFSX定义IMAGEUID/STATUS/OVERALLQC等；原对象保留位置已定位，已有投影遗漏相关元数据。字典QC码0为无错误/已批准错误的合并状态，不直接映射新PASS；字段选项不认证逐条值，CRF标签不自动等同量表版本。该元数据定义任务关闭，下一唯一工程为固定范围后从原对象定向补取已有选中记录的语言/CRF/QC/扫描元数据并核资格，当前未加载RDA、未重读三CSV或执行模型；完成、首次可用和宿主许可等其他缺项保持。
+
 ## 研究原语分层CI
 
 现有课程CI未覆盖可选研究原语，本次复用35项标准库及123项NumPy人工测试，增加独立的Windows/Ubuntu × Python 3.11/3.12矩阵。标准库使用`-S`，NumPy层只按原锁安装NumPy；不发现整个研究目录，不执行模型加载、预测拟合或真实研究。具体命令与覆盖边界见[运行说明](../research_runtime/README.md#研究原语分层ci)。工作流配置与远端实际通过分开记录，以对应提交的Actions结果为准。
