@@ -60,6 +60,8 @@
 
 ### 模型身份不能仅从旧加载器返回值复制
 
+[P2来源映射](Research_Model_Identity_Map.md)已将12个模型字段和7个宿主上下文字段逐项分为直接返回、已核模型解释和独立证据；直接复用旧identity作model的路径因字段不足收口，不新增代填证据的适配层。
+
 `load_final_model`的身份返回只有manifestSha256、artifactSha256、trainingPlanSha256和artifact文件名。内存准入还要求family/specification/role/features、runtimeSourceSha256、softwareLockSha256、sourceMappingSha256、graphProtocolSha256和predictionPolicy；这些额外绑定不能靠填假摘要、从请求复制或现场散列未知文件来补齐。
 
 宿主需要独立定义可信的源码/锁/映射摘要范围并核验它们与实际模型一致；状态指纹须覆盖真实参数和预处理。旧加载器本身不核来源映射、逐条证据和这些全部绑定，不能只把返回字典改键后宣称已满足新准入。
@@ -97,7 +99,7 @@ python -B -S -m research_runtime.examples.model_integration_candidate --full
 
 ## 后续仅核真实衔接缺口
 
-P1到本候选与样例为止。P2如推进，先核已有宿主能否独立提供完整模型身份、映射、证据及有效状态指纹，并把候选逐项映射到现有API；能力满足就复用收口，不预设新适配层。可获得性对照暂不准入，是否确需支持须另有问题与验收范围，不能为覆盖九模型放宽当前检查。
+P1到本候选与样例为止；P2已完成来源映射，直接代用旧identity的路径因字段不足收口，真实宿主证据本次未核验，未新增适配层。可获得性对照暂不准入，是否确需支持须另有问题与验收范围，不能为覆盖九模型放宽当前检查。后续P3先限定人工案例的预测/解释同源绑定，真实模型路径仍需独立证据。
 
 需与Java/前端另行协调的事项包括新传输字段/版本、身份映射、权限来源、业务幂等与存储、错误状态映射、报告用途和受控参数交付。候选不修改contracts、不启动新服务、不切换8091。单次内存返回没有分组Shapley/LIME或课程四阶段DTO；将来解释输出须绑定同一输入/模型/参考，不能套用旧加性贡献。
 
