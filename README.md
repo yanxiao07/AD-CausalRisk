@@ -21,6 +21,8 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 研究运行时已包含[分组Shapley/LIME及表格编排](docs/Table_Grouped_Study_Execution.md)、[输入声明一致性校验](docs/Real_Input_Admission.md)与[单次内存CIF调用](docs/InMemory_Research_Inference.md)。方法、构造验收和真实研究结论分别报告；不加入受控数据/权重，不改变共享HTTP或默认模型。
 
+七/十变量的[Python接入候选](docs/Research_Model_Integration_Candidate.md)补充六个表格组合、[模型身份到宿主上下文的映射](docs/Research_Model_Identity_Map.md)和[人工预测/解释绑定示例](docs/Prediction_Explanation_Binding_Candidate.md)。[宿主证据核对](docs/Research_Host_Evidence_Admission.md)保留已定位材料与剩余资格缺口，完整准入仍为NO_GO；人工示例通过不表示真实模型已接入业务。
+
 ## 核心能力
 
 新增离线评价与监测见[研究运行说明](research_runtime/README.md)：自然模态分层、固定结构选择稳定性、未知结局分类/DCA补全界限及同一快照的漂移/性能联合报告。它们复用调用方内存，不改变当前合成业务服务或默认模型。固定图增益阴性、结构四折不可估和真实阈值报告整表抑制均保留；真实监控与临床用途未完成。
@@ -35,7 +37,7 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 以下为当前分支的实现范围；完整验收条件以[课程需求](docs/Course_SRS_V3_2.md)为准。顶部徽章展示 `main` 分支的 CI，功能分支的检查结果请查看对应提交或 PR。
 
-核对日期：2026-11-04。本次Python分支基于main `5f6dfd0`，已包含[PR #18](https://github.com/yanxiao07/AD-CausalRisk/pull/18)合并的Vue业务前端和Java互操作/失败持久化修复。较早的[登录页PR #12](https://github.com/yanxiao07/AD-CausalRisk/pull/12)仍独立开放，其状态不代表main缺少当前登录页。各模块已有实现、实际验收与研究模型接入分别记录。
+核对日期：2026-11-04。本次Python分支基于main `57220d3`，已包含[PR #18](https://github.com/yanxiao07/AD-CausalRisk/pull/18)的Vue业务前端和Java互操作/失败持久化修复、[PR #19](https://github.com/yanxiao07/AD-CausalRisk/pull/19)的离线评价/监测原语及[PR #20](https://github.com/yanxiao07/AD-CausalRisk/pull/20)的分层研究CI。各模块已有实现、实际验收与研究模型接入分别记录。
 
 | 模块 | 已有实现 | 后续工作 |
 | --- | --- | --- |
