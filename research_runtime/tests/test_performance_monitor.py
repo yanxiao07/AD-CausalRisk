@@ -14,7 +14,7 @@ if __name__ == '__main__':
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from research_runtime import performance_monitor as m
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[2]
 ACCOUNTING = dict(summary_calls=0, summary_returns=0, paired_calls=0, paired_returns=0, protected_io_attempts=0)
 _active = False
 _initial_modules = set()
@@ -369,7 +369,7 @@ class PerformanceMonitorTests(unittest.TestCase):
             self.assertIs(report[key], False)
 
     def test_original_bin_edges_and_pure_helper_reuse(self):
-        tree = ast.parse((ROOT / 'tmp/python-modality-strata-repair-20261029/research_runtime/evaluation.py').read_bytes())
+        tree = ast.parse((ROOT / 'research_runtime/evaluation.py').read_bytes())
         assignment = next(n for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'BIN_EDGES' for t in n.targets))
         self.assertEqual(m.BIN_EDGES, ast.literal_eval(assignment.value))
         from research_runtime import decision_curve as existing
