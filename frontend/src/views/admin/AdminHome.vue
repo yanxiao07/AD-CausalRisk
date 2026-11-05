@@ -2,7 +2,7 @@
   <div class="admin-home">
     <PageHeader
       title="数据大屏"
-      :subtitle="`运营总览 · 数据每 ${Math.round(REFRESH_MS / 1000)} 秒自动刷新`"
+      :subtitle="`运营总览 · 指标每 ${Math.round(REFRESH_MS / 1000)} 秒刷新 · 审计每 ${Math.round((REFRESH_MS * AUDIT_REFRESH_EVERY) / 1000)} 秒刷新`"
     >
       <template #extra>
         <span class="admin-updated">上次更新 {{ lastUpdatedText }}</span>
@@ -64,7 +64,8 @@
 
     <p class="admin-home__foot">
       统计口径：档案数据取自 GET /api/subjects（最多 100 条），质控取自 GET /api/qc/stats，
-      审计取自 GET /api/audit-logs；页面每 {{ Math.round(REFRESH_MS / 1000) }} 秒自动刷新，也可点右上角手动刷新。
+      审计取自 GET /api/audit-logs（无分页，全量返回，因此单独按 60 秒刷新，页面只展示最近 {{ AUDIT_LIMIT }} 条）；
+      指标每 {{ Math.round(REFRESH_MS / 1000) }} 秒刷新，也可点右上角手动刷新。
     </p>
   </div>
 </template>
@@ -82,6 +83,8 @@ import { listAuditLogs } from '@/api/audit.js'
 const AUDIT_LIMIT = 8
 /** 15 秒：复核/质控刚提交完，回到大屏就能看到计数变化，不用等一分钟。 */
 const REFRESH_MS = 15000
+/** 审计日志没有分页接口、每次全量返回，因此每 4 个 tick（≈60 秒）才拉一次。 */
+const AUDIT_REFRESH_EVERY = 4
 const PAGE_SIZE = 100
 
 const subjects = ref([])
@@ -98,6 +101,8 @@ const refreshing = ref(false)
 const lastUpdated = ref(null)
 let timer = null
 let inFlight = false
+/** 自动刷新计数：用于把审计日志降频到每 60 秒一次 */
+let tickCount = 0
 
 const lastUpdatedText = computed(() => {
   if (!lastUpdated.value) return '—'
@@ -227,10 +232,12 @@ async function loadSubjects() {
     const data = await listSubjects({ page: 1, pageSize: PAGE_SIZE })
     subjects.value = Array.isArray(data?.items) ? data.items : []
     total.value = Number(data?.total ?? subjects.value.length)
+    return true
   } catch (problem) {
     subjects.value = []
     total.value = 0
     subjectsError.value = problem?.code === 403 ? '无权限读取档案' : '档案接口不可用'
+    return false
   }
 }
 
@@ -238,9 +245,11 @@ async function loadStats() {
   statsError.value = ''
   try {
     stats.value = await getQcStats()
+    return true
   } catch (problem) {
     stats.value = null
     statsError.value = problem?.code === 403 ? '无权限读取质控' : '质控接口不可用'
+    return false
   }
 }
 
@@ -250,42 +259,60 @@ async function loadAudit() {
   try {
     const data = await listAuditLogs()
     auditEvents.value = Array.isArray(data) ? data : []
+    return true
   } catch (problem) {
     auditEvents.value = []
     auditError.value = problem?.code === 403 ? '仅管理员可查看审计日志' : '审计接口不可用'
+    return false
   } finally {
     auditLoading.value = false
   }
 }
 
-async function loadAll() {
+/**
+ * 指标刷新：默认 15 秒，但审计日志**每 4 次才拉一次**（≈60 秒）。
+ *
+ * 审计接口没有分页参数，每次都是全量返回，而页面只展示 8 条；如果跟着 15 秒一起刷，
+ * 等于把全量审计的请求频率提高 4 倍。这里按"指标快、审计慢"分开节奏。
+ */
+async function loadAll({ includeAudit = true } = {}) {
   // 自动刷新与手动刷新可能撞车：只允许一次在飞
   if (inFlight) return
   inFlight = true
   loading.value = true
   try {
-    await Promise.allSettled([loadSubjects(), loadStats(), loadAudit()])
-    lastUpdated.value = new Date()
+    const results = await Promise.all([
+      loadSubjects(),
+      loadStats(),
+      includeAudit ? loadAudit() : Promise.resolve(false)
+    ])
+    // 全部失败时不更新"上次更新"，否则页面会显示一个并没有成功的刷新时间
+    if (results.some(Boolean)) lastUpdated.value = new Date()
   } finally {
     loading.value = false
     inFlight = false
   }
 }
 
-/** 手动刷新：按钮上给反馈，结束时间与自动刷新共用同一个时间戳。 */
+/** 手动刷新：三路都拉（含审计），按钮上给反馈，结束时间与自动刷新共用同一个时间戳。 */
 async function manualRefresh() {
   if (refreshing.value || inFlight) return
   refreshing.value = true
   try {
-    await loadAll()
+    tickCount = 0
+    await loadAll({ includeAudit: true })
   } finally {
     refreshing.value = false
   }
 }
 
 onMounted(() => {
-  loadAll()
-  timer = window.setInterval(loadAll, REFRESH_MS)
+  loadAll({ includeAudit: true })
+  timer = window.setInterval(() => {
+    tickCount += 1
+    // 每 4 个 tick（约 60 秒）才拉一次全量审计
+    loadAll({ includeAudit: tickCount % AUDIT_REFRESH_EVERY === 0 })
+  }, REFRESH_MS)
 })
 
 onBeforeUnmount(() => {

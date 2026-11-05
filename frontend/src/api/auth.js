@@ -30,6 +30,14 @@ export async function login(username, password, expectedRoleKey) {
   const expected = ROLE_CODES[expectedRoleKey]
   const roles = Array.isArray(data?.roles) ? data.roles : []
   if (expected && !roles.includes(expected)) {
+    // 后端已经为这个账号建立了会话。只在前端报错是不够的：浏览器仍持有有效的
+    // JSESSIONID，/api/me 会继续返回 ADMIN，管理员接口也照样 200。必须显式登出。
+    try {
+      await request.post('/auth/logout', null, { skipAuthHandling: true })
+    } catch {
+      // 登出请求失败也不能放行：本地会话同样清掉，并让用户重试
+    }
+    useUserStore().clear()
     throw {
       code: 403,
       errorCode: 'ROLE_MISMATCH',
