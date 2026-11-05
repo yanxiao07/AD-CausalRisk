@@ -1,5 +1,17 @@
 <template>
   <div class="admin-home">
+    <PageHeader
+      title="数据大屏"
+      :subtitle="`运营总览 · 数据每 ${Math.round(REFRESH_MS / 1000)} 秒自动刷新`"
+    >
+      <template #extra>
+        <span class="admin-updated">上次更新 {{ lastUpdatedText }}</span>
+        <el-button :icon="Refresh" :loading="refreshing" @click="manualRefresh">
+          手动刷新
+        </el-button>
+      </template>
+    </PageHeader>
+
     <div class="admin-grid admin-grid--metrics">
       <article v-for="metric in metrics" :key="metric.key" class="panel metric">
         <p class="metric__label">{{ metric.label }}</p>
@@ -47,20 +59,20 @@
         :loading="auditLoading"
         :error="auditError"
         :limit="AUDIT_LIMIT"
-        dark
       />
     </article>
 
     <p class="admin-home__foot">
       统计口径：档案数据取自 GET /api/subjects（最多 100 条），质控取自 GET /api/qc/stats，
-      审计取自 GET /api/audit-logs；页面每 60 秒自动刷新。
+      审计取自 GET /api/audit-logs；页面每 {{ Math.round(REFRESH_MS / 1000) }} 秒自动刷新，也可点右上角手动刷新。
     </p>
   </div>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { PieChart, TrendCharts } from '@element-plus/icons-vue'
+import { PieChart, Refresh, TrendCharts } from '@element-plus/icons-vue'
+import PageHeader from '@/components/common/PageHeader.vue'
 import EChart from '@/components/charts/EChart.vue'
 import AuditStream from '@/components/admin/AuditStream.vue'
 import { listSubjects } from '@/api/subjects.js'
@@ -68,7 +80,8 @@ import { getQcStats } from '@/api/qc.js'
 import { listAuditLogs } from '@/api/audit.js'
 
 const AUDIT_LIMIT = 8
-const REFRESH_MS = 60000
+/** 15 秒：复核/质控刚提交完，回到大屏就能看到计数变化，不用等一分钟。 */
+const REFRESH_MS = 15000
 const PAGE_SIZE = 100
 
 const subjects = ref([])
@@ -80,7 +93,18 @@ const subjectsError = ref('')
 const statsError = ref('')
 const auditLoading = ref(true)
 const auditError = ref('')
+/** 手动刷新时的按钮 loading（自动刷新不闪按钮） */
+const refreshing = ref(false)
+const lastUpdated = ref(null)
 let timer = null
+let inFlight = false
+
+const lastUpdatedText = computed(() => {
+  if (!lastUpdated.value) return '—'
+  const date = lastUpdated.value
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+})
 
 const hasSubjects = computed(() => subjects.value.length > 0)
 
@@ -136,14 +160,14 @@ const trendOption = computed(() => {
     xAxis: {
       type: 'category',
       data: days.map((day) => day.slice(5)),
-      axisLine: { lineStyle: { color: 'rgba(120,190,235,0.25)' } },
-      axisLabel: { color: '#7fa6c4', fontSize: 11 }
+      axisLine: { lineStyle: { color: 'rgba(17,52,75,0.18)' } },
+      axisLabel: { color: '#637f91', fontSize: 11 }
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
-      splitLine: { lineStyle: { color: 'rgba(120,190,235,0.12)' } },
-      axisLabel: { color: '#7fa6c4', fontSize: 11 }
+      splitLine: { lineStyle: { color: 'rgba(17,52,75,0.08)' } },
+      axisLabel: { color: '#637f91', fontSize: 11 }
     },
     series: [
       {
@@ -152,8 +176,8 @@ const trendOption = computed(() => {
         symbol: 'circle',
         symbolSize: 6,
         data: days.map((day) => counts.get(day)),
-        lineStyle: { width: 2.4, color: '#4fc3f7' },
-        itemStyle: { color: '#4fc3f7' },
+        lineStyle: { width: 2.4, color: '#0a73ad' },
+        itemStyle: { color: '#0a73ad' },
         areaStyle: {
           color: {
             type: 'linear',
@@ -162,8 +186,8 @@ const trendOption = computed(() => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(79,195,247,0.35)' },
-              { offset: 1, color: 'rgba(79,195,247,0.02)' }
+              { offset: 0, color: 'rgba(10,115,173,0.28)' },
+              { offset: 1, color: 'rgba(10,115,173,0.02)' }
             ]
           }
         }
@@ -179,18 +203,18 @@ const statusOption = computed(() => {
   return {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'item' },
-    legend: { bottom: 0, textStyle: { color: '#7fa6c4', fontSize: 11 } },
+    legend: { bottom: 0, textStyle: { color: '#637f91', fontSize: 11 } },
     series: [
       {
         type: 'pie',
         radius: ['46%', '68%'],
         center: ['50%', '44%'],
         avoidLabelOverlap: true,
-        itemStyle: { borderColor: '#0b2233', borderWidth: 2 },
-        label: { color: '#dcecfb', fontSize: 11 },
+        itemStyle: { borderColor: '#ffffff', borderWidth: 2 },
+        label: { color: '#11344b', fontSize: 11 },
         data: [
-          { value: active, name: '在组', itemStyle: { color: '#4fc3f7' } },
-          { value: archived, name: '已归档', itemStyle: { color: '#567c99' } }
+          { value: active, name: '在组', itemStyle: { color: '#0a73ad' } },
+          { value: archived, name: '已归档', itemStyle: { color: '#8ca5b3' } }
         ]
       }
     ]
@@ -235,9 +259,28 @@ async function loadAudit() {
 }
 
 async function loadAll() {
+  // 自动刷新与手动刷新可能撞车：只允许一次在飞
+  if (inFlight) return
+  inFlight = true
   loading.value = true
-  await Promise.allSettled([loadSubjects(), loadStats(), loadAudit()])
-  loading.value = false
+  try {
+    await Promise.allSettled([loadSubjects(), loadStats(), loadAudit()])
+    lastUpdated.value = new Date()
+  } finally {
+    loading.value = false
+    inFlight = false
+  }
+}
+
+/** 手动刷新：按钮上给反馈，结束时间与自动刷新共用同一个时间戳。 */
+async function manualRefresh() {
+  if (refreshing.value || inFlight) return
+  refreshing.value = true
+  try {
+    await loadAll()
+  } finally {
+    refreshing.value = false
+  }
 }
 
 onMounted(() => {
@@ -256,6 +299,12 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.admin-updated {
+  font-size: 12px;
+  color: var(--soft);
+  font-variant-numeric: tabular-nums;
 }
 
 .admin-grid {
@@ -280,9 +329,11 @@ onBeforeUnmount(() => {
 .panel {
   position: relative;
   padding: 18px 20px;
-  border: 1px solid rgba(120, 190, 235, 0.18);
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: linear-gradient(160deg, rgba(22, 54, 80, 0.72), rgba(12, 32, 50, 0.72));
+  /* 与医生/研究员页面同一套白卡 + 双层阴影 */
+  background: var(--surface, #ffffff);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
 }
 
@@ -299,21 +350,21 @@ onBeforeUnmount(() => {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.3px;
-  color: #dcecfb;
+  color: var(--ink);
 }
 
 .panel__tag {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 999px;
-  color: #7fa6c4;
-  border: 1px solid rgba(120, 190, 235, 0.24);
+  color: var(--muted);
+  border: 1px solid var(--line);
 }
 
 .metric__label {
   margin: 0;
   font-size: 13px;
-  color: #7fa6c4;
+  color: var(--muted);
   letter-spacing: 0.3px;
 }
 
@@ -322,19 +373,19 @@ onBeforeUnmount(() => {
   font-family: var(--font-display);
   font-size: 34px;
   font-weight: 700;
-  color: #eaf6ff;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
 .metric__value.is-empty {
   font-size: 20px;
-  color: #7fa6c4;
+  color: var(--muted);
 }
 
 .metric__hint {
   margin: 0;
   font-size: 12px;
-  color: #5d86a4;
+  color: var(--soft);
 }
 
 .metric__spark {
@@ -344,8 +395,8 @@ onBeforeUnmount(() => {
   width: 120px;
   height: 120px;
   border-radius: 50%;
-  filter: blur(28px);
-  opacity: 0.5;
+  filter: blur(34px);
+  opacity: 0.16;
 }
 
 .metric__spark.is-blue { background: #2f9ad4; }
@@ -360,19 +411,19 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 8px;
   min-height: 240px;
-  color: #5d86a4;
+  color: var(--soft);
   font-size: 13px;
 }
 
 .chart__empty .el-icon {
   font-size: 30px;
-  color: rgba(79, 195, 247, 0.55);
+  color: rgba(10, 115, 173, 0.45);
 }
 
 .admin-home__foot {
   margin: 0;
   font-size: 11px;
   line-height: 1.7;
-  color: #4d728e;
+  color: var(--soft);
 }
 </style>

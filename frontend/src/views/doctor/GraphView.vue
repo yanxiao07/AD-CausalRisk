@@ -30,9 +30,23 @@
       :icon="Share"
       title="还没有载入图谱"
       description="输入评估 ID 后载入该受试者的个体因果网络；也可以从「待办复核」或「评估报告」跳转过来。"
+      action-text="去待办复核页找报告"
+      @action="goReviews"
     />
 
     <section v-else class="stage" :class="{ 'stage--immersive': immersive }">
+      <!-- 沉浸模式是全屏 fixed，必须有一个显眼的出口 -->
+      <button
+        v-if="immersive"
+        type="button"
+        class="stage__exit"
+        aria-label="退出沉浸模式"
+        @click="toggleImmersive"
+      >
+        <el-icon><Close /></el-icon>
+        <span>退出沉浸模式</span>
+      </button>
+
       <header class="stage__head">
         <div class="stage__meta">
           <strong>评估 #{{ assessment?.assessmentId }}</strong>
@@ -59,9 +73,9 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { FullScreen, RefreshRight, Share, WarningFilled } from '@element-plus/icons-vue'
+import { Close, FullScreen, RefreshRight, Share, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -69,6 +83,7 @@ import CausalGraph from '@/components/charts/CausalGraph.vue'
 import { getAssessment } from '@/api/assessments.js'
 
 const route = useRoute()
+const router = useRouter()
 
 const inputId = ref('')
 const loading = ref(false)
@@ -96,6 +111,16 @@ function onResize() {
 
 function toggleImmersive() {
   immersive.value = !immersive.value
+}
+
+/** 空态里的引导：没有评估 ID 的人，最可能从待办复核页开始。 */
+function goReviews() {
+  router.push('/reviews')
+}
+
+/** 沉浸模式再按 Esc 也能退出（全屏时用户的第一反应通常是 Esc）。 */
+function onKeydown(event) {
+  if (event.key === 'Escape' && immersive.value) toggleImmersive()
 }
 
 /** 重新排布：换 key 让图重新跑一次力导向布局 */
@@ -141,6 +166,7 @@ function describeLoadError(problem, id) {
 
 onMounted(() => {
   window.addEventListener('resize', onResize)
+  window.addEventListener('keydown', onKeydown)
   const fromQuery = route.query.assessmentId
   if (fromQuery) {
     inputId.value = String(fromQuery)
@@ -150,6 +176,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
+  window.removeEventListener('keydown', onKeydown)
 })
 </script>
 
@@ -181,6 +208,47 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: auto;
+}
+
+/* 沉浸模式的退出按钮：与「重新排布」同一套极简风格——无底色、灰字，hover 才变色 */
+.stage__exit {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 3001;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted, #637f91);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm, 10px);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast, 120ms) var(--ease-out, ease-out),
+    background-color var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+
+.stage__exit:hover {
+  color: var(--brand-600, #0a73ad);
+  background: var(--brand-50, #e7f4fb);
+}
+
+.stage__exit:focus-visible {
+  outline: 2px solid var(--brand-600, #0a73ad);
+  outline-offset: 2px;
+}
+
+.stage__exit .el-icon {
+  font-size: 16px;
+}
+
+/* 退出按钮固定在右上角，沉浸时让标题栏右侧让出空间，避免压住风险标签 */
+.stage--immersive .stage__head {
+  padding-right: 180px;
 }
 
 .stage__head {

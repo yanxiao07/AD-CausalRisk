@@ -116,18 +116,51 @@
         </button>
       </div>
       <div class="detail-index" id="detail-index">{{ detail.index }}</div>
-      <h2 class="detail-title" id="detail-title">{{ detail.title }}</h2>
+      <h2 class="detail-title" id="detail-title">
+        {{ detail.title }}
+        <span v-if="detail.en" class="detail-title__en">{{ detail.en }}</span>
+      </h2>
       <p class="detail-desc" id="detail-desc">{{ detail.desc }}</p>
-      <div class="detail-tags" id="detail-tags">
-        <span v-for="tag in detail.tags" :key="tag">{{ tag }}</span>
-      </div>
-      <div class="detail-metrics" id="detail-metrics">
-        <div v-for="metric in detail.metrics" :key="metric.label" class="detail-metric">
-          <span>{{ metric.label }}</span>
-          <strong>{{ metric.value }}</strong>
-          <small>{{ metric.note }}</small>
+
+      <!-- 区块 1：核心能力 -->
+      <section class="detail-block">
+        <h3 class="detail-block__label"><span>核心能力</span></h3>
+        <p class="detail-capability" id="detail-capability">{{ detail.capability }}</p>
+        <div class="detail-tags" id="detail-tags">
+          <span v-for="tag in detail.tags" :key="tag" class="detail-tag">{{ tag }}</span>
         </div>
-      </div>
+      </section>
+
+      <!-- 区块 2：技术亮点 -->
+      <section class="detail-block">
+        <h3 class="detail-block__label"><span>技术亮点</span></h3>
+        <ul class="detail-highlights" id="detail-highlights">
+          <li v-for="item in detail.highlights" :key="item.title" class="highlight">
+            <span class="highlight__icon" aria-hidden="true">
+              <el-icon><component :is="highlightIcon(item.icon)" /></el-icon>
+            </span>
+            <div class="highlight__body">
+              <strong>{{ item.title }}</strong>
+              <p>{{ item.desc }}</p>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <!-- 区块 3：业务指标 -->
+      <section class="detail-block">
+        <h3 class="detail-block__label"><span>业务指标</span></h3>
+        <div class="detail-stats" id="detail-metrics">
+          <article v-for="metric in detail.metrics" :key="metric.label" class="stat">
+            <p class="stat__label">{{ metric.label }}</p>
+            <p class="stat__value">
+              {{ metric.value }}<small v-if="metric.unit">{{ metric.unit }}</small>
+            </p>
+            <p class="stat__note">{{ metric.note }}</p>
+          </article>
+        </div>
+      </section>
+
       <div class="detail-note" id="detail-note">{{ detail.note }}</div>
     </div>
   </aside>
@@ -167,6 +200,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Connection, Files, Histogram, Lightning, Lock, Medal } from '@element-plus/icons-vue'
 
 import BrainCanvas from '@/components/BrainCanvas.vue'
 import LoginCard from '@/components/LoginCard.vue'
@@ -175,6 +209,20 @@ import { roleMeta } from '@/data/roleMeta'
 import { useUserStore } from '@/stores/user.js'
 // 3D 登录页专属样式：只在本路由加载，业务页不受影响
 import '@/styles/login-3d.css'
+
+/** 技术亮点的小图标：数据里只存语义 key，具体图标在这里映射，数据文件保持纯净。 */
+const HIGHLIGHT_ICONS = {
+  layers: Files,
+  bolt: Lightning,
+  shield: Lock,
+  route: Connection,
+  medal: Medal,
+  chart: Histogram
+}
+
+function highlightIcon(key) {
+  return HIGHLIGHT_ICONS[key] ?? Files
+}
 
 /** 双屏状态：false = 居中单屏（登录），true = 左移 + 右侧 3D 淡入。 */
 const isExpanded = ref(false)
@@ -186,7 +234,17 @@ const detailMounted = ref(false)
 const detailOpen = ref(false)
 const helpDialog = ref(null)
 
-const EMPTY_DETAIL = { index: '', title: '', desc: '', tags: [], metrics: [], note: '' }
+const EMPTY_DETAIL = {
+  index: '',
+  title: '',
+  en: '',
+  desc: '',
+  capability: '',
+  highlights: [],
+  tags: [],
+  metrics: [],
+  note: ''
+}
 const detail = ref(EMPTY_DETAIL)
 
 const activeMeta = computed(() => roleMeta[currentRole.value] ?? roleMeta.doctor)

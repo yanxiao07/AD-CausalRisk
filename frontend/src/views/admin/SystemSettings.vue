@@ -163,13 +163,13 @@ onMounted(probeBackend)
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: #eaf6ff;
+  color: var(--ink);
 }
 
 .settings-sub {
   margin: 6px 0 0;
   font-size: 13px;
-  color: #7fa6c4;
+  color: var(--muted);
 }
 
 .settings-head__right {
@@ -186,9 +186,9 @@ onMounted(probeBackend)
 
 .panel {
   padding: 18px 20px;
-  border: 1px solid rgba(120, 190, 235, 0.18);
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: linear-gradient(160deg, rgba(22, 54, 80, 0.72), rgba(12, 32, 50, 0.72));
+  background: #ffffff;
 }
 
 .panel--wide {
@@ -200,14 +200,14 @@ onMounted(probeBackend)
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.3px;
-  color: #dcecfb;
+  color: var(--ink);
 }
 
 .panel__hint {
   margin: 0 0 12px;
   font-size: 12px;
   line-height: 1.7;
-  color: #7fa6c4;
+  color: var(--muted);
 }
 
 .kv {
@@ -231,14 +231,14 @@ onMounted(probeBackend)
   font-size: 11px;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: #5d86a4;
+  color: var(--soft);
 }
 
 .kv dd {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #dcecfb;
+  color: var(--ink);
   word-break: break-word;
 }
 
@@ -257,7 +257,7 @@ onMounted(probeBackend)
 }
 
 .rules strong {
-  color: #dcecfb;
+  color: var(--ink);
   margin-right: 4px;
 }
 
@@ -274,6 +274,6 @@ code {
   margin: 0;
   font-size: 12px;
   line-height: 1.8;
-  color: #5d86a4;
+  color: var(--soft);
 }
 </style>

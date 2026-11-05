@@ -42,6 +42,12 @@ async function redirectToLogin() {
   }
 }
 
+/** 登录请求的判定：显式跳过标记优先，其次兼容 URL 判断。 */
+function isLoginRequest(config) {
+  if (config?.skipAuthHandling) return true
+  return String(config?.url || '').includes('/auth/login')
+}
+
 request.interceptors.response.use(
   response => {
     const payload = response.data
@@ -50,13 +56,19 @@ request.interceptors.response.use(
         // 成功：直接给业务层 data，调用方不需要再关心 Envelope
         return payload.data
       }
-      ElMessage.error(payload.message || '请求失败')
-      return Promise.reject({
+      const failure = {
         code: payload.code,
         errorCode: payload.errorCode,
         message: payload.message || '请求失败',
         traceId: payload.traceId
-      })
+      }
+      // 登录接口失败（含后端以 200 + code!=0 返回的极端情况）：不弹全局消息、不跳路由，
+      // 把错误抛回表单，由 LoginCard 渲染成红字。
+      if (isLoginRequest(response.config)) {
+        return Promise.reject({ ...failure, message: payload.message || '账号或密码错误' })
+      }
+      ElMessage.error(failure.message)
+      return Promise.reject(failure)
     }
     // 非 Envelope（例如静态文件）原样返回
     return payload
@@ -74,9 +86,8 @@ request.interceptors.response.use(
     const { status, data: body = {} } = error.response
 
     if (status === 401) {
-      // 登录接口自身的 401 = 账号或密码错误，交给登录卡片内联提示，不跳转、不弹全局消息
-      const isLoginAttempt = String(error.config?.url || '').includes('/auth/login')
-      if (isLoginAttempt) {
+      // 登录接口自身的 401 = 账号或密码错误：交给登录表单内联提示，不跳转、不弹全局消息
+      if (isLoginRequest(error.config)) {
         return Promise.reject({
           code: 401,
           errorCode: body.errorCode || 'AUTH_INVALID_CREDENTIALS',

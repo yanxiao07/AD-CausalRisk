@@ -47,13 +47,13 @@ const routes = [
     path: '/admin',
     name: 'AdminHome',
     component: () => import('../views/admin/AdminHome.vue'),
-    meta: { title: '数据大屏', layout: 'screen', roles: ['ADMIN'] }
+    meta: { title: '数据大屏', layout: 'sidebar', roles: ['ADMIN'] }
   },
   {
     path: '/admin/audit',
     name: 'AuditLog',
     component: () => import('../views/admin/AuditLog.vue'),
-    meta: { title: '审计日志', layout: 'screen', roles: ['ADMIN'] }
+    meta: { title: '审计日志', layout: 'sidebar', roles: ['ADMIN'] }
   },
   {
     path: '/patient',
@@ -89,7 +89,7 @@ const routes = [
     path: '/admin/users',
     name: 'UserAdmin',
     component: () => import('../views/admin/UserAdmin.vue'),
-    meta: { title: '账号管理', layout: 'screen', roles: ['ADMIN'] }
+    meta: { title: '账号管理', layout: 'sidebar', roles: ['ADMIN'] }
   },
   {
     path: '/reports',
@@ -107,7 +107,7 @@ const routes = [
     path: '/admin/system',
     name: 'SystemSettings',
     component: () => import('../views/admin/SystemSettings.vue'),
-    meta: { title: '系统设置', layout: 'screen', roles: ['ADMIN'] }
+    meta: { title: '系统设置', layout: 'sidebar', roles: ['ADMIN'] }
   },
   {
     path: '/quality',

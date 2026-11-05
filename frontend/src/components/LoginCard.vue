@@ -346,7 +346,8 @@ async function submit() {
   status.value = '正在验证身份…'
   try {
     // 统一走 api/auth.js -> api/request.js 的唯一 axios 实例（Envelope 脱壳 + 会话 Cookie）
-    const data = await apiLogin(account, password.value)
+    // 第三个参数是当前选中的身份：账号没有该角色时，login() 会在写登录态之前直接拒绝
+    const data = await apiLogin(account, password.value, props.currentRole)
 
     storeRememberedAccount()
     signedIn.value = true
