@@ -149,7 +149,7 @@
             type="button"
             class="session-retry"
             id="session-retry"
-            :disabled="retryingLogout"
+            :disabled="retryingLogout || loading"
             @click="retryLogout"
           >
             {{ retryingLogout ? '正在重试退出…' : '重试退出登录' }}
@@ -168,7 +168,7 @@
             <button class="forgot" type="button" id="forgot-link" @click="$emit('help')">忘记密码？</button>
           </div>
 
-          <button class="submit" type="submit" id="submit-btn" :class="{ 'is-loading': loading }" :disabled="loading">
+          <button class="submit" type="submit" id="submit-btn" :class="{ 'is-loading': loading }" :disabled="loading || retryingLogout">
             <span class="spinner" aria-hidden="true"></span>
             <span id="submit-label">{{ loading ? '正在验证身份…' : roleMeta[currentRole].cta }}</span>
             <svg class="submit-arrow" width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -324,7 +324,7 @@ function storeRememberedAccount() {
 
 function clearError() {
   if (error.value) error.value = ''
-  sessionIssue.value = ''
+  // 注意：不清 sessionIssue —— 退出未确认时，用户改账号/密码不应把「重试退出登录」入口藏掉
   invalidField.value = ''
 }
 
@@ -350,6 +350,11 @@ function roleHomePath(role) {
  */
 async function submit() {
   if (loading.value) return
+  // 退出请求仍在路上时不允许登录：否则迟到的登出会注销刚建立的新会话
+  if (retryingLogout.value) {
+    fail('上一个会话正在退出，请稍候再试。')
+    return
+  }
   clearError()
   status.value = ''
 
@@ -366,6 +371,7 @@ async function submit() {
 
     storeRememberedAccount()
     signedIn.value = true
+    sessionIssue.value = ''
     status.value = '身份验证通过'
     password.value = ''
     emit('logged-in', data ?? null)
@@ -376,12 +382,14 @@ async function submit() {
     if (problem?.message) fail(problem.message)
     else if (problem?.code === -1) fail('无法连接服务器，请确认后端已启动（默认 http://localhost:8080）。')
     else fail('登录失败，请稍后重试。')
-    // 角色不符且会话状态未确认：允许用户重试退出，而不是让他关掉浏览器
-    sessionIssue.value =
+    // 角色不符且会话状态未确认：允许用户重试退出，而不是让他关掉浏览器。
+    // 其它错误（密码错、上一个会话正在退出…）**保留**已有入口，不清空。
+    if (
       problem?.errorCode === 'ROLE_MISMATCH_SESSION_ACTIVE' ||
       problem?.errorCode === 'ROLE_MISMATCH_SESSION_UNKNOWN'
-        ? problem.errorCode
-        : ''
+    ) {
+      sessionIssue.value = problem.errorCode
+    }
     status.value = error.value
   } finally {
     loading.value = false

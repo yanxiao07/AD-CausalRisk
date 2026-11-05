@@ -27,19 +27,37 @@ async function probeSession() {
     await request.get('/me', { skipAuthHandling: true })
     return SESSION_ACTIVE
   } catch (problem) {
-    const unauthorised = problem?.code === 401 || problem?.errorCode === 'UNAUTHENTICATED'
-    return unauthorised ? SESSION_CLEARED : SESSION_UNKNOWN
+    // 只认**真正的 HTTP 401**。故障注入里 503 的响应正文可能带 code:401 或
+    // UNAUTHENTICATED，那是服务端故障，不代表会话已失效。
+    return problem?.httpStatus === 401 ? SESSION_CLEARED : SESSION_UNKNOWN
   }
 }
 
+/**
+ * 正在进行的"登出 + 复核"。登录与退出必须互斥：
+ * 否则退出请求还在路上时用户能提交新登录，登录成功、进入工作台后，迟到的登出
+ * 会把刚建立的新会话一起注销。并发调用（自动登出 + 用户点重试）合并成同一次。
+ */
+let closingSession = null
+
+export function isClosingSession() {
+  return Boolean(closingSession)
+}
+
 /** 尝试登出并复核会话状态；即使登出请求本身失败，也以 /api/me 的结果为准。 */
-export async function closeSessionAndVerify() {
-  try {
-    await request.post('/auth/logout', null, { skipAuthHandling: true })
-  } catch {
-    // 登出失败不影响结论：下面的 probe 会给出 200 / 401 / unknown
-  }
-  return probeSession()
+export function closeSessionAndVerify() {
+  if (closingSession) return closingSession
+  closingSession = (async () => {
+    try {
+      await request.post('/auth/logout', null, { skipAuthHandling: true })
+    } catch {
+      // 登出失败不影响结论：下面的 probe 会给出 200 / 401 / unknown
+    }
+    return probeSession()
+  })().finally(() => {
+    closingSession = null
+  })
+  return closingSession
 }
 
 /**
@@ -56,6 +74,15 @@ export async function closeSessionAndVerify() {
  * 避免跳到一个自己没有权限的角色首页（表现为 /401 或白屏）。
  */
 export async function login(username, password, expectedRoleKey) {
+  // 互斥：退出还没结束时不允许登录，否则迟到的登出会把新会话一起注销
+  if (closingSession) {
+    throw {
+      code: 409,
+      errorCode: 'SESSION_CLOSING',
+      message: '上一个会话正在退出，请稍候再试。'
+    }
+  }
+
   const data = await request.post('/auth/login', { username, password }, {
     skipAuthHandling: true
   })

@@ -60,7 +60,10 @@ request.interceptors.response.use(
         code: payload.code,
         errorCode: payload.errorCode,
         message: payload.message || '请求失败',
-        traceId: payload.traceId
+        traceId: payload.traceId,
+        // HTTP 状态单独保留：业务 code 可能与真实状态不一致（如 503 正文里带 code:401），
+        // 会话探测只认真正的 HTTP 401，不能看 body 里的 code/errorCode。
+        httpStatus: response.status
       }
       // 登录接口失败（含后端以 200 + code!=0 返回的极端情况）：不弹全局消息、不跳路由，
       // 把错误抛回表单，由 LoginCard 渲染成红字。
@@ -97,17 +100,28 @@ request.interceptors.response.use(
         return Promise.reject({
           code: 401,
           errorCode: body.errorCode || 'AUTH_INVALID_CREDENTIALS',
-          message: body.message || '账号或密码错误'
+          message: body.message || '账号或密码错误',
+          httpStatus: 401
         })
       }
       await redirectToLogin()
       ElMessage.error(body.message || '登录已过期，请重新登录')
-      return Promise.reject({ code: 401, errorCode: body.errorCode || 'UNAUTHENTICATED', message: body.message })
+      return Promise.reject({
+        code: 401,
+        errorCode: body.errorCode || 'UNAUTHENTICATED',
+        message: body.message,
+        httpStatus: 401
+      })
     }
 
     if (status === 403) {
       if (!quiet) ElMessage.error(body.message || '无权限访问该资源')
-      return Promise.reject({ code: 403, errorCode: body.errorCode || 'ACCESS_DENIED', message: body.message })
+      return Promise.reject({
+        code: 403,
+        errorCode: body.errorCode || 'ACCESS_DENIED',
+        message: body.message,
+        httpStatus: 403
+      })
     }
 
     if (!quiet) ElMessage.error(body.message || error.message || '请求失败')
@@ -115,7 +129,8 @@ request.interceptors.response.use(
       code: body.code || status,
       errorCode: body.errorCode,
       message: body.message || error.message || '请求失败',
-      traceId: body.traceId
+      traceId: body.traceId,
+      httpStatus: status
     })
   }
 )
