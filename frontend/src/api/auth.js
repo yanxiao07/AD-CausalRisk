@@ -10,6 +10,39 @@ const ROLE_CODES = {
 }
 
 /**
+ * 会话状态判定，**只认 /api/me 的 HTTP 状态**：
+ *   200  → 'active'   会话仍然有效
+ *   401  → 'cleared'  会话已失效
+ *   其它（503 / 超时 / 断网）→ 'unknown'  无法确认
+ *
+ * 之前把"复核请求失败"当成"已登出"，于是 503 时会提示角色不符，但同一会话其实还能读
+ * 管理员接口。这里必须把"确认失效"和"无法确认"分开。
+ */
+export const SESSION_ACTIVE = 'active'
+export const SESSION_CLEARED = 'cleared'
+export const SESSION_UNKNOWN = 'unknown'
+
+async function probeSession() {
+  try {
+    await request.get('/me', { skipAuthHandling: true })
+    return SESSION_ACTIVE
+  } catch (problem) {
+    const unauthorised = problem?.code === 401 || problem?.errorCode === 'UNAUTHENTICATED'
+    return unauthorised ? SESSION_CLEARED : SESSION_UNKNOWN
+  }
+}
+
+/** 尝试登出并复核会话状态；即使登出请求本身失败，也以 /api/me 的结果为准。 */
+export async function closeSessionAndVerify() {
+  try {
+    await request.post('/auth/logout', null, { skipAuthHandling: true })
+  } catch {
+    // 登出失败不影响结论：下面的 probe 会给出 200 / 401 / unknown
+  }
+  return probeSession()
+}
+
+/**
  * POST /api/auth/login
  * 成功时 Envelope 已被 request 拦截器脱壳，这里拿到的是 data：
  * { id, username, roles, menus }
@@ -30,35 +63,31 @@ export async function login(username, password, expectedRoleKey) {
   const expected = ROLE_CODES[expectedRoleKey]
   const roles = Array.isArray(data?.roles) ? data.roles : []
   if (expected && !roles.includes(expected)) {
-    // 后端已经为这个账号建立了会话。只在前端报错是不够的：浏览器仍持有有效的
-    // JSESSIONID，/api/me 会继续返回 ADMIN，管理员接口也照样 200。必须显式登出。
-    //
-    // 关键点：登出**失败**时不能只说"身份不符"。那样用户会以为已经安全退出，实际会话
-    // 仍然有效。这里用一次 /api/me 复核会话是否真的失效，并把结果如实告诉用户。
-    let sessionStillActive = false
-    try {
-      await request.post('/auth/logout', null, { skipAuthHandling: true })
-      // 登出接口返回 200 也不代表服务端真的销毁了会话（网络中断/代理吞包），复核一次
-      sessionStillActive = await request
-        .get('/me', { skipAuthHandling: true })
-        .then(() => true)
-        .catch(() => false)
-    } catch {
-      sessionStillActive = true
-    }
+    // 后端已经为这个账号建立了会话，只在前端报错不够：浏览器仍持有有效 JSESSIONID。
+    const session = await closeSessionAndVerify()
     useUserStore().clear()
-    throw sessionStillActive
-      ? {
-          code: 403,
-          errorCode: 'ROLE_MISMATCH_SESSION_ACTIVE',
-          message:
-            '该账号没有当前身份权限，且会话未能安全退出；请关闭浏览器后重试，或联系管理员处理。'
-        }
-      : {
-          code: 403,
-          errorCode: 'ROLE_MISMATCH',
-          message: '该账号没有当前身份权限，请切换身份后重试'
-        }
+
+    if (session === SESSION_ACTIVE) {
+      throw {
+        code: 403,
+        errorCode: 'ROLE_MISMATCH_SESSION_ACTIVE',
+        message:
+          '该账号没有当前身份权限，且会话未能安全退出；请关闭浏览器后重试，或联系管理员处理。'
+      }
+    }
+    if (session === SESSION_UNKNOWN) {
+      throw {
+        code: 403,
+        errorCode: 'ROLE_MISMATCH_SESSION_UNKNOWN',
+        message:
+          '该账号没有当前身份权限，且暂时无法确认会话是否已退出；请点击「重试退出登录」再试一次。'
+      }
+    }
+    throw {
+      code: 403,
+      errorCode: 'ROLE_MISMATCH',
+      message: '该账号没有当前身份权限，请切换身份后重试'
+    }
   }
 
   useUserStore().setUser(data)

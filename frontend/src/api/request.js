@@ -75,7 +75,10 @@ request.interceptors.response.use(
   },
   async error => {
     if (!error.response) {
-      ElMessage.error('无法连接服务器，请确认后端已启动（默认 http://localhost:8080）')
+      // 登录/登出/会话复核这类"探测型"请求自己会解释失败，不再弹全局提示
+      if (!isLoginRequest(error.config)) {
+        ElMessage.error('无法连接服务器，请确认后端已启动（默认 http://localhost:8080）')
+      }
       return Promise.reject({
         code: -1,
         errorCode: 'NETWORK_ERROR',
@@ -85,9 +88,12 @@ request.interceptors.response.use(
 
     const { status, data: body = {} } = error.response
 
+    // 探测型请求（登录/登出/会话复核）自己会把失败翻译成表单文案，不弹全局消息
+    const quiet = isLoginRequest(error.config)
+
     if (status === 401) {
       // 登录接口自身的 401 = 账号或密码错误：交给登录表单内联提示，不跳转、不弹全局消息
-      if (isLoginRequest(error.config)) {
+      if (quiet) {
         return Promise.reject({
           code: 401,
           errorCode: body.errorCode || 'AUTH_INVALID_CREDENTIALS',
@@ -100,11 +106,11 @@ request.interceptors.response.use(
     }
 
     if (status === 403) {
-      ElMessage.error(body.message || '无权限访问该资源')
+      if (!quiet) ElMessage.error(body.message || '无权限访问该资源')
       return Promise.reject({ code: 403, errorCode: body.errorCode || 'ACCESS_DENIED', message: body.message })
     }
 
-    ElMessage.error(body.message || error.message || '请求失败')
+    if (!quiet) ElMessage.error(body.message || error.message || '请求失败')
     return Promise.reject({
       code: body.code || status,
       errorCode: body.errorCode,

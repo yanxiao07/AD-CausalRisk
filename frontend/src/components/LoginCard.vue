@@ -144,6 +144,17 @@
             <span id="form-error-text">{{ error }}</span>
           </div>
 
+          <button
+            v-if="sessionIssue"
+            type="button"
+            class="session-retry"
+            id="session-retry"
+            :disabled="retryingLogout"
+            @click="retryLogout"
+          >
+            {{ retryingLogout ? '正在重试退出…' : '重试退出登录' }}
+          </button>
+
           <div class="form-options">
             <label class="remember" title="只在本设备保留账号，不保存密码">
               <input type="checkbox" id="remember" v-model="remember" />
@@ -203,7 +214,7 @@
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { login as apiLogin } from '@/api/auth.js'
+import { closeSessionAndVerify, login as apiLogin } from '@/api/auth.js'
 import { rolePortraits } from '@/components/rolePortraits'
 import { roleMeta } from '@/data/roleMeta'
 
@@ -237,6 +248,9 @@ const remember = ref(false)
 const showPassword = ref(false)
 const loading = ref(false)
 const error = ref('')
+/** 角色不符后会话未确认退出（有效或无法确认）时，显示「重试退出登录」按钮 */
+const sessionIssue = ref('')
+const retryingLogout = ref(false)
 const status = ref('')
 const invalidField = ref('')
 const shake = ref(false)
@@ -310,6 +324,7 @@ function storeRememberedAccount() {
 
 function clearError() {
   if (error.value) error.value = ''
+  sessionIssue.value = ''
   invalidField.value = ''
 }
 
@@ -361,9 +376,35 @@ async function submit() {
     if (problem?.message) fail(problem.message)
     else if (problem?.code === -1) fail('无法连接服务器，请确认后端已启动（默认 http://localhost:8080）。')
     else fail('登录失败，请稍后重试。')
+    // 角色不符且会话状态未确认：允许用户重试退出，而不是让他关掉浏览器
+    sessionIssue.value =
+      problem?.errorCode === 'ROLE_MISMATCH_SESSION_ACTIVE' ||
+      problem?.errorCode === 'ROLE_MISMATCH_SESSION_UNKNOWN'
+        ? problem.errorCode
+        : ''
     status.value = error.value
   } finally {
     loading.value = false
+  }
+}
+
+/** 重试退出登录：再次登出并用 /api/me 复核，成功就允许重新选择身份。 */
+async function retryLogout() {
+  if (retryingLogout.value) return
+  retryingLogout.value = true
+  try {
+    const session = await closeSessionAndVerify()
+    if (session === 'cleared') {
+      sessionIssue.value = ''
+      fail('已安全退出该会话，请重新选择身份登录。')
+    } else if (session === 'active') {
+      fail('会话仍未退出，请关闭浏览器后重试，或联系管理员处理。')
+    } else {
+      fail('仍无法确认会话状态（服务暂不可用），请稍后再试，或关闭浏览器。')
+    }
+    status.value = error.value
+  } finally {
+    retryingLogout.value = false
   }
 }
 

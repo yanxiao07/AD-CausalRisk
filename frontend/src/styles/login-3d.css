@@ -344,6 +344,18 @@
   }
   .field-error[hidden]{display:none}
   .field-error svg{flex:0 0 auto;margin-top:1px}
+  /* 角色不符且会话未确认退出时的重试入口：贴着错误提示下方，样式克制以免喧宾夺主 */
+  .session-retry{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    margin:-9px 0 17px;padding:8px 14px;
+    border:1px solid rgba(48,111,144,.34);border-radius:10px;
+    background:rgba(255,255,255,.72);color:#2b6a8c;
+    font:inherit;font-size:12.5px;font-weight:600;letter-spacing:.02em;cursor:pointer;
+    transition:background .16s ease,color .16s ease,border-color .16s ease;
+  }
+  .session-retry:hover:not(:disabled){background:#fff;color:#0a73ad;border-color:rgba(10,115,173,.5)}
+  .session-retry:disabled{cursor:wait;opacity:.7}
+  .session-retry:focus-visible{outline:2px solid rgba(74,155,190,.8);outline-offset:2px}
   .input-wrap.is-shaking{animation:fieldShake .26s ease-in-out}
   .submit{
     min-height:52px;height:52px;font-size:14.5px;letter-spacing:.3px;border-radius:13px;
