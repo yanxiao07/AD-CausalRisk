@@ -32,17 +32,33 @@ export async function login(username, password, expectedRoleKey) {
   if (expected && !roles.includes(expected)) {
     // 后端已经为这个账号建立了会话。只在前端报错是不够的：浏览器仍持有有效的
     // JSESSIONID，/api/me 会继续返回 ADMIN，管理员接口也照样 200。必须显式登出。
+    //
+    // 关键点：登出**失败**时不能只说"身份不符"。那样用户会以为已经安全退出，实际会话
+    // 仍然有效。这里用一次 /api/me 复核会话是否真的失效，并把结果如实告诉用户。
+    let sessionStillActive = false
     try {
       await request.post('/auth/logout', null, { skipAuthHandling: true })
+      // 登出接口返回 200 也不代表服务端真的销毁了会话（网络中断/代理吞包），复核一次
+      sessionStillActive = await request
+        .get('/me', { skipAuthHandling: true })
+        .then(() => true)
+        .catch(() => false)
     } catch {
-      // 登出请求失败也不能放行：本地会话同样清掉，并让用户重试
+      sessionStillActive = true
     }
     useUserStore().clear()
-    throw {
-      code: 403,
-      errorCode: 'ROLE_MISMATCH',
-      message: '该账号没有当前身份权限，请切换身份后重试'
-    }
+    throw sessionStillActive
+      ? {
+          code: 403,
+          errorCode: 'ROLE_MISMATCH_SESSION_ACTIVE',
+          message:
+            '该账号没有当前身份权限，且会话未能安全退出；请关闭浏览器后重试，或联系管理员处理。'
+        }
+      : {
+          code: 403,
+          errorCode: 'ROLE_MISMATCH',
+          message: '该账号没有当前身份权限，请切换身份后重试'
+        }
   }
 
   useUserStore().setUser(data)

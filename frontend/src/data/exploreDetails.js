@@ -26,8 +26,8 @@ export const exploreDetails = {
       },
       {
         icon: 'bolt',
-        title: '幂等导入，不重复入库',
-        desc: '每次上传携带 Idempotency-Key，重复提交只会命中同一批次。'
+        title: '幂等重试，不重复建批次',
+        desc: '同一批次重试携带相同 Idempotency-Key，会命中同一任务；重复文件里的重复行仍会被逐行拒绝。'
       },
       {
         icon: 'shield',
@@ -57,8 +57,8 @@ export const exploreDetails = {
       },
       {
         icon: 'medal',
-        title: '证据分级',
-        desc: '每条边标注 PRIOR（先验）或 MODEL（模型），来源不混淆。'
+        title: '证据来源分级',
+        desc: '节点标注 PRIOR（先验）或 MODEL（模型）；连线固定为 PRIOR，不冒充模型证据。'
       },
       {
         icon: 'shield',
@@ -68,11 +68,11 @@ export const exploreDetails = {
     ],
     tags: ['共享先验', '个体观测', '风险因素', '条件通路'],
     metrics: [
-      { label: '证据等级', value: '2', unit: '级', note: 'PRIOR 先验 / MODEL 模型' },
+      { label: '节点证据', value: '2', unit: '级', note: 'PRIOR / MODEL；连线固定 PRIOR' },
       { label: '关联方向', value: '条件', unit: '性', note: 'direction = CONDITIONAL' },
       { label: '缺失处理', value: '显式', unit: '标注', note: 'MISSING 节点 + 待补边' }
     ],
-    note: '图谱是共享先验结构，个体差异体现在节点观测状态上；连线表示条件性关联而非病因证明。'
+    note: '图谱是共享先验结构，个体差异体现在节点观测状态上；连线固定为 PRIOR 条件关联，不是病因证明。'
   },
   risk: {
     index: '03',

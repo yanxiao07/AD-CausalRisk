@@ -102,7 +102,9 @@ const lastUpdated = ref(null)
 let timer = null
 let inFlight = false
 /** 自动刷新计数：用于把审计日志降频到每 60 秒一次 */
-let tickCount = 0
+let ticksSinceAudit = 0
+/** 上一轮还没结束就到的 tick，结束后立即补跑，避免慢请求把审计窗口跳过 */
+let pendingTick = false
 
 const lastUpdatedText = computed(() => {
   if (!lastUpdated.value) return '—'
@@ -275,9 +277,18 @@ async function loadAudit() {
  * 审计接口没有分页参数，每次都是全量返回，而页面只展示 8 条；如果跟着 15 秒一起刷，
  * 等于把全量审计的请求频率提高 4 倍。这里按"指标快、审计慢"分开节奏。
  */
-async function loadAll({ includeAudit = true } = {}) {
-  // 自动刷新与手动刷新可能撞车：只允许一次在飞
-  if (inFlight) return
+/**
+ * 刷新一轮。`includeAudit=false` 时只拉指标（审计全量返回，不能跟着 15 秒一起刷）。
+ *
+ * 慢请求保护：定时器每 15 秒触发一次，但上一轮可能还没结束。此时**不能直接丢掉这个 tick**，
+ * 否则连续两次慢请求就会把审计的 60 秒窗口整段跳过。这里把它记成 pending，等当前这轮
+ * 结束后立即补跑一次。
+ */
+async function loadAll({ includeAudit = true, fromTick = false } = {}) {
+  if (inFlight) {
+    if (fromTick) pendingTick = true
+    return
+  }
   inFlight = true
   loading.value = true
   try {
@@ -286,12 +297,28 @@ async function loadAll({ includeAudit = true } = {}) {
       loadStats(),
       includeAudit ? loadAudit() : Promise.resolve(false)
     ])
+    // 审计真的拉成功了才重置计数，避免慢/失败时把下一次审计窗口推得更远
+    if (includeAudit && results[2]) ticksSinceAudit = 0
     // 全部失败时不更新"上次更新"，否则页面会显示一个并没有成功的刷新时间
     if (results.some(Boolean)) lastUpdated.value = new Date()
   } finally {
     loading.value = false
     inFlight = false
+    if (pendingTick) {
+      pendingTick = false
+      runTick()
+    }
   }
+}
+
+/** 一次定时 tick：决定这轮要不要带审计；忙时只排队、不计数，补跑时再算一次。 */
+function runTick() {
+  if (inFlight) {
+    pendingTick = true
+    return
+  }
+  ticksSinceAudit += 1
+  loadAll({ includeAudit: ticksSinceAudit >= AUDIT_REFRESH_EVERY, fromTick: true })
 }
 
 /** 手动刷新：三路都拉（含审计），按钮上给反馈，结束时间与自动刷新共用同一个时间戳。 */
@@ -299,7 +326,7 @@ async function manualRefresh() {
   if (refreshing.value || inFlight) return
   refreshing.value = true
   try {
-    tickCount = 0
+    pendingTick = false
     await loadAll({ includeAudit: true })
   } finally {
     refreshing.value = false
@@ -308,11 +335,7 @@ async function manualRefresh() {
 
 onMounted(() => {
   loadAll({ includeAudit: true })
-  timer = window.setInterval(() => {
-    tickCount += 1
-    // 每 4 个 tick（约 60 秒）才拉一次全量审计
-    loadAll({ includeAudit: tickCount % AUDIT_REFRESH_EVERY === 0 })
-  }, REFRESH_MS)
+  timer = window.setInterval(runTick, REFRESH_MS)
 })
 
 onBeforeUnmount(() => {
