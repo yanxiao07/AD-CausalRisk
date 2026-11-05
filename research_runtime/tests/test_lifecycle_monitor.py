@@ -14,7 +14,7 @@ if __name__ == '__main__':
 from research_runtime import lifecycle_monitor as m
 
 d, p = m.drift, m.performance
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[2]
 ACCOUNTING = dict(feature_calls=0, feature_returns=0, performance_calls=0, performance_returns=0,
                   psi_calls=0, psi_returns=0, summary_calls=0, summary_returns=0,
                   pair_calls=0, pair_returns=0, protected_io_attempts=0)

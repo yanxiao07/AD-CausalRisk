@@ -2,8 +2,6 @@
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
-import ast
-import hashlib
 import json
 import math
 import os
@@ -16,8 +14,8 @@ if __name__ == '__main__':
 import numpy as np
 from research_runtime import feature_drift as d
 
-ROOT = Path(__file__).resolve().parents[4]
-ACCOUNTING = dict(psi_calls=0, psi_returns=0, legacy_artificial_psi_calls=0, protected_io_attempts=0)
+ROOT = Path(__file__).resolve().parents[2]
+ACCOUNTING = dict(psi_calls=0, psi_returns=0, frozen_reference_psi_cases=0, protected_io_attempts=0)
 _active = False
 _original_psi = d._psi_counts
 _initial_modules = set()
@@ -285,21 +283,19 @@ class FeatureDriftTests(unittest.TestCase):
         self.assertEqual((report['fits'], report['modelLoads'], report['CIFCalls']), (0, 0, 0))
 
     def test_sealed_stage15_formula_reused_on_artificial_inputs_only(self):
-        import pandas as pd
-        source = ROOT / 'scripts/run_stage15_model_monitoring.py'
-        raw = source.read_bytes()
-        self.assertEqual(hashlib.sha256(raw).hexdigest(), 'ce4a1a31b6a6368cf9bf2c3503beba7c3d9cf593526ebaec115d7a91b4fd7914')
-        tree = ast.parse(raw)
-        nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in ('finite', 'psi')]
-        namespace = dict(np=np, pd=pd, math=math, Any=object)
-        exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), 'exec'), namespace)
+        # Frozen artificial comparison from run_stage15_model_monitoring.py,
+        # SHA256 ce4a1a31b6a6368cf9bf2c3503beba7c3d9cf593526ebaec115d7a91b4fd7914.
+        # Reference counts are (20,20,20,20,20), current (0,20,20,20,40).
+        # Only the first and last bins contribute, with the original 1e-6 floor.
+        # Keep the analytic oracle independent of the implementation and avoid
+        # reading a maintainer-only script or importing pandas on clean clones.
         r, c, bins = fixture(rc=(50, 50), cc=(50, 50))
         rv = np.repeat(np.arange(100, dtype=float)[:, None], 10, axis=1)
         cv = rv + 20
         edges = (19.8, 39.6, 59.4, 79.2)
         report = evaluate(replace(r, values=rv), replace(c, values=cv), replace(bins, cut_points=(edges,) * 10))
-        expected = namespace['psi'](pd.Series(rv[:, 0]), pd.Series(cv[:, 0]))
-        ACCOUNTING['legacy_artificial_psi_calls'] += 1
+        expected = (1e-6 - 0.2) * math.log(1e-6 / 0.2) + 0.2 * math.log(2)
+        ACCOUNTING['frozen_reference_psi_cases'] += 1
         self.assertIsNotNone(expected)
         self.assertEqual(report['status'], 'COMPLETE')
         self.assertTrue(all(abs(row['psi'] - expected) < 1e-12 for row in report['featureResults']))

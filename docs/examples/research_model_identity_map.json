@@ -1,0 +1,109 @@
+{
+  "purpose": "STATIC_DOCUMENTATION_ONLY",
+  "runtimeInput": false,
+  "scope": {
+    "families": ["logistic", "random_forest", "xgboost"],
+    "specifications": ["seven", "multimodal_values"],
+    "modelOrClinicalArtifactsInspected": false,
+    "actualHostEvidenceVerified": false
+  },
+  "loaderIdentityReturnedFields": ["manifestSha256", "artifactSha256", "trainingPlanSha256", "artifact"],
+  "loaderExtraFieldNotInModel": "artifact",
+  "modelFields": [
+    {
+      "target": "manifestSha256",
+      "origin": "LOADER_RETURN",
+      "source": "research_runtime/inference.py:load_final_model return identity.manifestSha256",
+      "condition": "Only after the original loader successfully checks independently trusted manifest bytes. No loader was executed here."
+    },
+    {
+      "target": "artifactSha256",
+      "origin": "LOADER_RETURN",
+      "source": "research_runtime/inference.py:load_final_model return identity.artifactSha256",
+      "condition": "Only after the same buffered artifact bytes match the trusted manifest and the bundle checks pass."
+    },
+    {
+      "target": "trainingPlanSha256",
+      "origin": "LOADER_RETURN",
+      "source": "research_runtime/inference.py:load_final_model return identity.trainingPlanSha256",
+      "condition": "The loader binds the manifest plan digest to a bundle field; it does not independently open or certify the training plan."
+    },
+    {
+      "target": "family",
+      "origin": "VERIFIED_BUNDLE_AND_SELECTION",
+      "source": "research_runtime/inference.py:load_final_model selected family and checked bundle.family",
+      "condition": "Use the host-selected and successfully checked family, not an incoming unverified declaration."
+    },
+    {
+      "target": "specification",
+      "origin": "VERIFIED_BUNDLE_AND_SELECTION",
+      "source": "research_runtime/inference.py:load_final_model selection, ROLES, manifest features and multimodal arm checks",
+      "condition": "Only seven or multimodal_values for this map; modality_availability remains outside admission."
+    },
+    {
+      "target": "role",
+      "origin": "VERIFIED_BUNDLE_AND_SELECTION",
+      "source": "research_runtime/inference.py:load_final_model checked bundle.role against ROLES[specification]",
+      "condition": "Keep original final roles. PORTABLE_FINAL and outer-fold roles are different formats."
+    },
+    {
+      "target": "features",
+      "origin": "VERIFIED_BUNDLE_AND_SELECTION",
+      "source": "research_runtime/inference.py:load_final_model checked manifest.features and bundle.columns",
+      "condition": "Preserve the exact ordered feature list; do not sort, rename or drop missing features."
+    },
+    {
+      "target": "predictionPolicy",
+      "origin": "VERIFIED_BUNDLE_AND_SELECTION",
+      "source": "research_runtime/inference.py:load_final_model raw-policy checks; research_runtime/input_admission.py:POLICY",
+      "condition": "Explicitly interpret checked raw policy as raw_uncalibrated_24month_CIF. CLI output literal raw is not accepted verbatim by admission."
+    },
+    {
+      "target": "runtimeSourceSha256",
+      "origin": "INDEPENDENT_HOST_EVIDENCE",
+      "source": "Host-controlled model release evidence; input_admission checks digest syntax and identity agreement only",
+      "condition": "The trusted release must define code membership, byte representation and expected digest. Source_Provenance historical hashes are not this release attestation."
+    },
+    {
+      "target": "softwareLockSha256",
+      "origin": "INDEPENDENT_HOST_EVIDENCE",
+      "source": "Host-controlled lock and environment release evidence; input_admission checks digest syntax and identity agreement only",
+      "condition": "Pin exact lock-byte scope independently. Matching package versions does not establish a lock digest or wheel provenance."
+    },
+    {
+      "target": "sourceMappingSha256",
+      "origin": "INDEPENDENT_HOST_EVIDENCE",
+      "source": "Host-controlled applicable sourceMappings; research_runtime/input_admission.py:mapping_digest and _context",
+      "condition": "The supplied mapping digest must match mapping_digest. Digest agreement does not prove the mapping applies to the model or that record evidence is authentic."
+    },
+    {
+      "target": "graphProtocolSha256",
+      "origin": "TABLE_CONSTANT",
+      "source": "research_runtime/input_admission.py:_model table-family branch",
+      "value": null,
+      "condition": "Null for these table models. No implicit extension to a graph arm."
+    }
+  ],
+  "hostContextFields": [
+    {"target": "schemaVersion", "origin": "EXISTING_CONTEXT_SCHEMA", "source": "research_runtime/input_admission.py:CONTEXT_SCHEMA"},
+    {"target": "dataVersion", "origin": "INDEPENDENT_HOST_SNAPSHOT", "source": "Controlled snapshot identity, not a version copied from incoming JSON"},
+    {"target": "indexDate", "origin": "INDEPENDENT_HOST_SNAPSHOT", "source": "Controlled cohort/index policy and subject snapshot"},
+    {"target": "availabilityPolicy", "origin": "INDEPENDENT_HOST_SNAPSHOT", "source": "Explicit retrospective/as-of scope, not a client-selected downgrade"},
+    {"target": "model", "origin": "MODEL_FIELD_MAP_ABOVE", "source": "All twelve fields with the required independent evidence"},
+    {"target": "sourceMappings", "origin": "INDEPENDENT_HOST_SOURCE_MAPPING", "source": "Applicable dataset/table/field/release/language/instrument/processing mapping"},
+    {"target": "evidence", "origin": "INDEPENDENT_HOST_RECORD_EVIDENCE", "source": "Subject/feature/complete-observation binding, including missingness"}
+  ],
+  "additionalHostResponsibilities": [
+    {"name": "model_state_token", "providedByLoaderIdentity": false, "requirement": "Effective fingerprint of all relevant parameters, preprocessing, feature/class order and actual computation; a constant hexadecimal token is not evidence"},
+    {"name": "execution_permission", "providedByLoaderIdentity": false, "requirement": "Independent host authorization for this exact request and context; no JSON flag can grant it"},
+    {"name": "business_access_and_persistence", "providedByLoaderIdentity": false, "requirement": "Java/caller ownership of object access, task, idempotency and result handling; not implemented by an in-memory permit"}
+  ],
+  "decisions": {
+    "fieldMapping": "SPECIFIED",
+    "directLoaderIdentityAsCompleteModel": "NO_GO_INSUFFICIENT_FIELDS",
+    "actualHostEvidence": "NOT_EVALUATED",
+    "realModelBinding": "NOT_ESTABLISHED_BY_THIS_SOURCE_ONLY_AUDIT",
+    "newProductionAdapter": "NOT_JUSTIFIED_BY_FIELD_MAPPING_ALONE",
+    "clinicalOrCausalCertification": false
+  }
+}

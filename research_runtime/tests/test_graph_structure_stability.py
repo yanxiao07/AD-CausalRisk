@@ -24,7 +24,7 @@ def setUpModule():
     _guard_active = True
     _initial_modules = set(sys.modules)
     for key in ACCOUNTING: ACCOUNTING[key] = 0
-    root = Path(__file__).resolve().parents[4]
+    root = Path(__file__).resolve().parents[2]
     def audit(event, args):
         if not _guard_active: return
         if event == 'socket.connect':

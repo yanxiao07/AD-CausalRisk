@@ -21,6 +21,8 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 研究运行时已包含[分组Shapley/LIME及表格编排](docs/Table_Grouped_Study_Execution.md)、[输入声明一致性校验](docs/Real_Input_Admission.md)与[单次内存CIF调用](docs/InMemory_Research_Inference.md)。方法、构造验收和真实研究结论分别报告；不加入受控数据/权重，不改变共享HTTP或默认模型。
 
+七/十变量的[Python接入候选](docs/Research_Model_Integration_Candidate.md)补充六个表格组合、[模型身份到宿主上下文的映射](docs/Research_Model_Identity_Map.md)和[人工预测/解释绑定示例](docs/Prediction_Explanation_Binding_Candidate.md)。[宿主证据核对](docs/Research_Host_Evidence_Admission.md)保留已定位材料与剩余资格缺口，完整准入仍为NO_GO；人工示例通过不表示真实模型已接入业务。
+
 ## 核心能力
 
 新增离线评价与监测见[研究运行说明](research_runtime/README.md)：自然模态分层、固定结构选择稳定性、未知结局分类/DCA补全界限及同一快照的漂移/性能联合报告。它们复用调用方内存，不改变当前合成业务服务或默认模型。固定图增益阴性、结构四折不可估和真实阈值报告整表抑制均保留；真实监控与临床用途未完成。
@@ -35,7 +37,7 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 以下为当前分支的实现范围；完整验收条件以[课程需求](docs/Course_SRS_V3_2.md)为准。顶部徽章展示 `main` 分支的 CI，功能分支的检查结果请查看对应提交或 PR。
 
-核对日期：2026-11-04。本次Python分支基于main `5f6dfd0`，已包含[PR #18](https://github.com/yanxiao07/AD-CausalRisk/pull/18)合并的Vue业务前端和Java互操作/失败持久化修复。较早的[登录页PR #12](https://github.com/yanxiao07/AD-CausalRisk/pull/12)仍独立开放，其状态不代表main缺少当前登录页。各模块已有实现、实际验收与研究模型接入分别记录。
+核对日期：2026-11-04。本次Python分支基于main `57220d3`，已包含[PR #18](https://github.com/yanxiao07/AD-CausalRisk/pull/18)的Vue业务前端和Java互操作/失败持久化修复、[PR #19](https://github.com/yanxiao07/AD-CausalRisk/pull/19)的离线评价/监测原语及[PR #20](https://github.com/yanxiao07/AD-CausalRisk/pull/20)的分层研究CI。各模块已有实现、实际验收与研究模型接入分别记录。
 
 | 模块 | 已有实现 | 后续工作 |
 | --- | --- | --- |
@@ -202,7 +204,7 @@ py -3.11 -m venv .venv-research-graph
 .venv-research-graph/Scripts/python.exe -m unittest research_runtime.tests.test_graph research_runtime.tests.test_graph_native research_runtime.tests.test_graph_training research_runtime.tests.test_graph_explanation -v
 ```
 
-上述研究测试包含人工数据构造拟合，不读取真实队列或权重。已有固定真实研究不因源码发布重训；源码交付复用既有训练验收，发布检查只运行课程回归、无优化图检查与兼容性构建，不重新训练真实模型。现有Python CI发现`tests/`，不自动覆盖可选研究模块。协议机器文件保留原始字节，阶段文档以交付状态说明区分历史与当前，最新完成项及唯一下一任务以[Python需求状态](docs/Python_Requirement_Status.md)为准。
+上述研究测试包含人工数据构造拟合，不读取真实队列或权重。已有固定真实研究不因源码发布重训。课程Python CI只发现`tests/`；独立的研究原语CI显式选择35项标准库和123项NumPy人工检查，不发现整个研究测试目录，不执行预测拟合、模型加载或真实研究。最小依赖与对应命令见[研究运行说明](research_runtime/README.md#研究原语分层ci)。协议机器文件保留原始字节，阶段文档以交付状态说明区分历史与当前，最新完成项及唯一下一任务以[Python需求状态](docs/Python_Requirement_Status.md)为准。
 
 ### Java
 
@@ -213,6 +215,7 @@ py -3.11 -m venv .venv-research-graph
 | 工作流 | 当前配置 |
 | --- | --- |
 | [Python service and contract checks](.github/workflows/python-base.yml) | Python 3.11 / 3.12，固定测试依赖，`unittest` |
+| [Python research primitive checks](.github/workflows/python-research-primitives.yml) | Windows / Ubuntu × Python 3.11 / 3.12，标准库35项与仅NumPy123项分别运行 |
 | [Java backend build and tests](.github/workflows/backend-build.yml) | JDK 21，Maven `verify`，H2 测试 |
 
 推送和 PR 会触发上述工作流；实际结果以 [GitHub Actions](https://github.com/yanxiao07/AD-CausalRisk/actions) 为准。前端已有安装、构建和测试脚本，尚未配置专用CI工作流。
