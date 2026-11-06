@@ -1,6 +1,6 @@
 <template>
   <div class="qc-page">
-    <PageHeader title="数据质控" subtitle="导入后的异常项由系统列出，研究员或管理员逐条通过/驳回。">
+    <PageHeader back title="数据质控" subtitle="导入后的异常项由系统列出，研究员或管理员逐条通过/驳回。">
       <template #extra>
         <el-radio-group v-model="status" size="small" @change="reload">
           <el-radio-button label="PENDING">待审</el-radio-button>

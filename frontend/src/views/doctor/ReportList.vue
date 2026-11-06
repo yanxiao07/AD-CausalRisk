@@ -1,6 +1,6 @@
 <template>
   <div class="report-page">
-    <PageHeader title="评估报告" subtitle="按评估 ID 生成可打印的个体化报告。">
+    <PageHeader back title="评估报告" subtitle="按评估 ID 生成可打印的个体化报告。">
       <template #extra>
         <el-input
           v-model="inputId"

@@ -199,6 +199,12 @@ class AssessmentApiTest {
         assertThat(created.get("data").get("status").asText()).isEqualTo("FAILED");
         assertThat(created.get("data").get("errorCode").asText())
                 .isEqualTo(RestAgentClient.CODE_TIMEOUT);
+        // The *first* response must already be sanitised: the raw BusinessException message
+        // contains the upstream URL and the failure detail, and none of it may reach the caller.
+        String firstMessage = created.get("data").get("message").asText();
+        assertThat(firstMessage).isEqualTo("调用算法服务超时，未在时限内返回结果");
+        assertThat(firstMessage).doesNotContain("127.0.0.1").doesNotContain("8091")
+                .doesNotContain("I/O error").doesNotContain("BusinessException");
         long taskId = created.get("data").get("taskId").asLong();
 
         JsonNode refetched = bodyOf(mockMvc.perform(
@@ -214,6 +220,106 @@ class AssessmentApiTest {
         // never leak internals into the persisted reason
         assertThat(message).doesNotContain("127.0.0.1").doesNotContain("8091")
                 .doesNotContain("I/O error").doesNotContain("BusinessException");
+    }
+
+    /** End-to-end write: PENDING -> agent mock -> COMPLETED task plus a stored result. */
+    @Test
+    void assessmentListIsPagedWithoutAgentResult() throws Exception {
+        when(agentClient.createRun(any(AgentRequest.class))).thenReturn(completedResult("0.77"));
+        MockHttpSession admin = login("admin");
+
+        JsonNode created = bodyOf(mockMvc.perform(post("/api/assessment-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "assessment-list")
+                        .content(createRequestJson(24))
+                        .session(admin))
+                .andExpect(status().isOk())
+                .andReturn());
+        long assessmentId = created.get("data").get("assessmentId").asLong();
+
+        JsonNode page = bodyOf(mockMvc.perform(get("/api/assessments?page=1&pageSize=5").session(admin))
+                .andExpect(status().isOk())
+                .andReturn());
+
+        JsonNode data = page.get("data");
+        assertThat(data.get("page").asInt()).isEqualTo(1);
+        assertThat(data.get("pageSize").asInt()).isEqualTo(5);
+        assertThat(data.get("total").asLong()).isGreaterThanOrEqualTo(1);
+
+        JsonNode row = null;
+        for (JsonNode item : data.get("items")) {
+            if (item.get("subjectId").asLong() == subjectId) {
+                row = item;
+                break;
+            }
+        }
+        assertThat(row).as("the created assessment must appear in the list").isNotNull();
+        assertThat(row.get("assessmentId").asLong()).isEqualTo(assessmentId);
+        assertThat(row.get("reviewStatus").asText()).isEqualTo("PENDING");
+        assertThat(row.get("riskLevel").asText()).isEqualTo("HIGH");
+        // The whole point of the endpoint: no heavy result payload on the list.
+        assertThat(row.has("agentResult")).isFalse();
+    }
+
+    @Test
+    void taskListIsPagedAndCarriesAssessmentId() throws Exception {
+        when(agentClient.createRun(any(AgentRequest.class))).thenReturn(completedResult("0.5"));
+        MockHttpSession admin = login("admin");
+
+        JsonNode created = bodyOf(mockMvc.perform(post("/api/assessment-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "task-list")
+                        .content(createRequestJson(24))
+                        .session(admin))
+                .andExpect(status().isOk())
+                .andReturn());
+        long taskId = created.get("data").get("taskId").asLong();
+        long assessmentId = created.get("data").get("assessmentId").asLong();
+
+        JsonNode page = bodyOf(mockMvc.perform(get("/api/assessment-tasks?page=1&pageSize=5").session(admin))
+                .andExpect(status().isOk())
+                .andReturn());
+
+        JsonNode row = null;
+        for (JsonNode item : page.get("data").get("items")) {
+            if (item.get("taskId").asLong() == taskId) {
+                row = item;
+                break;
+            }
+        }
+        assertThat(row).as("the created task must appear in the history").isNotNull();
+        assertThat(row.get("status").asText()).isEqualTo("COMPLETED");
+        assertThat(row.get("assessmentId").asLong()).isEqualTo(assessmentId);
+        assertThat(page.get("data").get("total").asLong()).isGreaterThanOrEqualTo(1);
+    }
+
+    /** A patient without a grant on this subject must not see it in either list. */
+    @Test
+    void listsAreFilteredBySubjectVisibility() throws Exception {
+        when(agentClient.createRun(any(AgentRequest.class))).thenReturn(completedResult("0.4"));
+        MockHttpSession admin = login("admin");
+        bodyOf(mockMvc.perform(post("/api/assessment-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "visibility")
+                        .content(createRequestJson(24))
+                        .session(admin))
+                .andExpect(status().isOk())
+                .andReturn());
+
+        MockHttpSession patient = login("patient");
+        JsonNode assessments = bodyOf(mockMvc.perform(get("/api/assessments").session(patient))
+                .andExpect(status().isOk())
+                .andReturn());
+        for (JsonNode item : assessments.get("data").get("items")) {
+            assertThat(item.get("subjectId").asLong()).isNotEqualTo(subjectId);
+        }
+
+        JsonNode tasks = bodyOf(mockMvc.perform(get("/api/assessment-tasks").session(patient))
+                .andExpect(status().isOk())
+                .andReturn());
+        for (JsonNode item : tasks.get("data").get("items")) {
+            assertThat(item.get("subjectId").asLong()).isNotEqualTo(subjectId);
+        }
     }
 
     /** End-to-end write: PENDING -> agent mock -> COMPLETED task plus a stored result. */

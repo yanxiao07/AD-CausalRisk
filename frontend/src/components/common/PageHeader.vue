@@ -25,6 +25,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
+import { useUserStore } from '@/stores/user.js'
 
 defineProps({
   /** 主标题 */
@@ -36,7 +37,17 @@ defineProps({
 })
 
 const router = useRouter()
-const goBack = () => router.back()
+const userStore = useUserStore()
+
+/**
+ * 优先回退到上一页；但如果这个页面是直接从链接/新标签打开的，浏览器没有可回退的历史，
+ * 此时退回本角色工作台，避免按钮点了毫无反应。
+ */
+function goBack() {
+  const hasHistory = window.history.state?.back != null && window.history.length > 1
+  if (hasHistory) router.back()
+  else router.push(userStore.homePath || '/')
+}
 </script>
 
 <style scoped>
@@ -56,8 +67,25 @@ const goBack = () => router.back()
 }
 
 .page-header__back {
-  margin-top: 2px;
+  flex: 0 0 auto;
+  margin-top: 3px;
+  padding: 6px 10px;
+  height: auto;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 600;
   color: var(--muted);
+  transition: color 0.16s ease, background-color 0.16s ease;
+}
+
+.page-header__back:hover {
+  color: var(--brand-700);
+  background: rgba(10, 115, 173, 0.08);
+}
+
+.page-header__back:focus-visible {
+  outline: 2px solid rgba(74, 155, 190, 0.8);
+  outline-offset: 2px;
 }
 
 .page-header__text {

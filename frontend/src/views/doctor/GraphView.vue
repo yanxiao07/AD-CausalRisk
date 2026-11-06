@@ -1,6 +1,6 @@
 <template>
   <div class="graph-page">
-    <PageHeader title="因果图谱" subtitle="在更大的画布上查看个体因果网络；支持拖拽节点与滚轮缩放。">
+    <PageHeader back title="因果图谱" subtitle="在更大的画布上查看个体因果网络；支持拖拽节点与滚轮缩放。">
       <template #extra>
         <el-input
           v-model="inputId"

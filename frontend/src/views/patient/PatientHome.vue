@@ -1,21 +1,25 @@
 <template>
   <div class="patient-home">
-    <!-- 卡片 1：风险评估状态 -->
+    <!-- 卡片 1：风险评估状态（来自 /api/patients/me/summary 的脱敏结论） -->
     <section class="hcard hcard--status" aria-labelledby="status-title">
       <p id="status-title" class="hcard__label">风险评估状态</p>
 
       <p v-if="state === 'loading'" class="hcard__status is-muted">正在读取您的档案…</p>
-      <p v-else class="hcard__status" aria-live="polite">您的报告正在等待医生复核</p>
+      <p v-else class="hcard__status" aria-live="polite">{{ statusText }}</p>
 
       <p class="hcard__note">
-        <template v-if="state === 'ready'">
-          已绑定档案：{{ subject.alias }}（{{ subject.subjectCode }}）。医生确认后，这里会显示通俗的风险说明。
+        <template v-if="state === 'ready' && summary?.subjectId">
+          已绑定档案：{{ summary.alias || '—' }}（{{ summary.subjectCode || '—' }}）。
         </template>
         <template v-else-if="state === 'degraded'">
           {{ degradeReason }}。您可以稍后重试，或直接联系医生。
         </template>
-        <template v-else> 正在获取档案信息，请稍候。 </template>
+        <template v-else-if="state === 'loading'"> 正在获取档案信息，请稍候。 </template>
       </p>
+
+      <ul v-if="state === 'ready' && summary?.limitations?.length" class="hcard__limitations">
+        <li v-for="item in summary.limitations" :key="item">{{ item }}</li>
+      </ul>
 
       <el-button v-if="state === 'degraded'" class="hcard__retry" @click="load">重新加载</el-button>
     </section>
@@ -23,30 +27,16 @@
     <!-- 卡片 2：下次复诊 -->
     <section class="hcard" aria-labelledby="visit-title">
       <p id="visit-title" class="hcard__label">下次复诊</p>
-      <p
-        class="hcard__value"
-        :class="{ 'is-empty': !nextVisit, 'is-error': followUpState === 'failed' }"
-      >
-        {{ nextVisitText }}
+      <p class="hcard__value" :class="{ 'is-empty': !summary?.followUpSummary }">
+        {{ followUpText }}
       </p>
       <p class="hcard__note">
-        <template v-if="nextVisit">复诊事项：{{ nextVisit.purpose }}</template>
-        <template v-else-if="followUpState === 'loading'">正在读取随访安排…</template>
-        <template v-else-if="followUpState === 'failed'">
-          读取复诊安排失败，请稍后重试；这不代表医生没有安排复诊。
-        </template>
-        <template v-else-if="state === 'degraded'">
-          绑定健康档案后，这里会显示医生安排的复诊时间。
-        </template>
-        <template v-else>医生尚未安排复诊；如有变化会电话通知。</template>
+        {{
+          state === 'loading'
+            ? '正在读取随访安排…'
+            : '复诊安排以医院通知为准；如有变化请电话确认。'
+        }}
       </p>
-      <el-button
-        v-if="followUpState === 'failed'"
-        class="hcard__retry"
-        @click="load"
-      >
-        重新读取
-      </el-button>
     </section>
 
     <!-- 卡片 3：联系医生 -->
@@ -61,68 +51,38 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import { listSubjects } from '@/api/subjects.js'
-import { listFollowUps } from '@/api/followups.js'
+import { getPatientSummary } from '@/api/patients.js'
 
 /**
- * 患者端只呈现三件事：状态结论、下次复诊、联系医生。
- * 契约里没有已实现的患者摘要端点（GET /api/assessments/{id} 对 PATIENT 返回 403），
- * 因此状态卡固定展示"等待医生复核"，并尽量补上"是否已绑定档案 / 复诊安排"这类真实信息。
+ * 患者首页只呈现三件事：复核对结论、下次复诊、联系医生。
+ *
+ * 结论来自 GET /api/patients/me/summary —— 后端已经脱敏，不含 riskScore、因果图或解释贡献；
+ * 前端只负责排版，不再自己"猜"状态。
  */
 const state = ref('loading') // loading | ready | degraded
-const subject = ref(null)
-const nextVisit = ref(null)
+const summary = ref(null)
 const degradeReason = ref('')
-/** 复诊安排的独立状态：读失败不能被当成"医生没安排" */
-const followUpState = ref('idle') // idle | loading | ready | failed
 
-const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
-  year: 'numeric',
-  month: 'long',
-  day: 'numeric',
-  weekday: 'long'
+const statusText = computed(() => {
+  if (state.value === 'ready' && summary.value?.summary) return summary.value.summary
+  if (state.value === 'degraded') return '暂时无法查看您的档案'
+  return '正在读取您的档案…'
 })
 
-const nextVisitText = computed(() => {
-  if (followUpState.value === 'failed') return '读取复诊安排失败'
-  if (followUpState.value === 'loading') return '正在读取…'
-  if (!nextVisit.value?.scheduledAt) return '暂无安排'
-  const date = new Date(nextVisit.value.scheduledAt)
-  return Number.isNaN(date.getTime()) ? '暂无安排' : dateFormatter.format(date)
+const followUpText = computed(() => {
+  if (state.value === 'loading') return '正在读取…'
+  if (state.value === 'degraded') return '暂时无法读取'
+  return summary.value?.followUpSummary || '目前没有已安排的复诊'
 })
 
 async function load() {
   state.value = 'loading'
   degradeReason.value = ''
-  nextVisit.value = null
-  followUpState.value = 'idle'
   try {
-    const page = await listSubjects({ page: 1, pageSize: 1 })
-    const first = Array.isArray(page?.items) ? page.items[0] : null
-    if (!first) {
-      state.value = 'degraded'
-      degradeReason.value = '您的账号还没有绑定健康档案'
-      return
-    }
-    subject.value = first
-
-    followUpState.value = 'loading'
-    try {
-      const list = await listFollowUps(first.id)
-      const planned = (Array.isArray(list) ? list : [])
-        .filter((item) => item.status === 'PLANNED' && item.scheduledAt)
-        .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
-      nextVisit.value = planned[0] ?? null
-      followUpState.value = 'ready'
-    } catch {
-      // 读失败 ≠ 没有安排：单独标成 failed，让卡片说"读取失败"而不是"医生尚未安排"
-      nextVisit.value = null
-      followUpState.value = 'failed'
-    }
-
+    summary.value = await getPatientSummary()
     state.value = 'ready'
   } catch (problem) {
-    followUpState.value = 'idle'
+    summary.value = null
     state.value = 'degraded'
     if (problem?.code === 403) degradeReason.value = '暂时无法查看您的档案，请联系医生确认授权'
     else if (problem?.errorCode === 'NETWORK_ERROR') degradeReason.value = '网络连接异常，请稍后重试'
@@ -131,8 +91,8 @@ async function load() {
 }
 
 async function askHelp() {
-  const contact = subject.value
-    ? `您的档案：${subject.value.alias}（${subject.value.subjectCode}）。`
+  const contact = summary.value?.subjectCode
+    ? `您的档案：${summary.value.alias || '—'}（${summary.value.subjectCode}）。`
     : '您的档案尚未绑定。'
   await ElMessageBox.alert(
     `${contact}请联系您的主治医生；联系方式将在账号与档案绑定后显示在本页。紧急情况请拨打 120。`,
@@ -171,36 +131,33 @@ onMounted(load)
   color: var(--muted);
 }
 
-/* 适老：结论字号 30–38px，行高宽松 */
+/* 适老：结论字号 22–30px（结论句比"等待复核"长，字号略收一档），行高宽松 */
 .hcard__status {
   margin: 0;
   font-family: var(--font-heading);
-  font-size: clamp(30px, 5.2vw, 38px);
-  line-height: 1.28;
+  font-size: clamp(22px, 3.6vw, 30px);
+  line-height: 1.45;
   font-weight: 700;
   color: var(--brand-700);
 }
 
 .hcard__status.is-muted {
-  font-size: clamp(22px, 3.6vw, 26px);
+  font-size: clamp(20px, 3.2vw, 24px);
   color: var(--muted);
 }
 
 .hcard__value {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(28px, 5vw, 34px);
+  font-size: clamp(24px, 4.2vw, 30px);
   font-weight: 700;
   color: var(--ink);
+  line-height: 1.5;
 }
 
 .hcard__value.is-empty {
-  font-size: clamp(24px, 4vw, 28px);
+  font-size: clamp(20px, 3.4vw, 24px);
   color: var(--muted);
-}
-
-.hcard__value.is-error {
-  color: var(--danger);
 }
 
 .hcard__note {
@@ -208,6 +165,14 @@ onMounted(load)
   font-size: 16px;
   line-height: 1.7;
   color: var(--muted);
+}
+
+.hcard__limitations {
+  margin: 16px 0 0;
+  padding-left: 20px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--soft);
 }
 
 .hcard__retry {

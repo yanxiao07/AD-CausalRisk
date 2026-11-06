@@ -1,6 +1,6 @@
 <template>
   <div class="import-center">
-    <PageHeader
+    <PageHeader back
       title="数据导入"
       subtitle="上传 CSV → 预检 → 确认入库。预检不写库，确认后才落库。"
     >

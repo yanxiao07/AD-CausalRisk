@@ -1,6 +1,6 @@
 <template>
   <div class="followup-page">
-    <PageHeader title="随访计划" subtitle="为受试者安排复诊，并把已完成的随访标记掉。">
+    <PageHeader back title="随访计划" subtitle="为受试者安排复诊，并把已完成的随访标记掉。">
       <template #extra>
         <el-button :icon="Refresh" @click="reload">刷新</el-button>
         <el-button type="primary" :disabled="!subjectId" @click="dialogOpen = true">

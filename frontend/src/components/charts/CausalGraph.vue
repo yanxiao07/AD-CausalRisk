@@ -9,7 +9,7 @@
     </div>
     <p class="causal-graph__note">
       连线表示<strong>条件性关联</strong>（direction = CONDITIONAL），不是病因证明；
-      箭头方向用于解释模型输入，不代表临床因果结论。
+      箭头方向用于解释模型输入，不代表临床因果结论。可拖动查看，<strong>双击复位</strong>。
     </p>
   </div>
 </template>
@@ -136,12 +136,17 @@ function buildOption(graph) {
         // 画布越高，力参数同步放大，否则节点会缩在中间一小团
         type: 'graph',
         layout: 'force',
-        roam: true,
+        // 只允许拖拽平移，不允许缩放。
+        // 原因：graph 的 roam 缩放会放大节点与连线，但 edgeLabel（"先验关联"这类文字）的
+        // 字号与位置不会同步跟随，缩放后文字会跟线条脱节、停在原处。这张图是解释用的静态
+        // 结构图，读清楚比缩放重要，因此把 zoom 锁死在 1。
+        roam: 'move',
         draggable: true,
-        top: 28,
-        bottom: 28,
-        left: 28,
-        right: 28,
+        // 留足边距：节点标签放在下方，边距太小会被裁在卡片边缘
+        top: 36,
+        bottom: 36,
+        left: 36,
+        right: 36,
         symbol: 'circle',
         edgeSymbol: ['none', 'arrow'],
         edgeSymbolSize: 7,
@@ -159,6 +164,7 @@ function buildOption(graph) {
         edgeLabel: {
           show: showEdgeLabels,
           formatter: '{c}',
+          // 固定 10px：跟随容器缩放会把标签放大成"巨大文字"
           fontSize: 10,
           color: '#5f7887',
           backgroundColor: 'rgba(255,255,255,0.9)',
@@ -167,10 +173,12 @@ function buildOption(graph) {
           align: 'middle',
           verticalAlign: 'middle'
         },
+        // 限制缩放范围：roam 已锁定为平移，这里再兜一层，避免任何入口把 zoom 调离 1
+        scaleLimit: { min: 1, max: 1 },
         emphasis: {
           focus: 'adjacency',
           lineStyle: { width: 2.4, opacity: 1 },
-          edgeLabel: { show: true, fontSize: 11, color: '#11344b' }
+          edgeLabel: { show: true, fontSize: 10, color: '#11344b' }
         },
         force: {
           // 斥力要够大才不挤在一起，但太大会把边缘节点挤出画布。
@@ -179,7 +187,9 @@ function buildOption(graph) {
           edgeLength: [110 * layoutScale, 170 * layoutScale],
           gravity: 0.09,
           friction: 0.2,
-          layoutAnimation: true
+          // 关掉持续动画：force 布局一次算完就停，避免演示时图一直轻微抖动、
+          // 也让"位置稳定"这件事可预期（拖拽/缩放后不会自己再动）。
+          layoutAnimation: false
         },
         data: nodes,
         links: edges,
@@ -199,10 +209,58 @@ function render() {
   chart.setOption(buildOption(graph), { notMerge: true })
 }
 
-onMounted(() => {
+/**
+ * 只有容器拿到正尺寸才初始化。
+ *
+ * el-drawer 的滑入动画约 300ms，动画期间容器宽度是 0；此时 init 会让 ECharts 按 0 尺寸
+ * 计算缩放，表现就是字号被无限放大、线条飞出画布。这里先等动画结束，再用 ResizeObserver
+ * 兜底（动画超过 300ms 或之后才挂载时也能补上）。
+ */
+const INIT_DELAY_MS = 300
+
+let initTimer = null
+let lastWidth = 0
+
+function hasUsableSize(el) {
+  if (!el) return false
+  const { width, height } = el.getBoundingClientRect()
+  return width >= 40 && height >= 40
+}
+
+function ensureChart() {
+  if (chart) return chart
+  if (!hasUsableSize(chartEl.value)) return null
   chart = echarts.init(chartEl.value, null, { renderer: 'canvas' })
-  render()
-  observer = new ResizeObserver(() => chart?.resize())
+  lastWidth = chartEl.value.getBoundingClientRect().width
+  return chart
+}
+
+onMounted(() => {
+  // 不立刻 init：等抽屉/弹窗的 slide 动画结束、容器尺寸稳定
+  initTimer = window.setTimeout(() => {
+    initTimer = null
+    if (!ensureChart()) return
+    render()
+    // 拖拽平移会把整图挪出可视区，双击重新布局复位，避免"图跑没了"
+    chart.on('dblclick', () => render())
+  }, INIT_DELAY_MS)
+
+  observer = new ResizeObserver(() => {
+    const el = chartEl.value
+    if (!el) return
+    const { width, height } = el.getBoundingClientRect()
+    if (width < 1 || height < 1) return
+
+    if (!chart) {
+      // 动画比 300ms 更久：尺寸一稳定就补上初始化
+      if (ensureChart()) render()
+      return
+    }
+    chart.resize()
+    // 从 0 宽恢复成正常宽度时，重新布局一次，修掉按错误尺寸算出的力导向布局
+    if (lastWidth === 0) render()
+    lastWidth = width
+  })
   observer.observe(chartEl.value)
 })
 
@@ -213,6 +271,8 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  if (initTimer) window.clearTimeout(initTimer)
+  initTimer = null
   observer?.disconnect()
   observer = null
   chart?.dispose()
@@ -230,6 +290,8 @@ onBeforeUnmount(() => {
 
 .causal-graph__canvas {
   width: 100%;
+  /* 高度由内联样式给定；overflow 防止平移/缩放时线条溢出卡片 */
+  overflow: hidden;
 }
 
 .causal-graph__legend {
