@@ -144,6 +144,17 @@
             <span id="form-error-text">{{ error }}</span>
           </div>
 
+          <button
+            v-if="sessionIssue"
+            type="button"
+            class="session-retry"
+            id="session-retry"
+            :disabled="retryingLogout || loading"
+            @click="retryLogout"
+          >
+            {{ retryingLogout ? '正在重试退出…' : '重试退出登录' }}
+          </button>
+
           <div class="form-options">
             <label class="remember" title="只在本设备保留账号，不保存密码">
               <input type="checkbox" id="remember" v-model="remember" />
@@ -157,7 +168,7 @@
             <button class="forgot" type="button" id="forgot-link" @click="$emit('help')">忘记密码？</button>
           </div>
 
-          <button class="submit" type="submit" id="submit-btn" :class="{ 'is-loading': loading }" :disabled="loading">
+          <button class="submit" type="submit" id="submit-btn" :class="{ 'is-loading': loading }" :disabled="loading || retryingLogout">
             <span class="spinner" aria-hidden="true"></span>
             <span id="submit-label">{{ loading ? '正在验证身份…' : roleMeta[currentRole].cta }}</span>
             <svg class="submit-arrow" width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -203,7 +214,7 @@
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { login as apiLogin } from '@/api/auth.js'
+import { closeSessionAndVerify, login as apiLogin } from '@/api/auth.js'
 import { rolePortraits } from '@/components/rolePortraits'
 import { roleMeta } from '@/data/roleMeta'
 
@@ -237,6 +248,9 @@ const remember = ref(false)
 const showPassword = ref(false)
 const loading = ref(false)
 const error = ref('')
+/** 角色不符后会话未确认退出（有效或无法确认）时，显示「重试退出登录」按钮 */
+const sessionIssue = ref('')
+const retryingLogout = ref(false)
 const status = ref('')
 const invalidField = ref('')
 const shake = ref(false)
@@ -310,6 +324,7 @@ function storeRememberedAccount() {
 
 function clearError() {
   if (error.value) error.value = ''
+  // 注意：不清 sessionIssue —— 退出未确认时，用户改账号/密码不应把「重试退出登录」入口藏掉
   invalidField.value = ''
 }
 
@@ -335,6 +350,11 @@ function roleHomePath(role) {
  */
 async function submit() {
   if (loading.value) return
+  // 退出请求仍在路上时不允许登录：否则迟到的登出会注销刚建立的新会话
+  if (retryingLogout.value) {
+    fail('上一个会话正在退出，请稍候再试。')
+    return
+  }
   clearError()
   status.value = ''
 
@@ -346,10 +366,12 @@ async function submit() {
   status.value = '正在验证身份…'
   try {
     // 统一走 api/auth.js -> api/request.js 的唯一 axios 实例（Envelope 脱壳 + 会话 Cookie）
-    const data = await apiLogin(account, password.value)
+    // 第三个参数是当前选中的身份：账号没有该角色时，login() 会在写登录态之前直接拒绝
+    const data = await apiLogin(account, password.value, props.currentRole)
 
     storeRememberedAccount()
     signedIn.value = true
+    sessionIssue.value = ''
     status.value = '身份验证通过'
     password.value = ''
     emit('logged-in', data ?? null)
@@ -360,9 +382,37 @@ async function submit() {
     if (problem?.message) fail(problem.message)
     else if (problem?.code === -1) fail('无法连接服务器，请确认后端已启动（默认 http://localhost:8080）。')
     else fail('登录失败，请稍后重试。')
+    // 角色不符且会话状态未确认：允许用户重试退出，而不是让他关掉浏览器。
+    // 其它错误（密码错、上一个会话正在退出…）**保留**已有入口，不清空。
+    if (
+      problem?.errorCode === 'ROLE_MISMATCH_SESSION_ACTIVE' ||
+      problem?.errorCode === 'ROLE_MISMATCH_SESSION_UNKNOWN'
+    ) {
+      sessionIssue.value = problem.errorCode
+    }
     status.value = error.value
   } finally {
     loading.value = false
+  }
+}
+
+/** 重试退出登录：再次登出并用 /api/me 复核，成功就允许重新选择身份。 */
+async function retryLogout() {
+  if (retryingLogout.value) return
+  retryingLogout.value = true
+  try {
+    const session = await closeSessionAndVerify()
+    if (session === 'cleared') {
+      sessionIssue.value = ''
+      fail('已安全退出该会话，请重新选择身份登录。')
+    } else if (session === 'active') {
+      fail('会话仍未退出，请关闭浏览器后重试，或联系管理员处理。')
+    } else {
+      fail('仍无法确认会话状态（服务暂不可用），请稍后再试，或关闭浏览器。')
+    }
+    status.value = error.value
+  } finally {
+    retryingLogout.value = false
   }
 }
 

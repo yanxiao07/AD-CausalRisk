@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
  * login-3d.css —— 3D 登录页专属样式（仅由 views/LoginView.vue 引入）
  *
  * 设计令牌见 styles/tokens.css；这里只保留 .screen / .brain-stage /
@@ -344,6 +344,18 @@
   }
   .field-error[hidden]{display:none}
   .field-error svg{flex:0 0 auto;margin-top:1px}
+  /* 角色不符且会话未确认退出时的重试入口：贴着错误提示下方，样式克制以免喧宾夺主 */
+  .session-retry{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    margin:-9px 0 17px;padding:8px 14px;
+    border:1px solid rgba(48,111,144,.34);border-radius:10px;
+    background:rgba(255,255,255,.72);color:#2b6a8c;
+    font:inherit;font-size:12.5px;font-weight:600;letter-spacing:.02em;cursor:pointer;
+    transition:background .16s ease,color .16s ease,border-color .16s ease;
+  }
+  .session-retry:hover:not(:disabled){background:#fff;color:#0a73ad;border-color:rgba(10,115,173,.5)}
+  .session-retry:disabled{cursor:wait;opacity:.7}
+  .session-retry:focus-visible{outline:2px solid rgba(74,155,190,.8);outline-offset:2px}
   .input-wrap.is-shaking{animation:fieldShake .26s ease-in-out}
   .submit{
     min-height:52px;height:52px;font-size:14.5px;letter-spacing:.3px;border-radius:13px;
@@ -939,6 +951,16 @@ body.scene-detail-covered .brain-stage{
   opacity:0;
   pointer-events:none;
 }
+/* 抽屉打开时（body.scene-detail）右下角胶囊会压在指标卡上；抽屉自带「返回 3D 视图」，
+   桌面端直接让位。移动端仍保留（全屏抽屉下它是习惯性的返回入口）。
+   选择器要带上 .scene-open：CSS 里那条强制显示的规则用了 body.scene-detail.scene-open，特异性更高。 */
+@media (min-width:768px){
+  body.scene-detail.scene-open .explore-pill{
+    opacity:0!important;
+    visibility:hidden!important;
+    pointer-events:none!important;
+  }
+}
 .brain-stage .backdrop::before{opacity:.5}
 .brain-stage .wash-a{width:min(92%,1080px);height:min(92%,1080px)}
 .brain-stage .wash-b{width:min(48%,520px);height:min(48%,520px)}
@@ -1341,7 +1363,7 @@ body.scene-detail .detail-inner{padding-bottom:136px!important}
   position:relative;z-index:1;
   min-height:100%;
   display:flex;flex-direction:column;
-  padding:clamp(36px,4.6vw,78px) clamp(34px,5.2vw,92px) clamp(34px,4vw,64px);
+  padding:clamp(26px,3.2vw,52px) clamp(34px,5.2vw,92px) clamp(24px,2.8vw,40px);
 }
 .detail-top{
   display:flex;align-items:center;justify-content:space-between;gap:18px;
@@ -1365,27 +1387,40 @@ body.scene-detail .detail-inner{padding-bottom:136px!important}
 .detail-back:hover{background:#fff;color:#0a73ad;transform:translateX(-2px)}
 .detail-back svg{flex:0 0 auto}
 .detail-index{
-  margin-top:clamp(38px,5.5vh,74px);
+  margin-top:clamp(16px,2.4vh,38px);
   color:rgba(33,104,139,.23);
   font-family:var(--font-latin);
-  font-size:clamp(68px,8.6vw,142px);
+  font-size:clamp(56px,7vw,112px);
   line-height:.82;font-weight:700;letter-spacing:-.08em;
   pointer-events:none;
 }
 .detail-title{
-  margin:clamp(20px,2.6vh,32px) 0 0;
+  margin:clamp(12px,1.8vh,24px) 0 0;
   color:#0f3853;
   font-family:var(--font-heading);
-  font-size:clamp(38px,4.4vw,68px);
+  font-size:clamp(33px,3.9vw,56px);
   font-weight:700;line-height:1.08;letter-spacing:-.045em;
   max-width:760px;
+  /* 长标题（含英文副名）允许换行，不撑破抽屉 */
+  overflow-wrap:anywhere;
+}
+/* 英文副名：一行小号字，跟在中文标题下面，不参与主标题的字号缩放 */
+.detail-title__en{
+  display:block;
+  margin-top:clamp(8px,1vh,12px);
+  color:#5f8ca3;
+  font-family:var(--font-latin);
+  font-size:clamp(12px,.95vw,15px);
+  font-weight:600;
+  letter-spacing:.16em;
+  text-transform:uppercase;
 }
 .detail-desc{
-  margin:clamp(16px,2.4vh,26px) 0 0;
+  margin:clamp(10px,1.6vh,18px) 0 0;
   max-width:660px;
   color:#567483;
-  font-size:clamp(13.5px,1.15vw,16px);
-  line-height:1.95;
+  font-size:clamp(13px,1.06vw,15px);
+  line-height:1.85;
   letter-spacing:.01em;
 }
 .detail-tags{
@@ -1399,31 +1434,88 @@ body.scene-detail .detail-inner{padding-bottom:136px!important}
   color:#39728c;font-size:10.5px;letter-spacing:.07em;
 }
 .detail-tag::before{content:"";width:4px;height:4px;border-radius:50%;background:#36a6d4}
-.detail-metrics{
-  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:0;margin:clamp(30px,4.4vh,54px) 0 0;
-  border-top:1px solid rgba(93,153,180,.16);
-  border-bottom:1px solid rgba(93,153,180,.16);
+/* ---------- 展厅式区块：核心能力 / 技术亮点 / 业务指标 ---------- */
+.detail-block{
+  margin:clamp(16px,2.3vh,26px) 0 0;
 }
-.detail-metric{
-  min-width:0;padding:20px 20px 20px 0;
-  border-left:1px solid rgba(93,153,180,.14);
+.detail-block__label{
+  display:flex;align-items:center;gap:12px;
+  margin:0 0 14px;
+  color:#4a7488;font-family:var(--font-latin);
+  font-size:9.5px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;
 }
-.detail-metric:first-child{padding-left:0;border-left:0}
-.detail-metric:not(:first-child){padding-left:20px}
-.detail-metric span{
-  display:block;color:#7b96a4;font-family:var(--font-latin);
+.detail-block__label span{flex:0 0 auto}
+.detail-block__label::after{
+  content:"";flex:1 1 auto;height:1px;
+  background:linear-gradient(90deg,rgba(93,153,180,.34),rgba(93,153,180,0));
+}
+.detail-capability{
+  margin:0;max-width:680px;
+  color:#1b4a63;
+  font-size:clamp(15px,1.25vw,18px);
+  font-weight:600;line-height:1.85;letter-spacing:.01em;
+}
+.detail-highlights{
+  display:flex;flex-direction:column;gap:12px;
+  margin:0;padding:0;list-style:none;
+}
+.highlight{
+  display:flex;align-items:flex-start;gap:14px;
+  padding:11px 15px;border-radius:16px;
+  border:1px solid rgba(150,204,224,.32);
+  background:linear-gradient(140deg,rgba(255,255,255,.84),rgba(240,251,255,.62));
+  box-shadow:0 10px 26px -20px rgba(26,92,124,.55);
+}
+.highlight__icon{
+  flex:0 0 auto;display:grid;place-items:center;
+  width:36px;height:36px;border-radius:12px;
+  color:#0a73ad;background:rgba(10,115,173,.08);
+  border:1px solid rgba(10,115,173,.16);
+  font-size:17px;
+}
+.highlight__body{min-width:0}
+.highlight__body strong{
+  display:block;color:#14455f;font-size:13.5px;font-weight:700;letter-spacing:.01em;
+}
+.highlight__body p{
+  margin:5px 0 0;color:#61808f;font-size:12px;line-height:1.75;
+}
+
+/* 指标卡片：大号品牌色数字 + 下方小字说明 */
+.detail-stats{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;
+}
+.stat{
+  position:relative;min-width:0;
+  padding:16px 18px 15px;border-radius:18px;
+  border:1px solid rgba(150,204,224,.36);
+  background:linear-gradient(160deg,rgba(255,255,255,.94),rgba(238,250,255,.7));
+  box-shadow:0 16px 34px -26px rgba(26,92,124,.6);
+  overflow:hidden;
+}
+.stat::before{
+  content:"";position:absolute;left:0;right:0;top:0;height:2px;
+  background:linear-gradient(90deg,rgba(10,115,173,.55),rgba(10,115,173,0));
+}
+.stat__label{
+  margin:0;color:#6f8fa0;font-family:var(--font-latin);
   font-size:8.5px;letter-spacing:.18em;text-transform:uppercase;
 }
-.detail-metric strong{
-  display:block;margin-top:8px;color:#124a68;
-  font-family:var(--font-display);font-size:clamp(20px,2.1vw,29px);
-  line-height:1.15;letter-spacing:-.03em;font-weight:700;
+.stat__value{
+  margin:10px 0 6px;display:flex;align-items:baseline;gap:3px;
+  color:#0a73ad;font-family:var(--font-display);
+  font-size:clamp(28px,2.6vw,38px);font-weight:800;line-height:1.02;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;
 }
-.detail-metric small{display:block;margin-top:5px;color:#78909c;font-size:10px;line-height:1.5}
+.stat__value small{
+  font-size:12px;font-weight:700;letter-spacing:0;color:#4c8cae;
+}
+.stat__note{
+  margin:0;color:#7a95a3;font-size:10.5px;line-height:1.5;
+}
 .detail-note{
   display:flex;align-items:flex-start;gap:10px;
-  margin:auto 0 0;padding-top:34px;
+  margin:auto 0 0;padding-top:22px;
   color:#6f8997;font-size:10.5px;line-height:1.8;max-width:620px;
 }
 .detail-note::before{
@@ -1434,16 +1526,21 @@ body.scene-detail .detail-inner{padding-bottom:136px!important}
 .detail-drawer.is-open .detail-index,
 .detail-drawer.is-open .detail-title,
 .detail-drawer.is-open .detail-desc,
-.detail-drawer.is-open .detail-tags,
-.detail-drawer.is-open .detail-metrics,
+.detail-drawer.is-open .detail-block,
 .detail-drawer.is-open .detail-note{
-  animation:detailIn .55s cubic-bezier(.22,.8,.25,1) both;
+  animation:detailIn .6s cubic-bezier(.22,.8,.25,1) both;
 }
 .detail-drawer.is-open .detail-title{animation-delay:.05s}
 .detail-drawer.is-open .detail-desc{animation-delay:.09s}
-.detail-drawer.is-open .detail-tags{animation-delay:.13s}
-.detail-drawer.is-open .detail-metrics{animation-delay:.17s}
-.detail-drawer.is-open .detail-note{animation-delay:.2s}
+.detail-drawer.is-open .detail-block:nth-of-type(1){animation-delay:.14s}
+.detail-drawer.is-open .detail-block:nth-of-type(2){animation-delay:.2s}
+.detail-drawer.is-open .detail-block:nth-of-type(3){animation-delay:.26s}
+.detail-drawer.is-open .detail-note{animation-delay:.32s}
+/* 指标卡片单独再淡入一次，形成"逐张浮现"的观感（父级此刻已归位，不会叠加位移） */
+.detail-drawer.is-open .stat{animation:detailIn .5s cubic-bezier(.22,.8,.25,1) both}
+.detail-drawer.is-open .stat:nth-child(1){animation-delay:.32s}
+.detail-drawer.is-open .stat:nth-child(2){animation-delay:.39s}
+.detail-drawer.is-open .stat:nth-child(3){animation-delay:.46s}
 @keyframes detailIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 
 @media (max-width:767px){
@@ -1452,10 +1549,8 @@ body.scene-detail .detail-inner{padding-bottom:136px!important}
   .detail-kicker{font-size:8.2px;letter-spacing:.13em}
   .detail-back{font-size:10.5px;padding:7px 10px}
   .detail-note{font-size:11.2px}
-  .detail-metrics{grid-template-columns:1fr}
-  .detail-metric{border-left:0;border-top:1px solid rgba(93,153,180,.14);padding:14px 0}
-  .detail-metric:first-child{border-top:0;padding-top:0}
-  .detail-metric:not(:first-child){padding-left:0}
+  .detail-stats{grid-template-columns:1fr;gap:10px}
+  .highlight{padding:12px 13px;gap:12px}
   .detail-tags{gap:7px}
 }
 @media (prefers-reduced-motion:reduce){
@@ -1464,8 +1559,17 @@ body.scene-detail .detail-inner{padding-bottom:136px!important}
   .detail-drawer.is-open .detail-index,
   .detail-drawer.is-open .detail-title,
   .detail-drawer.is-open .detail-desc,
-  .detail-drawer.is-open .detail-tags,
-  .detail-drawer.is-open .detail-metrics,
+  .detail-drawer.is-open .detail-block,
+  .detail-drawer.is-open .stat,
   .detail-drawer.is-open .detail-note{animation:none!important}
 }
 
+/* 矮屏（1080p 及以下视口）：再压一档纵向节奏，让整块展台在首屏收尾 */
+@media (max-height:980px){
+  .detail-index{margin-top:10px;font-size:clamp(46px,5.8vw,88px)}
+  .detail-title{margin-top:10px}
+  .detail-block{margin-top:16px}
+  .detail-highlights{gap:8px}
+  .highlight{padding:9px 14px}
+  .detail-note{padding-top:16px}
+}

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * P1 冒烟测试：四种角色登录后的落地页、布局切换、动态菜单、路由守卫。
  *
  * 不依赖后端：用请求拦截把 /api/auth/login 与 /api/me 应答替换成指定角色，
@@ -104,8 +104,8 @@ try {
       page.waitForFunction(() => location.pathname !== '/login', { timeout: 20000 }),
       page.click('#submit-btn')
     ])
-    // 等布局与菜单渲染完
-    await page.waitForFunction(() => !!document.querySelector('.shell__main, .screen__main, .patient__main'), {
+    // 等布局与菜单渲染完（管理员也已统一到侧边栏布局，不再有 .screen__main）
+    await page.waitForFunction(() => !!document.querySelector('.shell__main, .patient__main'), {
       timeout: 15000
     })
 
@@ -147,24 +147,29 @@ try {
     check('landing path', state.path === EXPECTED_PATH[role], `${state.path} (expected ${EXPECTED_PATH[role]})`)
     check(
       'layout',
-      role === 'admin'
-        ? state.hasScreenBar && !state.hasSider
-        : role === 'patient'
-          ? state.hasPatientMain && !state.hasSider
-          : state.hasSider && !state.hasScreenBar,
+      role === 'patient'
+        ? state.hasPatientMain && !state.hasSider
+        : state.hasSider && !state.hasScreenBar,
       JSON.stringify({ sider: state.hasSider, screen: state.hasScreenBar, patient: state.hasPatientMain })
     )
     if (role === 'patient') {
       check('patient hides sidebar', !state.hasSider, `sider=${state.hasSider}`)
       check('patient font size', state.patientFontSize === '20px', state.patientFontSize)
     }
-    if (role === 'admin') {
-      check('screen nav from menus', state.navLabels.length === user.menus.length, state.navLabels.join(','))
-    } else if (role !== 'patient') {
+    if (role !== 'patient') {
+      // 四个角色现在共用同一套侧边栏：第一项是本角色工作台，其余来自后端 menus
       check(
         'sidebar menu = home + menus',
         state.menuLabels.length === user.menus.length + 1,
         `${state.menuLabels.length} items: ${state.menuLabels.join(',')}`
+      )
+    }
+    if (role === 'admin') {
+      // 深色大屏已移除：管理员不应再出现 .screen__bar / .screen__nav-item
+      check(
+        'admin has no dark screen chrome',
+        !state.hasScreenBar && state.navLabels.length === 0,
+        JSON.stringify({ screenBar: state.hasScreenBar, nav: state.navLabels })
       )
     }
     check('no page errors', consoleErrors.length === 0, consoleErrors[0] || 'none')

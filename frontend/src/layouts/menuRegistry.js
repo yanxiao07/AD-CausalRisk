@@ -53,8 +53,20 @@ export function buildMenuItems(menus = []) {
   })
 }
 
-/** 当前路径命中的菜单 key（用于高亮）。 */
+/**
+ * 当前路径命中的菜单 key（用于高亮）。
+ *
+ * 必须取"最长匹配"：大屏首页的 path 是 `/admin`，它是 `/admin/audit`、`/admin/users`、
+ * `/admin/system` 的前缀。若按数组顺序取第一个命中，所有子页面都会被高亮成"数据大屏"，
+ * 看起来就像点击导航没有生效（路由其实已经跳了）。
+ */
 export function activeKeyOf(items, path) {
-  const hit = items.find((item) => item.path && (path === item.path || path.startsWith(item.path + '/')))
+  let hit = null
+  for (const item of items) {
+    if (!item.path) continue
+    const matches = path === item.path || path.startsWith(item.path + '/')
+    if (!matches) continue
+    if (!hit || item.path.length > hit.path.length) hit = item
+  }
   return hit?.key ?? ''
 }

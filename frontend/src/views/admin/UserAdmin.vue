@@ -51,9 +51,9 @@ const rows = []
 
 .panel {
   padding: 20px 22px;
-  border: 1px solid rgba(120, 190, 235, 0.18);
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: linear-gradient(160deg, rgba(22, 54, 80, 0.72), rgba(12, 32, 50, 0.72));
+  background: #ffffff;
 }
 
 .panel__head {
@@ -68,15 +68,15 @@ const rows = []
   margin: 0;
   font-size: 15px;
   font-weight: 700;
-  color: #dcecfb;
+  color: var(--ink);
 }
 
 .panel__tag {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 999px;
-  color: #7fa6c4;
-  border: 1px solid rgba(120, 190, 235, 0.24);
+  color: var(--muted);
+  border: 1px solid var(--line);
 }
 
 .panel__hint,
@@ -84,12 +84,12 @@ const rows = []
   margin: 0 0 14px;
   font-size: 12px;
   line-height: 1.8;
-  color: #7fa6c4;
+  color: var(--muted);
 }
 
 .panel__foot {
   margin: 14px 0 0;
-  color: #5d86a4;
+  color: var(--soft);
 }
 
 .panel__hint code,
@@ -110,16 +110,16 @@ const rows = []
 .table :deep(.el-table th.el-table__cell),
 .table :deep(.el-table td.el-table__cell) {
   background: transparent;
-  color: #dcecfb;
-  border-bottom-color: rgba(120, 190, 235, 0.12);
+  color: var(--ink);
+  border-bottom-color: var(--line);
 }
 
 .table :deep(.el-table th.el-table__cell) {
-  color: #7fa6c4;
+  color: var(--muted);
   font-weight: 600;
 }
 
 .table :deep(.el-table__empty-text) {
-  color: #5d86a4;
+  color: var(--soft);
 }
 </style>

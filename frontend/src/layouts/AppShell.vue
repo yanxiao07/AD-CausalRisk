@@ -17,15 +17,17 @@ import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user.js'
 import BlankLayout from './BlankLayout.vue'
 import PatientLayout from './PatientLayout.vue'
-import ScreenLayout from './ScreenLayout.vue'
 import SidebarLayout from './SidebarLayout.vue'
 import BatchProgressPanel from '@/components/assessment/BatchProgressPanel.vue'
 
+/**
+ * 三种外壳：空白（登录/异常页）、侧边栏（医生/研究员/管理员共用）、适老（患者）。
+ * 管理员不再有独立的深色大屏外壳——四个角色统一浅色玻璃拟态。
+ */
 const LAYOUTS = {
   blank: BlankLayout,
   sidebar: SidebarLayout,
-  patient: PatientLayout,
-  screen: ScreenLayout
+  patient: PatientLayout
 }
 
 const route = useRoute()

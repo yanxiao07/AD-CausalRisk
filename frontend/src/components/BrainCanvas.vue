@@ -18,7 +18,7 @@
   </button>
 
   <div class="canvas-shell" id="canvas-shell" tabindex="0" role="img"
-       aria-label="可拖动旋转的三维水晶大脑模型，内部有蓝色神经电流光点流动，悬浮标注：数据融合、因果图谱、风险预测">
+       aria-label="可拖动旋转的三维水晶大脑模型，内部有蓝色神经电流光点流动，悬浮标注：数据融合、因果推断、风险预测、个体解释">
     <canvas id="brain-canvas"></canvas>
   </div>
 
@@ -29,10 +29,13 @@
       <button class="label-chip" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="detail-drawer"><span class="label-dot" aria-hidden="true"></span>数据融合</button>
     </div>
     <div class="brain-label" data-anchor="causal">
-      <button class="label-chip" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="detail-drawer"><span class="label-dot" aria-hidden="true"></span>因果图谱</button>
+      <button class="label-chip" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="detail-drawer"><span class="label-dot" aria-hidden="true"></span>因果推断</button>
     </div>
     <div class="brain-label" data-anchor="risk">
       <button class="label-chip" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="detail-drawer"><span class="label-dot" aria-hidden="true"></span>风险预测</button>
+    </div>
+    <div class="brain-label" data-anchor="explain">
+      <button class="label-chip" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="detail-drawer"><span class="label-dot" aria-hidden="true"></span>个体解释</button>
     </div>
   </div>
 
@@ -62,7 +65,7 @@
     请使用支持 WebGL 的现代浏览器打开，例如最新版 Chrome、Edge 或 Safari。
   </div>
 
-  <p class="sr-only">这是一个医疗风的水晶大脑三维可视化。模型可以拖动旋转，周围悬浮三个可交互标签：数据融合、因果图谱、风险预测。蓝色电信号圆点沿大脑内部不可见的光滑神经电流持续流动。悬停标签时，所有圆点会离开电流、平滑转向并飞入标签，随后隐藏并被储存，标签随吸入数量逐步增强高光；全部吸入后脑内不再有游走圆点。光标离开标签时，被储存的圆点从标签位置重新出现，飞回脑内神经电流继续流转。点击任意标签可展开对应的功能详情。真实解剖几何加载失败时，会使用程序生成的水晶脑形态。</p>
+  <p class="sr-only">这是一个医疗风的水晶大脑三维可视化。模型可以拖动旋转，周围悬浮四个可交互标签：数据融合、因果推断、风险预测、个体解释。蓝色电信号圆点沿大脑内部不可见的光滑神经电流持续流动。悬停标签时，所有圆点会离开电流、平滑转向并飞入标签，随后隐藏并被储存，标签随吸入数量逐步增强高光；全部吸入后脑内不再有游走圆点。光标离开标签时，被储存的圆点从标签位置重新出现，飞回脑内神经电流继续流转。点击任意标签可展开对应的功能详情。真实解剖几何加载失败时，会使用程序生成的水晶脑形态。</p>
   <noscript>
     <div class="noscript-note"><strong>需要启用 JavaScript</strong><br>启用后即可查看并拖动这颗水晶大脑。</div>
   </noscript>
@@ -177,7 +180,8 @@ const anchors = [];
 const anchorObjects = {
   fusion: new THREE.Vector3(-1.02, 0.5, 0.32),
   causal: new THREE.Vector3(1.18, 0.17, -0.04),
-  risk: new THREE.Vector3(-0.4, -0.67, 0.54)
+  risk: new THREE.Vector3(-0.4, -0.67, 0.54),
+  explain: new THREE.Vector3(0.78, -0.52, 0.3)
 };
 const labelEls = Array.from(document.querySelectorAll('.brain-label'));
 const leaderParts = new Map();

@@ -42,6 +42,12 @@ async function redirectToLogin() {
   }
 }
 
+/** 登录请求的判定：显式跳过标记优先，其次兼容 URL 判断。 */
+function isLoginRequest(config) {
+  if (config?.skipAuthHandling) return true
+  return String(config?.url || '').includes('/auth/login')
+}
+
 request.interceptors.response.use(
   response => {
     const payload = response.data
@@ -50,20 +56,32 @@ request.interceptors.response.use(
         // 成功：直接给业务层 data，调用方不需要再关心 Envelope
         return payload.data
       }
-      ElMessage.error(payload.message || '请求失败')
-      return Promise.reject({
+      const failure = {
         code: payload.code,
         errorCode: payload.errorCode,
         message: payload.message || '请求失败',
-        traceId: payload.traceId
-      })
+        traceId: payload.traceId,
+        // HTTP 状态单独保留：业务 code 可能与真实状态不一致（如 503 正文里带 code:401），
+        // 会话探测只认真正的 HTTP 401，不能看 body 里的 code/errorCode。
+        httpStatus: response.status
+      }
+      // 登录接口失败（含后端以 200 + code!=0 返回的极端情况）：不弹全局消息、不跳路由，
+      // 把错误抛回表单，由 LoginCard 渲染成红字。
+      if (isLoginRequest(response.config)) {
+        return Promise.reject({ ...failure, message: payload.message || '账号或密码错误' })
+      }
+      ElMessage.error(failure.message)
+      return Promise.reject(failure)
     }
     // 非 Envelope（例如静态文件）原样返回
     return payload
   },
   async error => {
     if (!error.response) {
-      ElMessage.error('无法连接服务器，请确认后端已启动（默认 http://localhost:8080）')
+      // 登录/登出/会话复核这类"探测型"请求自己会解释失败，不再弹全局提示
+      if (!isLoginRequest(error.config)) {
+        ElMessage.error('无法连接服务器，请确认后端已启动（默认 http://localhost:8080）')
+      }
       return Promise.reject({
         code: -1,
         errorCode: 'NETWORK_ERROR',
@@ -73,32 +91,46 @@ request.interceptors.response.use(
 
     const { status, data: body = {} } = error.response
 
+    // 探测型请求（登录/登出/会话复核）自己会把失败翻译成表单文案，不弹全局消息
+    const quiet = isLoginRequest(error.config)
+
     if (status === 401) {
-      // 登录接口自身的 401 = 账号或密码错误，交给登录卡片内联提示，不跳转、不弹全局消息
-      const isLoginAttempt = String(error.config?.url || '').includes('/auth/login')
-      if (isLoginAttempt) {
+      // 登录接口自身的 401 = 账号或密码错误：交给登录表单内联提示，不跳转、不弹全局消息
+      if (quiet) {
         return Promise.reject({
           code: 401,
           errorCode: body.errorCode || 'AUTH_INVALID_CREDENTIALS',
-          message: body.message || '账号或密码错误'
+          message: body.message || '账号或密码错误',
+          httpStatus: 401
         })
       }
       await redirectToLogin()
       ElMessage.error(body.message || '登录已过期，请重新登录')
-      return Promise.reject({ code: 401, errorCode: body.errorCode || 'UNAUTHENTICATED', message: body.message })
+      return Promise.reject({
+        code: 401,
+        errorCode: body.errorCode || 'UNAUTHENTICATED',
+        message: body.message,
+        httpStatus: 401
+      })
     }
 
     if (status === 403) {
-      ElMessage.error(body.message || '无权限访问该资源')
-      return Promise.reject({ code: 403, errorCode: body.errorCode || 'ACCESS_DENIED', message: body.message })
+      if (!quiet) ElMessage.error(body.message || '无权限访问该资源')
+      return Promise.reject({
+        code: 403,
+        errorCode: body.errorCode || 'ACCESS_DENIED',
+        message: body.message,
+        httpStatus: 403
+      })
     }
 
-    ElMessage.error(body.message || error.message || '请求失败')
+    if (!quiet) ElMessage.error(body.message || error.message || '请求失败')
     return Promise.reject({
       code: body.code || status,
       errorCode: body.errorCode,
       message: body.message || error.message || '请求失败',
-      traceId: body.traceId
+      traceId: body.traceId,
+      httpStatus: status
     })
   }
 )
