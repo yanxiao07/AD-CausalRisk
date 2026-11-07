@@ -1,24 +1,10 @@
 <template>
   <div class="causal-graph">
-    <!--
-      缩放/平移放在容器上做（CSS transform），而不是交给 ECharts 的 roam：
-      ECharts 缩放时不会重算 edgeLabel 的坐标，线上文字会留在原处。
-      整体变换能让节点、连线、线上文字作为一个整体缩放与移动，永远不会脱节。
-    -->
     <div
-      ref="viewportEl"
-      class="causal-graph__viewport"
+      ref="chartEl"
+      class="causal-graph__canvas"
       :style="{ height: `${height}px` }"
-      @wheel.prevent="onWheel"
-      @pointerdown="onPointerDown"
-      @pointermove="onPointerMove"
-      @pointerup="onPointerUp"
-      @pointercancel="onPointerUp"
-      @pointerleave="onPointerUp"
-      @dblclick="resetView"
-    >
-      <div ref="chartEl" class="causal-graph__canvas" :style="canvasStyle" />
-    </div>
+    />
 
     <div class="causal-graph__legend">
       <span class="legend__item"><i class="dot dot--prior" />先验证据（PRIOR）</span>
@@ -34,7 +20,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import { GraphChart } from 'echarts/charts'
 import { TooltipComponent } from 'echarts/components'
@@ -51,25 +37,8 @@ const props = defineProps({
 })
 
 const chartEl = ref(null)
-const viewportEl = ref(null)
 let chart = null
 let observer = null
-
-// 容器级缩放/平移：文字与图形始终同步，见模板里的说明
-const scale = ref(1)
-const offsetX = ref(0)
-const offsetY = ref(0)
-const MIN_SCALE = 0.6
-const MAX_SCALE = 3
-let dragging = false
-let dragStartX = 0
-let dragStartY = 0
-
-const canvasStyle = computed(() => ({
-  height: `${props.height}px`,
-  transform: `translate3d(${offsetX.value}px, ${offsetY.value}px, 0) scale(${scale.value})`,
-  transformOrigin: '0 0'
-}))
 
 const PRIOR = '#0a73ad'
 const MODEL = '#0e806e'
@@ -172,10 +141,9 @@ function buildOption(graph) {
         // 画布越高，力参数同步放大，否则节点会缩在中间一小团
         type: 'graph',
         layout: 'force',
-        // 缩放/平移交给外层容器（CSS transform）：ECharts 内部的 roam 缩放不会重算
-        // edgeLabel 坐标，线上文字会留在原处。容器整体变换能保证文字、线、节点同步。
-        roam: false,
-        draggable: false,
+        roam: true,
+        draggable: true,
+        scaleLimit: { min: 0.6, max: 3 },
         // 留足边距：节点标签放在下方，边距太小会被裁在卡片边缘
         top: 36,
         bottom: 36,
@@ -193,7 +161,9 @@ function buildOption(graph) {
           fontWeight: 600,
           color: '#11344b'
         },
-        labelLayout: { hideOverlap: true },
+        // Graph 的边标签由 Line 在局部坐标定位。全局 labelLayout（包括 hideOverlap）
+        // 会将 textConfig.local 改成 false，造成缩放、平移和力布局时文字脱离连线。
+        // 保留原生局部标签布局，让节点拖拽、连线与文字使用同一坐标变换。
         // 边标签常驻显示（边不多时），悬停/高亮时加重
         edgeLabel: {
           show: showEdgeLabels,
@@ -206,8 +176,6 @@ function buildOption(graph) {
           align: 'middle',
           verticalAlign: 'middle'
         },
-        // 缩放由外层容器负责，这里不再需要 ECharts 的 scaleLimit
-        // 边标签常驻显示（边不多时），悬停/高亮时加重
         emphasis: {
           focus: 'adjacency',
           lineStyle: { width: 2.4, opacity: 1 },
@@ -263,6 +231,8 @@ function ensureChart() {
   if (chart) return chart
   if (!hasUsableSize(chartEl.value)) return null
   chart = echarts.init(chartEl.value, null, { renderer: 'canvas' })
+  // ZRender 同时覆盖图形和空白区域，并适用于 ResizeObserver 延迟初始化的入口。
+  chart.getZr().on('dblclick', resetView)
   lastWidth = chartEl.value.getBoundingClientRect().width
   return chart
 }
@@ -300,49 +270,14 @@ watch(
   { deep: true }
 )
 
-/** 滚轮缩放：以鼠标位置为锚点，保证指针下的内容不动。 */
-function onWheel(event) {
-  const viewport = viewportEl.value
-  if (!viewport) return
-  const rect = viewport.getBoundingClientRect()
-  const pointerX = event.clientX - rect.left
-  const pointerY = event.clientY - rect.top
-  const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12
-  const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale.value * factor))
-  const ratio = next / scale.value
-  offsetX.value = pointerX - (pointerX - offsetX.value) * ratio
-  offsetY.value = pointerY - (pointerY - offsetY.value) * ratio
-  scale.value = next
-}
-
-function onPointerDown(event) {
-  if (event.button !== 0) return
-  dragging = true
-  dragStartX = event.clientX - offsetX.value
-  dragStartY = event.clientY - offsetY.value
-}
-
-function onPointerMove(event) {
-  if (!dragging) return
-  offsetX.value = event.clientX - dragStartX
-  offsetY.value = event.clientY - dragStartY
-}
-
-function onPointerUp() {
-  dragging = false
-}
-
-/** 双击复位：缩放与平移都回到初始，避免图被拖出可视区。 */
+/** 重建原始布局，同时复位原生缩放、平移及手动拖动的节点。 */
 function resetView() {
-  scale.value = 1
-  offsetX.value = 0
-  offsetY.value = 0
+  render()
 }
 
 onBeforeUnmount(() => {
   if (initTimer) window.clearTimeout(initTimer)
   initTimer = null
-  dragging = false
   observer?.disconnect()
   observer = null
   chart?.dispose()
@@ -358,22 +293,9 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.causal-graph__viewport {
-  position: relative;
-  overflow: hidden;
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
-
-.causal-graph__viewport:active {
-  cursor: grabbing;
-}
-
 .causal-graph__canvas {
   width: 100%;
-  /* 高度由内联样式给定；缩放/平移由外层 transform 驱动，这里只负责绘制 */
-  will-change: transform;
+  overflow: hidden;
 }
 
 .causal-graph__legend {
