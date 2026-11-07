@@ -155,6 +155,8 @@ const detail = ref(null)
 
 /** 列表请求序号：翻页竞态时只认最新一次响应 */
 let requestSeq = 0
+/** 详情请求序号：先点 11 再点 22 时，迟到的 11 不能覆盖 22 */
+let detailSeq = 0
 
 const STAGE_LABELS = {
   DATA_FUSION: '数据融合',
@@ -213,15 +215,22 @@ async function loadPage(target = page.value) {
 }
 
 async function openTask(row) {
+  const seq = ++detailSeq
+  // 先清空：新的一行在加载时不应继续显示上一条的 runId / 跳转目标
+  detail.value = null
   detailLoading.value = true
   drawerOpen.value = true
   try {
-    detail.value = await getAssessmentTask(row.taskId)
+    const data = await getAssessmentTask(row.taskId)
+    // 迟到的响应（用户已经点了别的任务）必须丢掉，否则抽屉内容和按钮会指向旧任务
+    if (seq !== detailSeq) return
+    detail.value = data
   } catch {
+    if (seq !== detailSeq) return
     // request.js 已提示；保留空详情
     detail.value = null
   } finally {
-    detailLoading.value = false
+    if (seq === detailSeq) detailLoading.value = false
   }
 }
 

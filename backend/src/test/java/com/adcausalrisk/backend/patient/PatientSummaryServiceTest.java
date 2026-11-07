@@ -7,7 +7,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import com.adcausalrisk.backend.assessment.RiskAssessmentRepository;
 import com.adcausalrisk.backend.common.BusinessException;
@@ -16,6 +18,7 @@ import com.adcausalrisk.backend.followup.FollowUpPlanRepository;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.SubjectPermissionRepository;
 import com.adcausalrisk.backend.subject.SubjectRepository;
+import com.adcausalrisk.backend.subject.entity.Subject;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -57,9 +60,29 @@ class PatientSummaryServiceTest {
         verify(assessmentRepository, never()).findFirstBySubjectIdOrderByIdDesc(org.mockito.ArgumentMatchers.anyLong());
     }
 
+    /**
+     * Bound but no assessment yet: a normal "no report" answer, not an exception.
+     * Regression for {@code Map.entry(id, null)} throwing before the null could be filtered.
+     */
     @Test
-    void nonPatientIsRefused() {
-        AppUserPrincipal doctor = new AppUserPrincipal(4L, "doctor", "", List.of("DOCTOR"), true);
+    void boundSubjectWithoutAssessmentIsNotAnError() {
+        Subject bound = new Subject("DEMO-EMPTY", "无评估档案", Subject.Status.ACTIVE, "demo-empty", Instant.now());
+        when(permissionRepository.findDistinctSubjectIdByUserId(8L)).thenReturn(List.of(1L));
+        when(assessmentRepository.findFirstBySubjectIdOrderByIdDesc(1L)).thenReturn(Optional.empty());
+        when(subjectRepository.findById(1L)).thenReturn(Optional.of(bound));
+        when(followUpRepository.findBySubjectIdOrderByScheduledAtAscIdAsc(1L)).thenReturn(List.of());
+
+        PatientSummaryService.PatientSummaryView view =
+                service.currentSummary(new AppUserPrincipal(8L, "patient", "", List.of("PATIENT"), true));
+
+        assertThat(view.hasAssessment()).isFalse();
+        assertThat(view.assessmentId()).isNull();
+        assertThat(view.summary()).contains("还没有风险评估记录");
+        assertThat(view.followUpSummary()).contains("没有已安排的复诊");
+    }
+
+    @Test
+    void nonPatientIsRefused() {        AppUserPrincipal doctor = new AppUserPrincipal(4L, "doctor", "", List.of("DOCTOR"), true);
 
         assertThatThrownBy(() -> service.currentSummary(doctor))
                 .isInstanceOf(BusinessException.class)

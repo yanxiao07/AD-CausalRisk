@@ -222,7 +222,7 @@ class AssessmentApiTest {
                 .doesNotContain("I/O error").doesNotContain("BusinessException");
     }
 
-    /** End-to-end write: PENDING -> agent mock -> COMPLETED task plus a stored result. */
+    /** The list is a summary surface: paged scalar fields, and never the raw agentResult. */
     @Test
     void assessmentListIsPagedWithoutAgentResult() throws Exception {
         when(agentClient.createRun(any(AgentRequest.class))).thenReturn(completedResult("0.77"));
@@ -320,6 +320,52 @@ class AssessmentApiTest {
         for (JsonNode item : tasks.get("data").get("items")) {
             assertThat(item.get("subjectId").asLong()).isNotEqualTo(subjectId);
         }
+    }
+
+    /**
+     * A {@code subject_permission} grant alone must not open the raw-score lists: those rows carry
+     * riskScore and runId, so a PATIENT is refused even when bound to the subject - exactly like
+     * {@code GET /api/assessments/{id}} refuses them.
+     */
+    @Test
+    void patientGrantDoesNotOpenRawScoreLists() throws Exception {
+        when(agentClient.createRun(any(AgentRequest.class))).thenReturn(completedResult("0.66"));
+        MockHttpSession admin = login("admin");
+        JsonNode created = bodyOf(mockMvc.perform(post("/api/assessment-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "patient-raw-denied")
+                        .content(createRequestJson(24))
+                        .session(admin))
+                .andExpect(status().isOk())
+                .andReturn());
+        long assessmentId = created.get("data").get("assessmentId").asLong();
+        long taskId = created.get("data").get("taskId").asLong();
+
+        Long patientId = jdbc.queryForObject(
+                "SELECT id FROM sys_user WHERE username = 'patient'", Long.class);
+        jdbc.update("INSERT INTO subject_permission (subject_id, user_id, permission_type)"
+                + " VALUES (?, ?, 'VIEW')", subjectId, patientId);
+
+        MockHttpSession patient = login("patient");
+        JsonNode assessments = bodyOf(mockMvc.perform(get("/api/assessments").session(patient))
+                .andExpect(status().isOk())
+                .andReturn());
+        assertThat(assessments.get("data").get("items")).isEmpty();
+
+        JsonNode tasks = bodyOf(mockMvc.perform(get("/api/assessment-tasks").session(patient))
+                .andExpect(status().isOk())
+                .andReturn());
+        assertThat(tasks.get("data").get("items")).isEmpty();
+
+        // The detail endpoint already refuses; the lists must not become a bypass.
+        bodyOf(mockMvc.perform(get("/api/assessments/" + assessmentId).session(patient))
+                .andExpect(status().isForbidden())
+                .andReturn());
+
+        // Task detail carries runId + stage summaries, so it follows the same rule.
+        bodyOf(mockMvc.perform(get("/api/assessment-tasks/" + taskId).session(patient))
+                .andExpect(status().isForbidden())
+                .andReturn());
     }
 
     /** End-to-end write: PENDING -> agent mock -> COMPLETED task plus a stored result. */

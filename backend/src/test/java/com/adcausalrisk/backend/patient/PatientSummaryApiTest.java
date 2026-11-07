@@ -130,9 +130,46 @@ class PatientSummaryApiTest {
         assertThat(data.get("limitations")).isNotEmpty();
     }
 
+    /**
+     * A bound subject with no assessment yet must be a normal empty page, not a 500.
+     *
+     * <p>This is the regression that {@code Map.entry(id, null)} caused: the map factory rejects
+     * null values, so the "no report" branch threw before it could be filtered out.
+     */
     @Test
-    void acknowledgedHighRiskSummaryExplainsLevelWithoutScore() throws Exception {
-        jdbc.update("UPDATE risk_assessment SET review_status = 'ACKNOWLEDGED' WHERE id = ?", assessmentId);
+    void boundPatientWithoutAssessmentGets200() throws Exception {
+        List<Map<String, Object>> saved = jdbc.queryForList(
+                "SELECT subject_id, permission_type FROM subject_permission WHERE user_id = ?", patientId);
+        Subject fresh = subjectRepository.save(new Subject(
+                "DEMO-PAT-EMPTY", "无评估档案", Subject.Status.ACTIVE, "demo-empty", Instant.now()));
+        try {
+            jdbc.update("DELETE FROM subject_permission WHERE user_id = ?", patientId);
+            jdbc.update("INSERT INTO subject_permission (subject_id, user_id, permission_type)"
+                    + " VALUES (?, ?, 'VIEW')", fresh.getId(), patientId);
+
+            MockHttpSession patient = login("patient");
+            JsonNode body = bodyOf(mockMvc.perform(get("/api/patients/me/summary").session(patient))
+                    .andExpect(status().isOk())
+                    .andReturn());
+
+            JsonNode data = body.get("data");
+            assertThat(data.get("hasAssessment").asBoolean()).isFalse();
+            assertThat(data.get("assessmentId").isNull()).isTrue();
+            assertThat(data.get("subjectCode").asText()).isEqualTo("DEMO-PAT-EMPTY");
+            assertThat(data.get("summary").asText()).contains("还没有风险评估记录");
+            assertThat(data.get("followUpSummary").asText()).contains("没有已安排的复诊");
+        } finally {
+            jdbc.update("DELETE FROM subject_permission WHERE subject_id = ?", fresh.getId());
+            for (Map<String, Object> row : saved) {
+                jdbc.update("INSERT INTO subject_permission (subject_id, user_id, permission_type)"
+                        + " VALUES (?, ?, ?)", row.get("subject_id"), patientId, row.get("permission_type"));
+            }
+            jdbc.update("DELETE FROM subject WHERE id = ?", fresh.getId());
+        }
+    }
+
+    @Test
+    void acknowledgedHighRiskSummaryExplainsLevelWithoutScore() throws Exception {        jdbc.update("UPDATE risk_assessment SET review_status = 'ACKNOWLEDGED' WHERE id = ?", assessmentId);
         MockHttpSession patient = login("patient");
 
         JsonNode data = bodyOf(mockMvc.perform(get("/api/patients/me/summary").session(patient))
@@ -145,8 +182,7 @@ class PatientSummaryApiTest {
     }
 
     @Test
-    void scheduledFollowUpAppearsInSummary() throws Exception {
-        jdbc.update("INSERT INTO follow_up_plan (subject_id, scheduled_at, purpose, status, owner_id)"
+    void scheduledFollowUpAppearsInSummary() throws Exception {        jdbc.update("INSERT INTO follow_up_plan (subject_id, scheduled_at, purpose, status, owner_id)"
                 + " VALUES (?, ?, ?, 'PLANNED', ?)",
                 subjectId, java.sql.Timestamp.from(Instant.now().plusSeconds(86_400 * 30)),
                 "认知复查", adminId);

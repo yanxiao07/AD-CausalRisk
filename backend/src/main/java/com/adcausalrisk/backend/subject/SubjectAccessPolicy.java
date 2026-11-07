@@ -208,4 +208,30 @@ public class SubjectAccessPolicy {
     public Set<Long> grantedSubjectIds(AppUserPrincipal principal) {
         return new HashSet<>(permissionRepository.findDistinctSubjectIdByUserId(principal.userId()));
     }
+
+    /**
+     * The subjects whose <b>raw assessment output</b> (riskScore, riskLevel, graph, runId) the
+     * principal may read - the pagination window for {@code GET /api/assessments} and
+     * {@code GET /api/assessment-tasks}.
+     *
+     * <p>Same rule as {@link #canReadRawScores}, applied as a set so the filter happens
+     * <i>before</i> paging: filtering a page afterwards would leak the {@code total} and return
+     * short pages. A PATIENT therefore gets an empty set (the patient-facing summary is a
+     * separate endpoint), and a doctor holding only {@code SUMMARY_READ} is excluded just like
+     * {@code GET /api/assessments/{id}} excludes them.
+     */
+    public Set<Long> rawScoreVisibleSubjectIds(AppUserPrincipal principal) {
+        // PATIENT wins over every other role, exactly as canReadRawScores does.
+        if (principal.roleCodes().contains("PATIENT")) {
+            return Set.of();
+        }
+        if (principal.roleCodes().stream().anyMatch(RAW_SCORE_ROLES::contains)) {
+            return grantedSubjectIds(principal);
+        }
+        if (!principal.roleCodes().contains("DOCTOR")) {
+            return Set.of();
+        }
+        return new HashSet<>(permissionRepository.findDistinctSubjectIdByUserIdAndPermissionTypes(
+                principal.userId(), RAW_SCORE_PERMISSION_TYPES));
+    }
 }

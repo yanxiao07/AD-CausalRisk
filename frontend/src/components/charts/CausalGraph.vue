@@ -1,6 +1,24 @@
 <template>
   <div class="causal-graph">
-    <div ref="chartEl" class="causal-graph__canvas" :style="{ height: `${height}px` }" />
+    <!--
+      缩放/平移放在容器上做（CSS transform），而不是交给 ECharts 的 roam：
+      ECharts 缩放时不会重算 edgeLabel 的坐标，线上文字会留在原处。
+      整体变换能让节点、连线、线上文字作为一个整体缩放与移动，永远不会脱节。
+    -->
+    <div
+      ref="viewportEl"
+      class="causal-graph__viewport"
+      :style="{ height: `${height}px` }"
+      @wheel.prevent="onWheel"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @pointercancel="onPointerUp"
+      @pointerleave="onPointerUp"
+      @dblclick="resetView"
+    >
+      <div ref="chartEl" class="causal-graph__canvas" :style="canvasStyle" />
+    </div>
 
     <div class="causal-graph__legend">
       <span class="legend__item"><i class="dot dot--prior" />先验证据（PRIOR）</span>
@@ -9,13 +27,14 @@
     </div>
     <p class="causal-graph__note">
       连线表示<strong>条件性关联</strong>（direction = CONDITIONAL），不是病因证明；
-      箭头方向用于解释模型输入，不代表临床因果结论。可拖动查看，<strong>双击复位</strong>。
+      箭头方向用于解释模型输入，不代表临床因果结论。滚轮缩放、拖动查看，悬停连线看类型，
+      <strong>双击复位</strong>。
     </p>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts/core'
 import { GraphChart } from 'echarts/charts'
 import { TooltipComponent } from 'echarts/components'
@@ -32,8 +51,25 @@ const props = defineProps({
 })
 
 const chartEl = ref(null)
+const viewportEl = ref(null)
 let chart = null
 let observer = null
+
+// 容器级缩放/平移：文字与图形始终同步，见模板里的说明
+const scale = ref(1)
+const offsetX = ref(0)
+const offsetY = ref(0)
+const MIN_SCALE = 0.6
+const MAX_SCALE = 3
+let dragging = false
+let dragStartX = 0
+let dragStartY = 0
+
+const canvasStyle = computed(() => ({
+  height: `${props.height}px`,
+  transform: `translate3d(${offsetX.value}px, ${offsetY.value}px, 0) scale(${scale.value})`,
+  transformOrigin: '0 0'
+}))
 
 const PRIOR = '#0a73ad'
 const MODEL = '#0e806e'
@@ -136,12 +172,10 @@ function buildOption(graph) {
         // 画布越高，力参数同步放大，否则节点会缩在中间一小团
         type: 'graph',
         layout: 'force',
-        // 只允许拖拽平移，不允许缩放。
-        // 原因：graph 的 roam 缩放会放大节点与连线，但 edgeLabel（"先验关联"这类文字）的
-        // 字号与位置不会同步跟随，缩放后文字会跟线条脱节、停在原处。这张图是解释用的静态
-        // 结构图，读清楚比缩放重要，因此把 zoom 锁死在 1。
-        roam: 'move',
-        draggable: true,
+        // 缩放/平移交给外层容器（CSS transform）：ECharts 内部的 roam 缩放不会重算
+        // edgeLabel 坐标，线上文字会留在原处。容器整体变换能保证文字、线、节点同步。
+        roam: false,
+        draggable: false,
         // 留足边距：节点标签放在下方，边距太小会被裁在卡片边缘
         top: 36,
         bottom: 36,
@@ -160,11 +194,10 @@ function buildOption(graph) {
           color: '#11344b'
         },
         labelLayout: { hideOverlap: true },
-        // 边标签：短文本 + 白底，居中压在线条上，绝不顺着线条飘长句
+        // 边标签常驻显示（边不多时），悬停/高亮时加重
         edgeLabel: {
           show: showEdgeLabels,
           formatter: '{c}',
-          // 固定 10px：跟随容器缩放会把标签放大成"巨大文字"
           fontSize: 10,
           color: '#5f7887',
           backgroundColor: 'rgba(255,255,255,0.9)',
@@ -173,8 +206,8 @@ function buildOption(graph) {
           align: 'middle',
           verticalAlign: 'middle'
         },
-        // 限制缩放范围：roam 已锁定为平移，这里再兜一层，避免任何入口把 zoom 调离 1
-        scaleLimit: { min: 1, max: 1 },
+        // 缩放由外层容器负责，这里不再需要 ECharts 的 scaleLimit
+        // 边标签常驻显示（边不多时），悬停/高亮时加重
         emphasis: {
           focus: 'adjacency',
           lineStyle: { width: 2.4, opacity: 1 },
@@ -187,9 +220,8 @@ function buildOption(graph) {
           edgeLength: [110 * layoutScale, 170 * layoutScale],
           gravity: 0.09,
           friction: 0.2,
-          // 关掉持续动画：force 布局一次算完就停，避免演示时图一直轻微抖动、
-          // 也让"位置稳定"这件事可预期（拖拽/缩放后不会自己再动）。
-          layoutAnimation: false
+          // 力布局动画保留：这是"丝滑"的来源，不要为了稳定把它关掉
+          layoutAnimation: true
         },
         data: nodes,
         links: edges,
@@ -241,8 +273,6 @@ onMounted(() => {
     initTimer = null
     if (!ensureChart()) return
     render()
-    // 拖拽平移会把整图挪出可视区，双击重新布局复位，避免"图跑没了"
-    chart.on('dblclick', () => render())
   }, INIT_DELAY_MS)
 
   observer = new ResizeObserver(() => {
@@ -270,9 +300,49 @@ watch(
   { deep: true }
 )
 
+/** 滚轮缩放：以鼠标位置为锚点，保证指针下的内容不动。 */
+function onWheel(event) {
+  const viewport = viewportEl.value
+  if (!viewport) return
+  const rect = viewport.getBoundingClientRect()
+  const pointerX = event.clientX - rect.left
+  const pointerY = event.clientY - rect.top
+  const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12
+  const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale.value * factor))
+  const ratio = next / scale.value
+  offsetX.value = pointerX - (pointerX - offsetX.value) * ratio
+  offsetY.value = pointerY - (pointerY - offsetY.value) * ratio
+  scale.value = next
+}
+
+function onPointerDown(event) {
+  if (event.button !== 0) return
+  dragging = true
+  dragStartX = event.clientX - offsetX.value
+  dragStartY = event.clientY - offsetY.value
+}
+
+function onPointerMove(event) {
+  if (!dragging) return
+  offsetX.value = event.clientX - dragStartX
+  offsetY.value = event.clientY - dragStartY
+}
+
+function onPointerUp() {
+  dragging = false
+}
+
+/** 双击复位：缩放与平移都回到初始，避免图被拖出可视区。 */
+function resetView() {
+  scale.value = 1
+  offsetX.value = 0
+  offsetY.value = 0
+}
+
 onBeforeUnmount(() => {
   if (initTimer) window.clearTimeout(initTimer)
   initTimer = null
+  dragging = false
   observer?.disconnect()
   observer = null
   chart?.dispose()
@@ -288,10 +358,22 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+.causal-graph__viewport {
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.causal-graph__viewport:active {
+  cursor: grabbing;
+}
+
 .causal-graph__canvas {
   width: 100%;
-  /* 高度由内联样式给定；overflow 防止平移/缩放时线条溢出卡片 */
-  overflow: hidden;
+  /* 高度由内联样式给定；缩放/平移由外层 transform 驱动，这里只负责绘制 */
+  will-change: transform;
 }
 
 .causal-graph__legend {

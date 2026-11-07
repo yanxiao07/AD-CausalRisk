@@ -204,7 +204,10 @@ public class AssessmentService {
     public Outcome findTask(Long taskId, AppUserPrincipal principal) {
         AssessmentTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "评估任务不存在"));
-        if (!accessPolicy.canView(principal, task.getSubjectId())) {
+        // The task view carries runId and stage summaries, i.e. raw-pipeline internals. Visibility
+        // must match GET /api/assessments/{id}: canView alone would let a bound PATIENT read them
+        // by guessing the id, even though the list endpoints already refuse.
+        if (!accessPolicy.canReadRawScores(principal, task.getSubjectId())) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权查看该评估任务");
         }
         RiskAssessment assessment = assessmentRepository.findByTaskId(taskId).orElse(null);
@@ -285,10 +288,12 @@ public class AssessmentService {
         if (accessPolicy.hasFullVisibility(principal)) {
             paged = assessmentRepository.findAll(pageable);
         } else {
-            java.util.Set<Long> granted = new java.util.HashSet<>(accessPolicy.grantedSubjectIds(principal));
-            paged = granted.isEmpty()
+            // Raw-score window, applied before paging: a PATIENT (or a SUMMARY_READ-only doctor)
+            // must not see these rows at all, and filtering after paging would leak the total.
+            java.util.Set<Long> visible = accessPolicy.rawScoreVisibleSubjectIds(principal);
+            paged = visible.isEmpty()
                     ? Page.empty(pageable)
-                    : assessmentRepository.findBySubjectIdIn(granted, pageable);
+                    : assessmentRepository.findBySubjectIdIn(visible, pageable);
         }
         List<AssessmentSummary> items = paged.getContent().stream().map(this::toAssessmentSummary).toList();
         return new PageResult<>(items, safePage, safePageSize, paged.getTotalElements());
@@ -338,10 +343,11 @@ public class AssessmentService {
         if (accessPolicy.hasFullVisibility(principal)) {
             paged = taskRepository.findAll(pageable);
         } else {
-            java.util.Set<Long> granted = new java.util.HashSet<>(accessPolicy.grantedSubjectIds(principal));
-            paged = granted.isEmpty()
+            // Task history carries runId and assessment ids: same raw-score window as the list.
+            java.util.Set<Long> visible = accessPolicy.rawScoreVisibleSubjectIds(principal);
+            paged = visible.isEmpty()
                     ? Page.empty(pageable)
-                    : taskRepository.findBySubjectIdIn(granted, pageable);
+                    : taskRepository.findBySubjectIdIn(visible, pageable);
         }
 
         List<Long> taskIds = paged.getContent().stream().map(AssessmentTask::getId).toList();

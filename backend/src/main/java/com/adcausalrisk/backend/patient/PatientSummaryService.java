@@ -4,9 +4,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 import com.adcausalrisk.backend.agent.AgentResult;
@@ -111,13 +109,32 @@ public class PatientSummaryService {
                 buildLimitations(result));
     }
 
+    /**
+     * A patient normally holds exactly one subject. If a misconfiguration grants several, prefer
+     * the one with the most recent result (that is the report the patient cares about), then fall
+     * back to the smallest id so the answer stays deterministic.
+     *
+     * <p>Deliberately no {@code Map.entry(id, null)}: {@link java.util.Map#entry} rejects null
+     * values, and a bound subject that simply has no assessment yet would then throw NPE and turn
+     * a normal "no report yet" page into a 500.
+     */
     private Long pickSubject(List<Long> boundSubjects) {
-        return boundSubjects.stream()
-                .map(id -> Map.entry(id, assessmentRepository.findFirstBySubjectIdOrderByIdDesc(id).orElse(null)))
-                .filter(entry -> entry.getValue() != null)
-                .max(Comparator.comparing(entry -> entry.getValue().getCreatedAt()))
-                .map(Map.Entry::getKey)
-                .orElseGet(() -> boundSubjects.stream().min(Long::compareTo).orElseThrow());
+        Long newestSubjectId = null;
+        Instant newestAt = null;
+        for (Long id : boundSubjects) {
+            RiskAssessment latest = assessmentRepository.findFirstBySubjectIdOrderByIdDesc(id).orElse(null);
+            if (latest == null || latest.getCreatedAt() == null) {
+                continue;
+            }
+            if (newestAt == null || latest.getCreatedAt().isAfter(newestAt)) {
+                newestSubjectId = id;
+                newestAt = latest.getCreatedAt();
+            }
+        }
+        if (newestSubjectId != null) {
+            return newestSubjectId;
+        }
+        return boundSubjects.stream().min(Long::compareTo).orElseThrow();
     }
 
     private AgentResult parse(RiskAssessment assessment) {        try {
