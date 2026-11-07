@@ -285,7 +285,7 @@ public class AssessmentService {
         Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "id"));
 
         Page<RiskAssessment> paged;
-        if (accessPolicy.hasFullVisibility(principal)) {
+        if (accessPolicy.hasFullRawScoreVisibility(principal)) {
             paged = assessmentRepository.findAll(pageable);
         } else {
             // Raw-score window, applied before paging: a PATIENT (or a SUMMARY_READ-only doctor)
@@ -340,7 +340,7 @@ public class AssessmentService {
         Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "id"));
 
         Page<AssessmentTask> paged;
-        if (accessPolicy.hasFullVisibility(principal)) {
+        if (accessPolicy.hasFullRawScoreVisibility(principal)) {
             paged = taskRepository.findAll(pageable);
         } else {
             // Task history carries runId and assessment ids: same raw-score window as the list.

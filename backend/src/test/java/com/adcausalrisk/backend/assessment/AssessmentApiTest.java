@@ -368,6 +368,64 @@ class AssessmentApiTest {
                 .andReturn());
     }
 
+    /**
+     * PATIENT + ADMIN must not regain the whole raw-score table.
+     *
+     * <p>The patient veto has to run <i>before</i> the full-visibility branch: otherwise the
+     * admin role pages the entire table and leaks riskScore / runId, while the same account still
+     * gets 403 from the detail endpoints.
+     */
+    @Test
+    void patientPlusAdminStillGetsEmptyRawLists() throws Exception {
+        assertPatientRoleMasksRawLists("admin");
+    }
+
+    @Test
+    void patientPlusResearcherStillGetsEmptyRawLists() throws Exception {
+        assertPatientRoleMasksRawLists("researcher");
+    }
+
+    private void assertPatientRoleMasksRawLists(String username) throws Exception {
+        when(agentClient.createRun(any(AgentRequest.class))).thenReturn(completedResult("0.5"));
+        MockHttpSession owner = login(username);
+        JsonNode created = bodyOf(mockMvc.perform(post("/api/assessment-tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", "multi-role-" + username)
+                        .content(createRequestJson(24))
+                        .session(owner))
+                .andExpect(status().isOk())
+                .andReturn());
+        long assessmentId = created.get("data").get("assessmentId").asLong();
+
+        Long userId = jdbc.queryForObject(
+                "SELECT id FROM sys_user WHERE username = ?", Long.class, username);
+        Long patientRole = jdbc.queryForObject(
+                "SELECT id FROM sys_role WHERE role_code = 'PATIENT'", Long.class);
+        jdbc.update("INSERT INTO user_role (user_id, role_id) VALUES (?, ?)", userId, patientRole);
+        try {
+            MockHttpSession multiRole = login(username);
+
+            JsonNode assessments = bodyOf(mockMvc.perform(get("/api/assessments").session(multiRole))
+                    .andExpect(status().isOk())
+                    .andReturn());
+            assertThat(assessments.get("data").get("items")).isEmpty();
+            assertThat(assessments.get("data").get("total").asLong()).isZero();
+
+            JsonNode tasks = bodyOf(mockMvc.perform(get("/api/assessment-tasks").session(multiRole))
+                    .andExpect(status().isOk())
+                    .andReturn());
+            assertThat(tasks.get("data").get("items")).isEmpty();
+            assertThat(tasks.get("data").get("total").asLong()).isZero();
+
+            // The detail endpoints already answer 403 for the same account; lists must match.
+            bodyOf(mockMvc.perform(get("/api/assessments/" + assessmentId).session(multiRole))
+                    .andExpect(status().isForbidden())
+                    .andReturn());
+        } finally {
+            jdbc.update("DELETE FROM user_role WHERE user_id = ? AND role_id = ?", userId, patientRole);
+        }
+    }
+
     /** End-to-end write: PENDING -> agent mock -> COMPLETED task plus a stored result. */
     @Test
     void completedAssessmentIsPersistedAndReadBack() throws Exception {

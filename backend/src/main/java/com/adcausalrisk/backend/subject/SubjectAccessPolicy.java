@@ -210,6 +210,22 @@ public class SubjectAccessPolicy {
     }
 
     /**
+     * Whether the principal may page the <b>whole</b> raw-score surface
+     * ({@code GET /api/assessments}, {@code GET /api/assessment-tasks}).
+     *
+     * <p>This is {@link #hasFullVisibility} with the PATIENT veto applied first: an account that
+     * also carries ADMIN or RESEARCHER must not regain the full table, because the same lists
+     * carry riskScore and runId - exactly what {@link #canReadRawScores} already refuses for a
+     * PATIENT, and what {@code GET /api/assessments/{id}} answers with 403 for the same account.
+     */
+    public boolean hasFullRawScoreVisibility(AppUserPrincipal principal) {
+        if (principal.roleCodes().contains("PATIENT")) {
+            return false;
+        }
+        return hasFullVisibility(principal);
+    }
+
+    /**
      * The subjects whose <b>raw assessment output</b> (riskScore, riskLevel, graph, runId) the
      * principal may read - the pagination window for {@code GET /api/assessments} and
      * {@code GET /api/assessment-tasks}.
