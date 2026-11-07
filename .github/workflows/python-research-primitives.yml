@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Check exact abstract causal identification example
+        run: python -I -S -B examples/causal_identification_audit.py
       - name: Check exact functional and decision bounds without site packages
         run: >-
           python -B -S -m unittest
