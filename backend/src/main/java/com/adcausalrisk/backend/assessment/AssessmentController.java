@@ -8,6 +8,7 @@ import com.adcausalrisk.backend.agent.AgentResult;
 import com.adcausalrisk.backend.assessment.entity.AssessmentTask;
 import com.adcausalrisk.backend.assessment.entity.RiskAssessment;
 import com.adcausalrisk.backend.common.Envelope;
+import com.adcausalrisk.backend.common.PageResult;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 
 import org.springframework.security.core.Authentication;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
@@ -101,6 +103,34 @@ public class AssessmentController {
             @PathVariable Long taskId, Authentication authentication) {
         AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
         return Envelope.success(taskView(assessmentService.findTask(taskId, principal)));
+    }
+
+    /**
+     * {@code GET /api/assessment-tasks} - paged task history for the review queue and the
+     * batch-run follow-up. Returns summaries only (no stage details), newest first.
+     */
+    @GetMapping("/api/assessment-tasks")
+    public Envelope<PageResult<AssessmentService.AssessmentTaskSummary>> listTasks(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            Authentication authentication) {
+        AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
+        return Envelope.success(assessmentService.listTasks(page, pageSize, principal));
+    }
+
+    /**
+     * {@code GET /api/assessments} - paged result summaries, newest first.
+     *
+     * <p>This is what the review queue and the report list load instead of asking the user to
+     * type an id. The payload excludes {@code agentResult} so a page stays small.
+     */
+    @GetMapping("/api/assessments")
+    public Envelope<PageResult<AssessmentService.AssessmentSummary>> listAssessments(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            Authentication authentication) {
+        AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
+        return Envelope.success(assessmentService.listAssessments(page, pageSize, principal));
     }
 
     @GetMapping("/api/assessments/{assessmentId}")

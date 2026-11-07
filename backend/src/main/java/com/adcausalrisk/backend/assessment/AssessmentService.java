@@ -17,6 +17,7 @@ import com.adcausalrisk.backend.assessment.entity.AssessmentTask;
 import com.adcausalrisk.backend.assessment.entity.RiskAssessment;
 import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
+import com.adcausalrisk.backend.common.PageResult;
 import com.adcausalrisk.backend.importjob.IdempotencyRecordRepository;
 import com.adcausalrisk.backend.importjob.entity.IdempotencyRecord;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
@@ -25,11 +26,16 @@ import com.adcausalrisk.backend.subject.SubjectRepository;
 import com.adcausalrisk.backend.subject.entity.Subject;
 import com.adcausalrisk.backend.visit.VisitRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -180,11 +186,15 @@ public class AssessmentService {
             String errorCode = stableErrorCode(failure);
             AssessmentTask failed = markFailedOrThrow(
                     seeded.getId(), failure, errorCode, userFacingMessage(errorCode));
-            if (failure instanceof BusinessException business) {
+            if (failure instanceof BusinessException) {
                 // The contract declares only 200/400/401/403 for this operation, so an agent
                 // failure is a FAILED task in a 200 response, not an HTTP error.
+                //
+                // Only the persisted stable code and the fixed user-facing sentence are returned:
+                // the original exception text can contain upstream URLs, response bodies or stack
+                // details, and must never reach the browser - not even on the first response.
                 return new Outcome(failed, null, null,
-                        RestAgentClient.errorCodeOf(business), business.getMessage());
+                        failed.getErrorCode(), failed.getErrorMessage());
             }
             throw failure;
         }
@@ -194,7 +204,10 @@ public class AssessmentService {
     public Outcome findTask(Long taskId, AppUserPrincipal principal) {
         AssessmentTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "评估任务不存在"));
-        if (!accessPolicy.canView(principal, task.getSubjectId())) {
+        // The task view carries runId and stage summaries, i.e. raw-pipeline internals. Visibility
+        // must match GET /api/assessments/{id}: canView alone would let a bound PATIENT read them
+        // by guessing the id, even though the list endpoints already refuse.
+        if (!accessPolicy.canReadRawScores(principal, task.getSubjectId())) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权查看该评估任务");
         }
         RiskAssessment assessment = assessmentRepository.findByTaskId(taskId).orElse(null);
@@ -220,6 +233,143 @@ public class AssessmentService {
         AssessmentTask task = taskRepository.findById(assessment.getTaskId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "评估任务与结果不一致"));
         return new Outcome(task, assessment, parse(assessment), null, null);
+    }
+
+    // ------------------------------------------------------------------
+    // list endpoints (P0): review queue + task history
+    // ------------------------------------------------------------------
+
+    /** One row of {@code GET /api/assessments}; deliberately without {@code agentResult}. */
+    public record AssessmentSummary(
+            long assessmentId,
+            long subjectId,
+            long taskId,
+            java.math.BigDecimal riskScore,
+            String riskLevel,
+            String qualityStatus,
+            String reviewStatus,
+            Instant createdAt) {
+    }
+
+    /** One row of {@code GET /api/assessment-tasks}; no stage details. */
+    public record AssessmentTaskSummary(
+            long taskId,
+            long subjectId,
+            String status,
+            String runId,
+            Long assessmentId,
+            String errorCode,
+            String message,
+            Instant createdAt,
+            Instant updatedAt) {
+    }
+
+    private static final int MAX_PAGE_SIZE = 100;
+
+    /**
+     * {@code GET /api/assessments} - paged result summaries, newest first.
+     *
+     * <p>The response intentionally carries no {@code agentResult}: a page of 100 full results
+     * would be tens of megabytes and would freeze the review queue. Only the scalar fields the
+     * list needs are returned; {@code riskScore}/{@code riskLevel} are read out of the stored JSON
+     * with a single {@code readTree} pass, and a malformed legacy row degrades to nulls instead of
+     * failing the whole page.
+     *
+     * <p>Visibility follows the same rule as the subject list: ADMIN/RESEARCHER see everything,
+     * DOCTOR/PATIENT only their granted subjects.
+     */
+    public PageResult<AssessmentSummary> listAssessments(
+            int page, int pageSize, AppUserPrincipal principal) {
+        int safePage = Math.max(1, page);
+        int safePageSize = Math.max(1, Math.min(MAX_PAGE_SIZE, pageSize));
+        Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "id"));
+
+        Page<RiskAssessment> paged;
+        if (accessPolicy.hasFullRawScoreVisibility(principal)) {
+            paged = assessmentRepository.findAll(pageable);
+        } else {
+            // Raw-score window, applied before paging: a PATIENT (or a SUMMARY_READ-only doctor)
+            // must not see these rows at all, and filtering after paging would leak the total.
+            java.util.Set<Long> visible = accessPolicy.rawScoreVisibleSubjectIds(principal);
+            paged = visible.isEmpty()
+                    ? Page.empty(pageable)
+                    : assessmentRepository.findBySubjectIdIn(visible, pageable);
+        }
+        List<AssessmentSummary> items = paged.getContent().stream().map(this::toAssessmentSummary).toList();
+        return new PageResult<>(items, safePage, safePageSize, paged.getTotalElements());
+    }
+
+    private AssessmentSummary toAssessmentSummary(RiskAssessment assessment) {
+        String level = null;
+        java.math.BigDecimal score = null;
+        try {
+            JsonNode node = objectMapper.readTree(assessment.getAgentResultJson());
+            JsonNode scoreNode = node.get("riskScore");
+            if (scoreNode != null && scoreNode.isNumber()) {
+                score = scoreNode.decimalValue();
+            }
+            JsonNode levelNode = node.get("riskLevel");
+            if (levelNode != null && levelNode.isTextual()) {
+                level = levelNode.asText();
+            }
+        } catch (JsonProcessingException | RuntimeException ignored) {
+            // A stored result that cannot be parsed must not break the whole page.
+            log.warn("评估结果 {} 的 agentResult 无法解析，列表摘要降级为 null", assessment.getId());
+        }
+        return new AssessmentSummary(
+                assessment.getId(),
+                assessment.getSubjectId(),
+                assessment.getTaskId(),
+                score,
+                level,
+                assessment.getQualityStatus() == null ? null : assessment.getQualityStatus().name(),
+                assessment.getReviewStatus() == null ? null : assessment.getReviewStatus().name(),
+                assessment.getCreatedAt());
+    }
+
+    /**
+     * {@code GET /api/assessment-tasks} - paged task history, newest first.
+     *
+     * <p>Assessment ids are resolved for the whole page in one query, so a 100-row page costs
+     * two queries rather than 101.
+     */
+    public PageResult<AssessmentTaskSummary> listTasks(
+            int page, int pageSize, AppUserPrincipal principal) {
+        int safePage = Math.max(1, page);
+        int safePageSize = Math.max(1, Math.min(MAX_PAGE_SIZE, pageSize));
+        Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "id"));
+
+        Page<AssessmentTask> paged;
+        if (accessPolicy.hasFullRawScoreVisibility(principal)) {
+            paged = taskRepository.findAll(pageable);
+        } else {
+            // Task history carries runId and assessment ids: same raw-score window as the list.
+            java.util.Set<Long> visible = accessPolicy.rawScoreVisibleSubjectIds(principal);
+            paged = visible.isEmpty()
+                    ? Page.empty(pageable)
+                    : taskRepository.findBySubjectIdIn(visible, pageable);
+        }
+
+        List<Long> taskIds = paged.getContent().stream().map(AssessmentTask::getId).toList();
+        java.util.Map<Long, Long> assessmentByTask = taskIds.isEmpty()
+                ? java.util.Map.of()
+                : assessmentRepository.findByTaskIdIn(taskIds).stream().collect(
+                        java.util.stream.Collectors.toMap(
+                                RiskAssessment::getTaskId, RiskAssessment::getId, (first, second) -> first));
+
+        List<AssessmentTaskSummary> items = paged.getContent().stream()
+                .map(task -> new AssessmentTaskSummary(
+                        task.getId(),
+                        task.getSubjectId(),
+                        task.getStatus().name(),
+                        task.getRunId(),
+                        assessmentByTask.get(task.getId()),
+                        task.getErrorCode(),
+                        task.getErrorMessage(),
+                        task.getCreatedAt(),
+                        task.getUpdatedAt()))
+                .toList();
+        return new PageResult<>(items, safePage, safePageSize, paged.getTotalElements());
     }
 
     // ------------------------------------------------------------------

@@ -41,6 +41,13 @@
 
 ## 二、P0：阻断业务闭环（3 条）
 
+> **状态（2026-11-07）**：P0-1 / P0-2 / P0-3 已实现，`feat/missing-p0-endpoints` 分支。
+> 实际落地与下方"建议接口"的差异：列表只支持 `page` / `pageSize`（未做 `reviewStatus` 等服务端筛选，
+> 页面明确标注"筛选仅作用于当前页"）；患者摘要走独立的 `GET /api/patients/me/summary`，
+> 返回比 `PatientAssessmentSummary` 多出 `subjectCode/alias/hasAssessment/pendingReview`，
+> 以便区分"未绑定 / 已绑定但无评估"。原始分数可见性规则与详情接口一致：PATIENT 与
+> `SUMMARY_READ`-only 医生在列表、任务历史、任务详情上都拿不到 `riskScore` / `runId`。
+
 ### P0-1 评估结果列表
 
 **现象**

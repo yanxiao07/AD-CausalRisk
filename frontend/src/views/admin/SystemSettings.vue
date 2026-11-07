@@ -1,15 +1,15 @@
 <template>
   <div class="settings-page">
-    <header class="settings-head">
-      <div>
-        <h1 class="settings-title">系统设置</h1>
-        <p class="settings-sub">只读的系统信息与契约版本。修改类配置尚无接口，本页不提供任何写入操作。</p>
-      </div>
-      <div class="settings-head__right">
+    <PageHeader
+      back
+      title="系统设置"
+      subtitle="只读的系统信息与契约版本。修改类配置尚无接口，本页不提供任何写入操作。"
+    >
+      <template #extra>
         <StatusTag :type="probe.ok ? 'COMPLETED' : 'FAILED'" :label="probe.ok ? '后端在线' : '后端不可达'" />
         <el-button :icon="Refresh" :loading="probing" @click="probeBackend">重新探测</el-button>
-      </div>
-    </header>
+      </template>
+    </PageHeader>
 
     <div class="grid">
       <article class="panel">
@@ -84,6 +84,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
+import PageHeader from '@/components/common/PageHeader.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import request from '@/api/request.js'
 

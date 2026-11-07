@@ -1,6 +1,6 @@
 <template>
   <div class="patient-list">
-    <PageHeader
+    <PageHeader back
       title="受试者档案"
       subtitle="仅展示授权范围内的受试者；点击任意一行查看档案概览。"
     >

@@ -1,6 +1,10 @@
 <template>
   <div class="causal-graph">
-    <div ref="chartEl" class="causal-graph__canvas" :style="{ height: `${height}px` }" />
+    <div
+      ref="chartEl"
+      class="causal-graph__canvas"
+      :style="{ height: `${height}px` }"
+    />
 
     <div class="causal-graph__legend">
       <span class="legend__item"><i class="dot dot--prior" />先验证据（PRIOR）</span>
@@ -9,7 +13,8 @@
     </div>
     <p class="causal-graph__note">
       连线表示<strong>条件性关联</strong>（direction = CONDITIONAL），不是病因证明；
-      箭头方向用于解释模型输入，不代表临床因果结论。
+      箭头方向用于解释模型输入，不代表临床因果结论。滚轮缩放、拖动查看，悬停连线看类型，
+      <strong>双击复位</strong>。
     </p>
   </div>
 </template>
@@ -138,10 +143,12 @@ function buildOption(graph) {
         layout: 'force',
         roam: true,
         draggable: true,
-        top: 28,
-        bottom: 28,
-        left: 28,
-        right: 28,
+        scaleLimit: { min: 0.6, max: 3 },
+        // 留足边距：节点标签放在下方，边距太小会被裁在卡片边缘
+        top: 36,
+        bottom: 36,
+        left: 36,
+        right: 36,
         symbol: 'circle',
         edgeSymbol: ['none', 'arrow'],
         edgeSymbolSize: 7,
@@ -154,8 +161,10 @@ function buildOption(graph) {
           fontWeight: 600,
           color: '#11344b'
         },
-        labelLayout: { hideOverlap: true },
-        // 边标签：短文本 + 白底，居中压在线条上，绝不顺着线条飘长句
+        // Graph 的边标签由 Line 在局部坐标定位。全局 labelLayout（包括 hideOverlap）
+        // 会将 textConfig.local 改成 false，造成缩放、平移和力布局时文字脱离连线。
+        // 保留原生局部标签布局，让节点拖拽、连线与文字使用同一坐标变换。
+        // 边标签常驻显示（边不多时），悬停/高亮时加重
         edgeLabel: {
           show: showEdgeLabels,
           formatter: '{c}',
@@ -170,7 +179,7 @@ function buildOption(graph) {
         emphasis: {
           focus: 'adjacency',
           lineStyle: { width: 2.4, opacity: 1 },
-          edgeLabel: { show: true, fontSize: 11, color: '#11344b' }
+          edgeLabel: { show: true, fontSize: 10, color: '#11344b' }
         },
         force: {
           // 斥力要够大才不挤在一起，但太大会把边缘节点挤出画布。
@@ -179,6 +188,7 @@ function buildOption(graph) {
           edgeLength: [110 * layoutScale, 170 * layoutScale],
           gravity: 0.09,
           friction: 0.2,
+          // 力布局动画保留：这是"丝滑"的来源，不要为了稳定把它关掉
           layoutAnimation: true
         },
         data: nodes,
@@ -199,10 +209,58 @@ function render() {
   chart.setOption(buildOption(graph), { notMerge: true })
 }
 
-onMounted(() => {
+/**
+ * 只有容器拿到正尺寸才初始化。
+ *
+ * el-drawer 的滑入动画约 300ms，动画期间容器宽度是 0；此时 init 会让 ECharts 按 0 尺寸
+ * 计算缩放，表现就是字号被无限放大、线条飞出画布。这里先等动画结束，再用 ResizeObserver
+ * 兜底（动画超过 300ms 或之后才挂载时也能补上）。
+ */
+const INIT_DELAY_MS = 300
+
+let initTimer = null
+let lastWidth = 0
+
+function hasUsableSize(el) {
+  if (!el) return false
+  const { width, height } = el.getBoundingClientRect()
+  return width >= 40 && height >= 40
+}
+
+function ensureChart() {
+  if (chart) return chart
+  if (!hasUsableSize(chartEl.value)) return null
   chart = echarts.init(chartEl.value, null, { renderer: 'canvas' })
-  render()
-  observer = new ResizeObserver(() => chart?.resize())
+  // ZRender 同时覆盖图形和空白区域，并适用于 ResizeObserver 延迟初始化的入口。
+  chart.getZr().on('dblclick', resetView)
+  lastWidth = chartEl.value.getBoundingClientRect().width
+  return chart
+}
+
+onMounted(() => {
+  // 不立刻 init：等抽屉/弹窗的 slide 动画结束、容器尺寸稳定
+  initTimer = window.setTimeout(() => {
+    initTimer = null
+    if (!ensureChart()) return
+    render()
+  }, INIT_DELAY_MS)
+
+  observer = new ResizeObserver(() => {
+    const el = chartEl.value
+    if (!el) return
+    const { width, height } = el.getBoundingClientRect()
+    if (width < 1 || height < 1) return
+
+    if (!chart) {
+      // 动画比 300ms 更久：尺寸一稳定就补上初始化
+      if (ensureChart()) render()
+      return
+    }
+    chart.resize()
+    // 从 0 宽恢复成正常宽度时，重新布局一次，修掉按错误尺寸算出的力导向布局
+    if (lastWidth === 0) render()
+    lastWidth = width
+  })
   observer.observe(chartEl.value)
 })
 
@@ -212,7 +270,14 @@ watch(
   { deep: true }
 )
 
+/** 重建原始布局，同时复位原生缩放、平移及手动拖动的节点。 */
+function resetView() {
+  render()
+}
+
 onBeforeUnmount(() => {
+  if (initTimer) window.clearTimeout(initTimer)
+  initTimer = null
   observer?.disconnect()
   observer = null
   chart?.dispose()
@@ -230,6 +295,7 @@ onBeforeUnmount(() => {
 
 .causal-graph__canvas {
   width: 100%;
+  overflow: hidden;
 }
 
 .causal-graph__legend {

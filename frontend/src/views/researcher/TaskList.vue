@@ -1,63 +1,101 @@
 <template>
   <div class="task-page">
-    <PageHeader title="评估任务" subtitle="按任务 ID 查看四阶段进度与耗时。">
+    <PageHeader back title="评估任务" subtitle="按时间倒序展示评估任务历史；点击任意一行查看阶段耗时。">
       <template #extra>
-        <el-input
-          v-model="inputId"
-          class="id-input"
-          placeholder="输入任务 ID"
-          clearable
-          @keyup.enter="load"
-        />
-        <el-button type="primary" :loading="loading" @click="load">查询</el-button>
-        <el-button :icon="Refresh" :disabled="!task" @click="load">刷新</el-button>
+        <el-button :icon="Refresh" :loading="loading" @click="loadPage(page)">刷新</el-button>
       </template>
     </PageHeader>
 
-    <el-alert
-      class="note"
-      type="info"
-      :closable="false"
-      show-icon
-      title="后端暂未提供任务列表接口"
-      description="契约只有 POST /api/assessment-tasks 与 GET /api/assessment-tasks/{id}，所以这里按任务 ID 查询；批量评估的进度请用「受试者档案」页右上角的进度面板。"
-    />
+    <DataCard padding="none">
+      <div class="filter">
+        <span class="filter__count">共 {{ total }} 条 · 当前页 {{ items.length }} 条</span>
+      </div>
 
-    <el-alert
-      v-if="loadError"
-      class="note"
-      type="error"
-      :closable="false"
-      show-icon
-      title="任务载入失败"
-      :description="loadError"
-    />
+      <el-skeleton v-if="firstLoading" :rows="5" animated />
 
-    <EmptyState
-      v-if="!task && !loadError"
-      :icon="Cpu"
-      title="还没有查询任务"
-      description="输入任务 ID 后查看状态与四个阶段的耗时。"
-    />
+      <EmptyState
+        v-else-if="loadError"
+        :icon="WarningFilled"
+        title="任务列表加载失败"
+        :description="loadError"
+        action-text="重试"
+        @action="loadPage(page)"
+      />
 
-    <!-- v-else-if="task"：载入失败时 task 为 null，这里绝不能进 DataCard 分支 -->
-    <template v-else-if="task">
-      <DataCard :title="`任务 #${task.taskId}`" :subtitle="`受试者 #${task.subjectId}`">
-        <template #header-extra>
-          <StatusTag :type="task.status" />
-        </template>
+      <EmptyState
+        v-else-if="items.length === 0"
+        :icon="Cpu"
+        title="还没有评估任务"
+        description="在受试者档案里发起评估后，任务历史会出现在这里。"
+      />
 
+      <el-table v-else :data="items" class="table" row-key="taskId" @row-click="openTask">
+        <el-table-column prop="taskId" label="任务 ID" width="110" />
+        <el-table-column prop="subjectId" label="受试者" width="110" />
+        <el-table-column label="状态" width="130">
+          <template #default="{ row }">
+            <StatusTag :type="row.status" />
+          </template>
+        </el-table-column>
+        <el-table-column label="评估结果" width="120">
+          <template #default="{ row }">
+            <span v-if="row.assessmentId">#{{ row.assessmentId }}</span>
+            <span v-else class="is-muted">未生成</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="错误" min-width="220">
+          <template #default="{ row }">
+            <span v-if="row.errorCode" class="is-error">
+              {{ row.errorCode }}：{{ row.message || '—' }}
+            </span>
+            <span v-else class="is-muted">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="160">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" fixed="right">
+          <template #default="{ row }">
+            <el-button text type="primary" @click.stop="openTask(row)">详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div v-if="total > pageSize" class="pager">
+        <el-pagination
+          v-model:current-page="page"
+          :page-size="pageSize"
+          :total="total"
+          layout="total, prev, pager, next"
+          background
+          @current-change="loadPage"
+        />
+      </div>
+    </DataCard>
+
+    <!-- 阶段详情：列表行不含 stages，打开时再拉单条 -->
+    <el-drawer
+      v-model="drawerOpen"
+      :title="detail ? `任务 #${detail.taskId}` : '任务详情'"
+      direction="rtl"
+      size="620px"
+      destroy-on-close
+    >
+      <el-skeleton v-if="detailLoading" :rows="8" animated />
+      <template v-else-if="detail">
         <dl class="facts">
-          <div><dt>runId</dt><dd>{{ task.runId || '—' }}</dd></div>
-          <div><dt>评估结果</dt><dd>{{ task.assessmentId ? `#${task.assessmentId}` : '未生成' }}</dd></div>
-          <div><dt>创建时间</dt><dd>{{ formatTime(task.createdAt) }}</dd></div>
-          <div><dt>更新时间</dt><dd>{{ formatTime(task.updatedAt) }}</dd></div>
-          <div v-if="task.errorCode" class="facts__wide">
-            <dt>错误</dt><dd class="is-error">{{ task.errorCode }}：{{ task.message || '—' }}</dd>
+          <div><dt>受试者</dt><dd>#{{ detail.subjectId }}</dd></div>
+          <div><dt>状态</dt><dd><StatusTag :type="detail.status" /></dd></div>
+          <div><dt>runId</dt><dd>{{ detail.runId || '—' }}</dd></div>
+          <div><dt>评估结果</dt><dd>{{ detail.assessmentId ? `#${detail.assessmentId}` : '未生成' }}</dd></div>
+          <div><dt>创建时间</dt><dd>{{ formatTime(detail.createdAt) }}</dd></div>
+          <div><dt>更新时间</dt><dd>{{ formatTime(detail.updatedAt) }}</dd></div>
+          <div v-if="detail.errorCode" class="facts__wide">
+            <dt>错误</dt><dd class="is-error">{{ detail.errorCode }}：{{ detail.message || '—' }}</dd>
           </div>
         </dl>
 
-        <el-table v-if="task.stages?.length" :data="task.stages" class="table" size="small">
+        <el-table v-if="detail.stages?.length" :data="detail.stages" class="table" size="small">
           <el-table-column label="阶段" width="160">
             <template #default="{ row }">{{ stageLabel(row.stage) }}</template>
           </el-table-column>
@@ -80,39 +118,45 @@
           description="任务仍在排队或运行时，stages 可能为空。"
         />
 
-        <template #footer>
-          <div class="actions">
-            <el-button :disabled="!task.assessmentId" @click="goReport">查看报告</el-button>
-            <el-button type="primary" :disabled="!task.assessmentId" @click="goReview">去复核</el-button>
-          </div>
-        </template>
-      </DataCard>
-    </template>
+        <div class="actions">
+          <el-button :disabled="!detail.assessmentId" @click="goReport">查看报告</el-button>
+          <el-button type="primary" :disabled="!detail.assessmentId" @click="goReview">去复核</el-button>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Cpu, Refresh } from '@element-plus/icons-vue'
+import { Cpu, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { getAssessmentTask } from '@/api/assessments.js'
+import { getAssessmentTask, listAssessmentTasks } from '@/api/assessments.js'
 
 const route = useRoute()
 const router = useRouter()
 
-const inputId = ref('')
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+const items = ref([])
+
 const loading = ref(false)
-const task = ref(null)
-/** 载入失败的可读原因（空串 = 无错误） */
+const firstLoading = ref(true)
 const loadError = ref('')
 
-/** 请求序号守卫：快速切换任务 ID 时只认最后一次响应 */
+const drawerOpen = ref(false)
+const detailLoading = ref(false)
+const detail = ref(null)
+
+/** 列表请求序号：翻页竞态时只认最新一次响应 */
 let requestSeq = 0
+/** 详情请求序号：先点 11 再点 22 时，迟到的 11 不能覆盖 22 */
+let detailSeq = 0
 
 const STAGE_LABELS = {
   DATA_FUSION: '数据融合',
@@ -143,45 +187,67 @@ function summarize(summary) {
   return entries.map(([key, value]) => `${key}=${value}`).join(' · ')
 }
 
-async function load() {
-  const id = Number(inputId.value)
-  if (!Number.isInteger(id) || id <= 0) {
-    ElMessage.warning('请输入有效的任务 ID')
-    return
-  }
-  // 请求序号守卫：快速切换任务 ID 时只认最后一次
+async function loadPage(target = page.value) {
   const seq = ++requestSeq
   loading.value = true
   loadError.value = ''
   try {
-    const data = await getAssessmentTask(id)
+    const data = await listAssessmentTasks({ page: target, pageSize: pageSize.value })
     if (seq !== requestSeq) return
-    task.value = data
+    items.value = Array.isArray(data?.items) ? data.items : []
+    total.value = Number(data?.total ?? items.value.length)
+    page.value = Number(data?.page ?? target)
+    if (items.value.length === 0 && total.value > 0 && page.value > 1) {
+      page.value -= 1
+      await loadPage(page.value)
+    }
   } catch (problem) {
     if (seq !== requestSeq) return
-    task.value = null
-    loadError.value =
-      problem?.errorCode === 'NETWORK_ERROR'
-        ? '无法连接服务器，请确认后端已启动。'
-        : problem?.message || `任务 #${id} 载入失败，请稍后重试。`
+    items.value = []
+    total.value = 0
+    loadError.value = problem?.message || '请稍后重试'
   } finally {
-    if (seq === requestSeq) loading.value = false
+    if (seq === requestSeq) {
+      loading.value = false
+      firstLoading.value = false
+    }
+  }
+}
+
+async function openTask(row) {
+  const seq = ++detailSeq
+  // 先清空：新的一行在加载时不应继续显示上一条的 runId / 跳转目标
+  detail.value = null
+  detailLoading.value = true
+  drawerOpen.value = true
+  try {
+    const data = await getAssessmentTask(row.taskId)
+    // 迟到的响应（用户已经点了别的任务）必须丢掉，否则抽屉内容和按钮会指向旧任务
+    if (seq !== detailSeq) return
+    detail.value = data
+  } catch {
+    if (seq !== detailSeq) return
+    // request.js 已提示；保留空详情
+    detail.value = null
+  } finally {
+    if (seq === detailSeq) detailLoading.value = false
   }
 }
 
 function goReport() {
-  router.push({ path: '/reports', query: { assessmentId: task.value.assessmentId } })
+  router.push({ path: '/reports', query: { assessmentId: detail.value.assessmentId } })
 }
 
 function goReview() {
-  router.push({ path: '/reviews', query: { assessmentId: task.value.assessmentId } })
+  router.push({ path: '/reviews', query: { assessmentId: detail.value.assessmentId } })
 }
 
-onMounted(() => {
-  const fromQuery = route.query.taskId
-  if (fromQuery) {
-    inputId.value = String(fromQuery)
-    load()
+onMounted(async () => {
+  await loadPage(1)
+  // 深链：从批量面板/其他地方带 taskId 过来，直接打开详情
+  const fromQuery = Number(route.query.taskId)
+  if (Number.isInteger(fromQuery) && fromQuery > 0) {
+    openTask({ taskId: fromQuery })
   }
 })
 </script>
@@ -193,12 +259,36 @@ onMounted(() => {
   gap: 16px;
 }
 
-.id-input {
-  width: 160px;
+.filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
 }
 
-.note {
-  border-radius: var(--r-md);
+.filter__count {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.table {
+  width: 100%;
+}
+
+.is-muted {
+  color: var(--soft);
+}
+
+.is-error {
+  color: var(--danger);
+}
+
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
 }
 
 .facts {
@@ -233,16 +323,9 @@ onMounted(() => {
   font-family: var(--font-display);
 }
 
-.facts dd.is-error {
-  color: var(--danger);
-}
-
-.table {
-  width: 100%;
-}
-
 .actions {
   display: flex;
   gap: 10px;
+  margin-top: 18px;
 }
 </style>

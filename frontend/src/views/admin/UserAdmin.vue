@@ -1,11 +1,12 @@
 <template>
   <div class="users-page">
-    <article class="panel">
-      <header class="panel__head">
-        <h2>账号管理</h2>
+    <PageHeader back title="账号管理" subtitle="账号与角色的只读视图；写入接口尚未提供。">
+      <template #extra>
         <span class="panel__tag">UI 骨架 · 接口待建</span>
-      </header>
+      </template>
+    </PageHeader>
 
+    <article class="panel">
       <p class="panel__hint">
         契约的 22 个操作里没有账号管理接口（现有 only 登录 / 登出 / 当前用户），
         因此本页先固定表头与交互骨架；后端补上
@@ -39,6 +40,8 @@
  * 管理员「账号管理」占位页。
  * 不编造假数据：表格数据源固定为空数组，等后端提供用户管理接口后再接。
  */
+import PageHeader from '@/components/common/PageHeader.vue'
+
 const rows = []
 </script>
 

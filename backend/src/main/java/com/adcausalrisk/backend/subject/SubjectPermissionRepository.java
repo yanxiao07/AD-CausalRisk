@@ -1,5 +1,6 @@
 package com.adcausalrisk.backend.subject;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -33,6 +34,19 @@ public interface SubjectPermissionRepository extends JpaRepository<SubjectPermis
      */
     @Query("SELECT DISTINCT sp.subjectId FROM SubjectPermission sp WHERE sp.userId = :userId")
     List<Long> findDistinctSubjectIdByUserId(@Param("userId") Long userId);
+
+    /**
+     * Subjects where the user holds one of the given permission types.
+     *
+     * <p>Used by the assessment/task lists to build the raw-score window in one query instead of
+     * calling {@code findPermissionTypes} once per granted subject.
+     */
+    @Query("""
+            SELECT DISTINCT sp.subjectId FROM SubjectPermission sp
+            WHERE sp.userId = :userId AND sp.permissionType IN :types
+            """)
+    List<Long> findDistinctSubjectIdByUserIdAndPermissionTypes(
+            @Param("userId") Long userId, @Param("types") Collection<PermissionType> types);
 
     /**
      * The permission types the given user holds on one subject.

@@ -1,14 +1,12 @@
 /**
  * 「评估任务」页的渲染回归测试。
  *
- * 背景：TaskList 里 DataCard 曾经用 `v-else` 挂在 EmptyState 的 `v-if` 上，
- * 于是"查询失败（task 为 null 且 loadError 非空）"也会进 DataCard 分支，
- * 渲染期访问 `task.taskId` 直接抛错 —— 页面白屏。
- * 这个脚本用真实浏览器把三种状态都跑一遍：
+ * 页面已经改成"列表 + 详情抽屉"，这个脚本用真实浏览器覆盖四件事：
  *
- *   1) 初始态：没有任何查询 → 空态，且不渲染 DataCard
- *   2) 失败态：后端 400（任务不存在）→ 只渲染错误提示，绝不渲染 DataCard
- *   3) 成功态：后端 200 → 渲染任务卡 + 阶段表
+ *   1) 初始态：列表分页渲染，行数/计数正确
+ *   2) 乱序响应：先点任务 11（慢），再点任务 22（快），迟到的 11 不得覆盖 22
+ *   3) 详情动作：抽屉里的「查看报告」指向上一次点击的那条任务
+ *   4) 失败态：列表接口失败 → EmptyState 提示，不渲染表格行
  *
  * 前置：dev server 已启动（默认 http://127.0.0.1:5199）。
  *   npm run dev -- --port 5199
@@ -16,7 +14,7 @@
  */
 import puppeteer from 'puppeteer-core'
 import { mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const BASE = process.env.E2E_BASE || 'http://127.0.0.1:5199'
@@ -26,11 +24,11 @@ const CHROME =
 /**
  * 截图目录：用 fileURLToPath 而不是 URL.pathname。
  * pathname 在 Windows 上会给出 "/C:/Users/..."，直接传给 fs 会拼出错误路径；而且 .shots/
- * 是 gitignore 的，干净检出时并不存在，不先建目录就会在保存截图时 ENOENT、后面的用例全部不执行。
+ * 是 gitignore 的，干净检出时并不存在，不先建目录就会在保存截图时 ENOENT。
  */
 const shotDir = fileURLToPath(new URL('../.shots/', import.meta.url))
 mkdirSync(shotDir, { recursive: true })
-const shotPath = join(shotDir, 'task-list-failed.png')
+const shotPath = join(shotDir, 'task-list.png')
 
 const env = (data) =>
   JSON.stringify({
@@ -42,12 +40,12 @@ const env = (data) =>
     timestamp: new Date().toISOString()
   })
 
-const badRequest = (message) =>
+const failure = (status, message, errorCode) =>
   JSON.stringify({
-    code: 400,
+    code: status,
     message,
     data: null,
-    errorCode: 'VALIDATION_ERROR',
+    errorCode,
     traceId: 't',
     timestamp: new Date().toISOString()
   })
@@ -58,6 +56,31 @@ const researcher = {
   roles: ['RESEARCHER'],
   menus: ['graph', 'imports', 'quality', 'reports', 'subjects', 'tasks']
 }
+
+const taskRows = [
+  {
+    taskId: 11,
+    subjectId: 41,
+    status: 'COMPLETED',
+    runId: 'run-11',
+    assessmentId: 11,
+    errorCode: null,
+    message: null,
+    createdAt: '2026-11-06T02:00:00Z',
+    updatedAt: '2026-11-06T02:00:05Z'
+  },
+  {
+    taskId: 22,
+    subjectId: 42,
+    status: 'COMPLETED',
+    runId: 'run-22',
+    assessmentId: 22,
+    errorCode: null,
+    message: null,
+    createdAt: '2026-11-06T01:00:00Z',
+    updatedAt: '2026-11-06T01:00:05Z'
+  }
+]
 
 const results = []
 const pageErrors = []
@@ -93,39 +116,59 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage()
 page.on('pageerror', (error) => pageErrors.push(String(error).slice(0, 200)))
 
+/** 列表接口是否返回失败；乱序用例需要它保持成功。 */
+let listMode = 'ok'
+/** 任务 11 的详情响应延迟（ms），用来制造乱序。 */
+const SLOW_TASK_ID = 11
+const SLOW_DELAY_MS = 1200
+
 await page.setRequestInterception(true)
-page.on('request', (request) => {
-  const path = new URL(request.url()).pathname
+page.on('request', async (request) => {
+  const url = new URL(request.url())
+  const path = url.pathname
   const json = (body) => request.respond({ status: 200, contentType: 'application/json', body })
 
   if (request.url().includes('cdn.jsdelivr')) return request.abort()
   if (path === '/api/auth/login' || path === '/api/me') return json(env(researcher))
 
-  const taskMatch = path.match(/^\/api\/assessment-tasks\/(\d+)$/)
-  if (taskMatch) {
-    const id = Number(taskMatch[1])
-    if (id === 999) {
+  if (path === '/api/assessment-tasks' && url.search) {
+    if (listMode === 'fail') {
       return request.respond({
-        status: 400,
+        status: 500,
         contentType: 'application/json',
-        body: badRequest('任务不存在')
+        body: failure(500, '服务暂不可用，请稍后重试', 'INTERNAL_ERROR')
       })
     }
     return json(
+      env({ items: taskRows, page: 1, pageSize: 20, total: taskRows.length })
+    )
+  }
+
+  const taskMatch = path.match(/^\/api\/assessment-tasks\/(\d+)$/)
+  if (taskMatch) {
+    const id = Number(taskMatch[1])
+    if (id === SLOW_TASK_ID) await new Promise((r) => setTimeout(r, SLOW_DELAY_MS))
+    return json(
       env({
         taskId: id,
-        subjectId: 42,
+        subjectId: 40 + id,
         status: 'COMPLETED',
         runId: `run-${id}`,
         assessmentId: id,
-        createdAt: '2026-10-30T10:00:00Z',
-        updatedAt: '2026-10-30T10:00:03Z',
+        errorCode: null,
+        message: null,
+        createdAt: '2026-11-06T02:00:00Z',
+        updatedAt: '2026-11-06T02:00:05Z',
         stages: [
           { stage: 'DATA_FUSION', status: 'COMPLETED', durationMs: 420, summary: { rows: 3 } },
-          { stage: 'CAUSAL_GRAPH', status: 'COMPLETED', durationMs: 610, summary: {} }
+          { stage: 'EXPLANATION', status: 'COMPLETED', durationMs: 610, summary: {} }
         ]
       })
     )
+  }
+
+  if (path === '/api/subjects') {
+    return json(env({ items: [], page: 1, pageSize: 20, total: 0 }))
   }
 
   return request.continue()
@@ -148,60 +191,89 @@ async function login() {
 
 const snapshot = () =>
   page.evaluate(() => ({
-    hasPage: Boolean(document.querySelector('.task-page')),
-    cards: document.querySelectorAll('.task-page .data-card').length,
-    cardTitle: document.querySelector('.task-page .data-card__title')?.textContent?.trim() || '',
-    errorAlert: document.querySelector('.task-page .el-alert--error')?.textContent?.replace(/\s+/g, ' ').trim() || '',
-    emptyState: document.querySelector('.task-page .empty-state')?.textContent?.replace(/\s+/g, ' ').trim() || '',
-    stageRows: document.querySelectorAll('.task-page .el-table__body .el-table__row').length,
+    rows: document.querySelectorAll('.task-page .el-table__body .el-table__row').length,
+    count: document.querySelector('.task-page .filter__count')?.textContent?.trim() || '',
+    empty: document.querySelector('.task-page .empty-state')?.textContent?.replace(/\s+/g, ' ').trim() || '',
+    drawerText: document.querySelector('.el-drawer')?.textContent?.replace(/\s+/g, ' ').trim() || '',
+    drawerOpen: Boolean(document.querySelector('.el-drawer')),
     bodyText: (document.querySelector('.task-page')?.textContent || '').replace(/\s+/g, ' ')
   }))
 
 try {
   await login()
 
-  // ---------- 1. 初始态 ----------
+  // ---------- 1. 列表初始态 ----------
   await page.goto(`${BASE}/tasks`, { waitUntil: 'domcontentloaded' })
-  await page.waitForSelector('.task-page', { timeout: 15000 })
-  await new Promise((r) => setTimeout(r, 600))
+  await page.waitForSelector('.task-page .el-table__body .el-table__row', { timeout: 20000 })
   const initial = await snapshot()
-  check('初始态渲染空态', initial.emptyState.includes('还没有查询任务'), initial.emptyState.slice(0, 40))
-  check('初始态不渲染 DataCard', initial.cards === 0, `cards=${initial.cards}`)
+  check('列表渲染两行任务', initial.rows === 2, `rows=${initial.rows}`)
+  check('分页计数正确', initial.count.includes('共 2 条'), initial.count)
+  check('列表含状态标签', initial.bodyText.includes('已完成'), initial.bodyText.slice(0, 80))
 
-  // ---------- 2. 失败态（核心回归） ----------
-  await page.goto(`${BASE}/tasks?taskId=999`, { waitUntil: 'domcontentloaded' })
-  await page.waitForSelector('.task-page', { timeout: 15000 })
+  // ---------- 2. 乱序响应：慢的 11 不能覆盖快的 22 ----------
+  await page.evaluate(() =>
+    document.querySelectorAll('.task-page .el-table__body .el-table__row')[0].click()
+  )
+  await new Promise((r) => setTimeout(r, 150))
+  await page.evaluate(() =>
+    document.querySelectorAll('.task-page .el-table__body .el-table__row')[1].click()
+  )
   await page.waitForFunction(
-    () => Boolean(document.querySelector('.task-page .el-alert--error')),
+    () => document.querySelector('.el-drawer')?.textContent?.includes('任务 #22'),
     { timeout: 15000 }
   )
-  await new Promise((r) => setTimeout(r, 500))
-  const failed = await snapshot()
+  // 等慢响应（1200ms）回来，确认它没有把 22 覆盖成 11
+  await new Promise((r) => setTimeout(r, SLOW_DELAY_MS + 700))
+  const afterLate = await snapshot()
   check(
-    '失败态渲染错误提示',
-    failed.errorAlert.includes('任务载入失败') && failed.errorAlert.includes('任务不存在'),
-    failed.errorAlert.slice(0, 70)
+    '迟到的任务 11 不覆盖任务 22',
+    afterLate.drawerText.includes('任务 #22') && afterLate.drawerText.includes('run-22'),
+    afterLate.drawerText.slice(0, 80)
   )
-  check('失败态不渲染 DataCard（本次修复点）', failed.cards === 0, `cards=${failed.cards}`)
-  check('失败态不出现任务卡标题', !/任务 #999/.test(failed.bodyText), failed.bodyText.slice(0, 60))
-  check('失败态页面未白屏', failed.hasPage && failed.bodyText.length > 20, `len=${failed.bodyText.length}`)
+  check(
+    '抽屉内容仍指向 22',
+    !afterLate.drawerText.includes('run-11') && !afterLate.drawerText.includes('任务 #11'),
+    afterLate.drawerText.slice(0, 80)
+  )
 
-  // 截图只是证据，不该打断后续断言：目录已预建，失败也只记一条 check
+  // ---------- 3. 详情动作指向当前任务 ----------
+  await page.evaluate(() => {
+    const button = [...document.querySelectorAll('.el-drawer button')].find((b) =>
+      b.textContent.includes('查看报告')
+    )
+    button?.click()
+  })
+  // 等路由真正切到 /reports 再断言，否则紧随其后的 goto('/tasks') 会和这次导航打架
+  await page
+    .waitForFunction(
+      () =>
+        location.pathname === '/reports' &&
+        new URLSearchParams(location.search).get('assessmentId') === '22',
+      { timeout: 10000 }
+    )
+    .catch(() => {})
+  const url = new URL(page.url())
+  check(
+    '查看报告跳转到 assessmentId=22',
+    url.pathname === '/reports' && url.searchParams.get('assessmentId') === '22',
+    `${url.pathname}${url.search}`
+  )
+
+  // ---------- 4. 列表失败态 ----------
+  listMode = 'fail'
+  await page.goto(`${BASE}/tasks`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('.task-page .empty-state', { timeout: 20000 })
+  const failed = await snapshot()
+  check('失败态显示错误空态', failed.empty.includes('任务列表加载失败'), failed.empty.slice(0, 60))
+  check('失败态不渲染表格行', failed.rows === 0, `rows=${failed.rows}`)
+  check('失败态提供重试入口', failed.bodyText.includes('重试'), failed.bodyText.slice(0, 60))
+
   try {
     await page.screenshot({ path: shotPath })
-    check('失败态截图已保存', true, shotPath)
+    check('截图已保存', true, shotPath)
   } catch (error) {
-    check('失败态截图已保存', false, `截图失败但不影响其它断言：${String(error.message).slice(0, 80)}`)
+    check('截图已保存', false, String(error.message).slice(0, 80))
   }
-
-  // ---------- 3. 成功态 ----------
-  await page.goto(`${BASE}/tasks?taskId=7`, { waitUntil: 'domcontentloaded' })
-  await page.waitForSelector('.task-page .data-card', { timeout: 15000 })
-  await new Promise((r) => setTimeout(r, 500))
-  const ok = await snapshot()
-  check('成功态渲染任务卡', ok.cards === 1 && ok.cardTitle === '任务 #7', `cards=${ok.cards} title=${ok.cardTitle}`)
-  check('成功态渲染阶段表', ok.stageRows === 2, `rows=${ok.stageRows}`)
-  check('成功态无错误提示', ok.errorAlert === '', ok.errorAlert.slice(0, 40))
 } finally {
   await browser.close()
 }

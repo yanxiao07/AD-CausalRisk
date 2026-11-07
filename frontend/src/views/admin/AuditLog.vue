@@ -1,6 +1,6 @@
 <template>
   <div class="audit-page">
-    <PageHeader title="审计日志" subtitle="谁在什么时候做了什么；仅管理员可见，按时间倒序。">
+    <PageHeader back title="审计日志" subtitle="谁在什么时候做了什么；仅管理员可见，按时间倒序。">
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>

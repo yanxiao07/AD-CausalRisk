@@ -1,52 +1,48 @@
 <template>
   <div class="review-page">
-    <PageHeader title="待办复核" subtitle="核对研究员的评估结果，并给出面向患者的说明。">
+    <PageHeader back title="待办复核" subtitle="按时间倒序展示评估结果，最新的在前。">
       <template #extra>
-        <el-input
-          v-model="inputId"
-          class="id-input"
-          placeholder="输入评估 ID"
-          clearable
-          @keyup.enter="loadById"
-        />
-        <el-button type="primary" :loading="loading" @click="loadById">载入</el-button>
-      </template>
-    </PageHeader>
-
-    <el-alert
-      class="note"
-      type="info"
-      :closable="false"
-      show-icon
-      title="后端暂未提供「评估列表」接口"
-      description="契约里只有 POST /api/assessment-tasks、GET /api/assessment-tasks/{id}、GET /api/assessments/{id}。所以这里按评估 ID 载入后在前端按 reviewStatus 过滤；列表接口补上后，把 loadById 换成列表请求即可。"
-    />
-
-    <DataCard padding="none">
-      <div class="filter">
         <el-radio-group v-model="filter" size="small">
           <el-radio-button label="ALL">全部</el-radio-button>
           <el-radio-button label="PENDING">待复核</el-radio-button>
         </el-radio-group>
-        <span class="filter__count">已载入 {{ items.length }} 条</span>
+        <el-button :icon="Refresh" :loading="loading" @click="loadPage(page)">刷新</el-button>
+      </template>
+    </PageHeader>
+
+    <DataCard padding="none">
+      <div class="filter">
+        <span class="filter__count">共 {{ total }} 条 · 当前页 {{ items.length }} 条</span>
+        <span class="filter__hint">状态筛选仅作用于当前页</span>
       </div>
 
+      <el-skeleton v-if="firstLoading" :rows="5" animated />
+
       <EmptyState
-        v-if="items.length === 0"
+        v-else-if="loadError"
+        :icon="WarningFilled"
+        title="评估列表加载失败"
+        :description="loadError"
+        action-text="重试"
+        @action="loadPage(page)"
+      />
+
+      <EmptyState
+        v-else-if="visibleItems.length === 0"
         :icon="Document"
-        title="还没有载入评估"
-        description="输入评估 ID 后载入；也可以从受试者档案抽屉里复核后回来查看。"
+        :title="filter === 'PENDING' ? '当前页没有待复核的评估' : '还没有评估结果'"
+        description="研究员发起评估后，结果会自动出现在这里；也可以换一页看看。"
       />
 
       <el-table v-else :data="visibleItems" class="table" row-key="assessmentId">
-        <el-table-column prop="assessmentId" label="评估 ID" width="110" />
-        <el-table-column prop="subjectId" label="受试者" width="110" />
+        <el-table-column prop="assessmentId" label="评估 ID" width="100" />
+        <el-table-column prop="subjectId" label="受试者" width="100" />
         <el-table-column label="风险概率" width="120">
           <template #default="{ row }">{{ formatScore(row) }}</template>
         </el-table-column>
         <el-table-column label="等级" width="120">
           <template #default="{ row }">
-            <StatusTag :type="row.agentResult?.riskLevel || 'UNAVAILABLE'" />
+            <StatusTag :type="row.riskLevel || 'UNAVAILABLE'" />
           </template>
         </el-table-column>
         <el-table-column label="复核状态" width="150">
@@ -54,18 +50,40 @@
             <StatusTag :type="row.reviewStatus" :label="reviewLabel(row.reviewStatus)" />
           </template>
         </el-table-column>
+        <el-table-column label="创建时间" width="160">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
-            <el-button text type="primary" @click="openReview(row)">复核</el-button>
-            <el-button text @click="openReport(row)">报告</el-button>
+            <el-button
+              text
+              type="primary"
+              :loading="openingId === row.assessmentId"
+              @click.stop="openReview(row)"
+            >
+              复核
+            </el-button>
+            <el-button text @click.stop="openReport(row)">报告</el-button>
           </template>
         </el-table-column>
       </el-table>
+
+      <div v-if="total > pageSize" class="pager">
+        <el-pagination
+          v-model:current-page="page"
+          :page-size="pageSize"
+          :total="total"
+          layout="total, prev, pager, next"
+          background
+          @current-change="loadPage"
+        />
+      </div>
     </DataCard>
 
-    <!-- 复核抽屉 -->
+    <!-- 复核抽屉：列表行只有摘要，打开时再拉完整结果（含因果图） -->
     <el-drawer v-model="drawerOpen" title="人工复核" direction="rtl" size="680px" destroy-on-close>
-      <template v-if="current">
+      <el-skeleton v-if="detailLoading" :rows="8" animated />
+      <template v-else-if="current">
         <div class="score">
           <div>
             <p class="score__label">风险概率</p>
@@ -125,32 +143,55 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Document } from '@element-plus/icons-vue'
+import { Document, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import CausalGraph from '@/components/charts/CausalGraph.vue'
-import { getAssessment, reviewAssessment } from '@/api/assessments.js'
+import { getAssessment, listAssessments, reviewAssessment } from '@/api/assessments.js'
 
 const route = useRoute()
 const router = useRouter()
 
-const inputId = ref('')
-const loading = ref(false)
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
 const items = ref([])
 const filter = ref('ALL')
 
+const loading = ref(false)
+const firstLoading = ref(true)
+const loadError = ref('')
+const openingId = ref(null)
+
 const drawerOpen = ref(false)
 const current = ref(null)
+const detailLoading = ref(false)
 const comment = ref('')
 const submitting = ref('')
+
+/** 列表请求序号：翻页/刷新竞态时只接受最新一次响应 */
+let requestSeq = 0
 
 const visibleItems = computed(() =>
   filter.value === 'PENDING'
     ? items.value.filter((item) => item.reviewStatus === 'PENDING')
     : items.value
 )
+
+const timeFormatter = new Intl.DateTimeFormat('zh-CN', {
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit'
+})
+
+function formatTime(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : timeFormatter.format(date)
+}
 
 function reviewLabel(status) {
   return (
@@ -163,29 +204,38 @@ function reviewLabel(status) {
   )
 }
 
+/** 列表行是摘要（riskScore 在顶层）；抽屉里是完整 Assessment（分数在 agentResult 里）。 */
 function formatScore(item) {
-  const value = item?.agentResult?.riskScore
+  const value =
+    typeof item?.riskScore === 'number' ? item.riskScore : item?.agentResult?.riskScore
   return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '不可用'
 }
 
-async function loadById() {
-  const id = Number(inputId.value)
-  if (!Number.isInteger(id) || id <= 0) {
-    ElMessage.warning('请输入有效的评估 ID')
-    return
-  }
+async function loadPage(target = page.value) {
+  const seq = ++requestSeq
   loading.value = true
+  loadError.value = ''
   try {
-    const assessment = await getAssessment(id)
-    const index = items.value.findIndex((item) => item.assessmentId === assessment.assessmentId)
-    if (index >= 0) items.value[index] = assessment
-    else items.value.unshift(assessment)
-    inputId.value = ''
-    ElMessage.success(`已载入评估 #${assessment.assessmentId}`)
-  } catch {
-    // 404/400/403 由 request.js 统一提示
+    const data = await listAssessments({ page: target, pageSize: pageSize.value })
+    if (seq !== requestSeq) return
+    items.value = Array.isArray(data?.items) ? data.items : []
+    total.value = Number(data?.total ?? items.value.length)
+    page.value = Number(data?.page ?? target)
+    // 删到空页时自动退回上一页
+    if (items.value.length === 0 && total.value > 0 && page.value > 1) {
+      page.value -= 1
+      await loadPage(page.value)
+    }
+  } catch (problem) {
+    if (seq !== requestSeq) return
+    items.value = []
+    total.value = 0
+    loadError.value = problem?.message || '请稍后重试'
   } finally {
-    loading.value = false
+    if (seq === requestSeq) {
+      loading.value = false
+      firstLoading.value = false
+    }
   }
 }
 
@@ -193,10 +243,20 @@ function openReport(row) {
   router.push({ path: '/reports', query: { assessmentId: row.assessmentId } })
 }
 
-function openReview(row) {
-  current.value = row
-  comment.value = ''
-  drawerOpen.value = true
+async function openReview(row) {
+  openingId.value = row.assessmentId
+  detailLoading.value = true
+  try {
+    const detail = await getAssessment(row.assessmentId)
+    current.value = detail
+    comment.value = ''
+    drawerOpen.value = true
+  } catch {
+    // request.js 已提示（403/400）
+  } finally {
+    detailLoading.value = false
+    openingId.value = null
+  }
 }
 
 async function submitReview(decision) {
@@ -214,7 +274,7 @@ async function submitReview(decision) {
 
     // 列表按 assessmentId 精确定位，不会误伤其它行
     const index = items.value.findIndex((item) => item.assessmentId === updated.assessmentId)
-    if (index >= 0) items.value[index] = updated
+    if (index >= 0) items.value[index] = { ...items.value[index], reviewStatus: decision }
 
     // 抽屉里显示的仍是同一条才更新；已经切到别的评估就保持不动
     if (current.value?.assessmentId === updated.assessmentId) {
@@ -229,11 +289,26 @@ async function submitReview(decision) {
   }
 }
 
-onMounted(() => {
-  const fromQuery = route.query.assessmentId
-  if (fromQuery) {
-    inputId.value = String(fromQuery)
-    loadById()
+onMounted(async () => {
+  await loadPage(1)
+  // 深链：从任务页/档案抽屉带过来的评估 ID，直接打开该条复核（不依赖列表所在页）
+  const fromQuery = Number(route.query.assessmentId)
+  if (Number.isInteger(fromQuery) && fromQuery > 0) {
+    const row = items.value.find((item) => item.assessmentId === fromQuery)
+    if (row) {
+      openReview(row)
+    } else {
+      detailLoading.value = true
+      try {
+        current.value = await getAssessment(fromQuery)
+        comment.value = ''
+        drawerOpen.value = true
+      } catch {
+        // 该评估不可读或不存在，保持列表视图
+      } finally {
+        detailLoading.value = false
+      }
+    }
   }
 })
 </script>
@@ -243,10 +318,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.id-input {
-  width: 180px;
 }
 
 .note {
@@ -266,8 +337,20 @@ onMounted(() => {
   color: var(--muted);
 }
 
+.filter__hint {
+  font-size: 12px;
+  color: var(--soft);
+}
+
 .table {
   width: 100%;
+}
+
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
 }
 
 .score {

@@ -114,6 +114,12 @@ Element Plus 通过 `styles/element-overrides.css` 覆盖：主色、12px 圆角
 
 ## 已知限制（P3）
 
+图谱使用 ECharts 原生节点拖拽、画布平移和滚轮缩放，缩放范围为 0.6–3 倍，双击画布复位。
+边标签依赖连线的局部坐标，不为 graph 系列配置全局 `labelLayout`。ECharts 6.1.0 中
+`hideOverlap` 会改变边标签的坐标归属，导致缩放和力布局时文字偏离连线。
+图谱交互回归使用合成接口运行。开发服务器启动后执行
+`node scripts/e2e-graph-interaction.mjs`，可用 `E2E_BASE` 和 `E2E_CHROME` 指定地址与浏览器。
+
 - 契约里 `graph.edges` 只有 `note` 与 `direction: CONDITIONAL`，**没有权重**，
   因此图是"结构 + 证据等级"的展示，不画粗细/权重；界面明确标注"条件性关联，非病因证明"。
 - 复核采用「同一评估只能复核一次」的后端语义：`reviewStatus !== PENDING` 时前端隐藏按钮。
