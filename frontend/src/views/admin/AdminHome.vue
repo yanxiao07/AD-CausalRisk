@@ -5,7 +5,7 @@
       :subtitle="`运营总览 · 指标每 ${Math.round(REFRESH_MS / 1000)} 秒刷新 · 审计每 ${Math.round((REFRESH_MS * AUDIT_REFRESH_EVERY) / 1000)} 秒刷新`"
     >
       <template #extra>
-        <span class="admin-updated">上次更新 {{ lastUpdatedText }}</span>
+        <span class="admin-updated">数据截至 {{ lastUpdatedText }}</span>
         <el-button :icon="Refresh" :loading="refreshing" @click="manualRefresh">
           手动刷新
         </el-button>
@@ -63,7 +63,9 @@
     </article>
 
     <p class="admin-home__foot">
-      统计口径：档案数据取自 GET /api/subjects（最多 100 条），质控取自 GET /api/qc/stats，
+      统计口径：档案数据取自 GET /api/subjects（按 total 循环拉取，最多
+      {{ MAX_SUBJECT_PAGES * PAGE_SIZE }} 条；超出部分未计入并会在指标上标注），
+      质控取自 GET /api/qc/stats，
       审计取自 GET /api/audit-logs（无分页，全量返回，因此单独按 60 秒刷新，页面只展示最近 {{ AUDIT_LIMIT }} 条）；
       指标每 {{ Math.round(REFRESH_MS / 1000) }} 秒刷新，也可点右上角手动刷新。
     </p>
@@ -89,6 +91,8 @@ const PAGE_SIZE = 100
 
 const subjects = ref([])
 const total = ref(0)
+/** 是否因为页数上限只加载了部分档案（此时不能宣称"全量统计"） */
+const truncated = ref(false)
 const stats = ref(null)
 const auditEvents = ref([])
 const loading = ref(true)
@@ -120,7 +124,11 @@ const metrics = computed(() => [
     key: 'total',
     label: '档案总数',
     value: loading.value ? null : total.value,
-    hint: subjectsError.value || '授权范围内全部档案',
+    hint:
+      subjectsError.value ||
+      (truncated.value
+        ? `仅统计前 ${MAX_SUBJECT_PAGES * PAGE_SIZE} 条（共 ${total.value} 条）`
+        : '授权范围内全部档案'),
     tone: 'is-blue'
   },
   {
@@ -228,16 +236,42 @@ const statusOption = computed(() => {
   }
 })
 
+/**
+ * 全量拉取受试者：列表接口单页上限 100，之前的实现只取第一页，
+ * 大屏的"档案总数/趋势/分布"就只覆盖前 100 条。这里按 total 循环拉完，
+ * 并留一个页数上限防止异常 total 把页面拖死。
+ */
+const MAX_SUBJECT_PAGES = 20
+
 async function loadSubjects() {
   subjectsError.value = ''
   try {
-    const data = await listSubjects({ page: 1, pageSize: PAGE_SIZE })
-    subjects.value = Array.isArray(data?.items) ? data.items : []
-    total.value = Number(data?.total ?? subjects.value.length)
+    const first = await listSubjects({ page: 1, pageSize: PAGE_SIZE })
+    const collected = Array.isArray(first?.items) ? [...first.items] : []
+    const totalCount = Number(first?.total ?? collected.length)
+    total.value = totalCount
+    const pages = Math.min(MAX_SUBJECT_PAGES, Math.ceil(totalCount / PAGE_SIZE))
+    let failedPages = 0
+    for (let nextPage = 2; nextPage <= pages; nextPage += 1) {
+      try {
+        const next = await listSubjects({ page: nextPage, pageSize: PAGE_SIZE })
+        if (Array.isArray(next?.items)) collected.push(...next.items)
+      } catch {
+        // 单页失败不影响已加载的部分：保留数据并提示统计不完整
+        failedPages += 1
+      }
+    }
+    subjects.value = collected
+    // 页数上限截断时明确标注，避免把"只统计了前 N 条"说成全量
+    truncated.value = collected.length < totalCount
+    if (failedPages > 0) {
+      subjectsError.value = `有 ${failedPages} 页档案加载失败，统计可能不完整`
+    }
     return true
   } catch (problem) {
     subjects.value = []
     total.value = 0
+    truncated.value = false
     subjectsError.value = problem?.code === 403 ? '无权限读取档案' : '档案接口不可用'
     return false
   }

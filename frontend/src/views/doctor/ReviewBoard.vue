@@ -34,7 +34,7 @@
         description="研究员发起评估后，结果会自动出现在这里；也可以换一页看看。"
       />
 
-      <el-table v-else :data="visibleItems" class="table" row-key="assessmentId">
+      <el-table v-else :data="visibleItems" class="table" row-key="assessmentId" @keydown.enter="onRowKeydown">
         <el-table-column prop="assessmentId" label="评估 ID" width="100" />
         <el-table-column prop="subjectId" label="受试者" width="100" />
         <el-table-column label="风险概率" width="120">
@@ -81,7 +81,15 @@
     </DataCard>
 
     <!-- 复核抽屉：列表行只有摘要，打开时再拉完整结果（含因果图） -->
-    <el-drawer v-model="drawerOpen" title="人工复核" direction="rtl" size="680px" destroy-on-close>
+    <el-drawer
+      v-model="drawerOpen"
+      title="人工复核"
+      direction="rtl"
+      size="680px"
+      destroy-on-close
+      :close-on-press-escape="true"
+      @keydown.esc="drawerOpen = false"
+    >
       <el-skeleton v-if="detailLoading" :rows="8" animated />
       <template v-else-if="current">
         <div class="score">
@@ -150,6 +158,8 @@ import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import CausalGraph from '@/components/charts/CausalGraph.vue'
 import { getAssessment, listAssessments, reviewAssessment } from '@/api/assessments.js'
+import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
+import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -258,6 +268,12 @@ async function openReview(row) {
     openingId.value = null
   }
 }
+
+const { onRowKeydown } = useTableKeyboard(visibleItems, openReview)
+
+useEscapeToClose(drawerOpen, () => {
+  drawerOpen.value = false
+})
 
 async function submitReview(decision) {
   if (!current.value) return

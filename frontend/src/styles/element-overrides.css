@@ -127,3 +127,24 @@
   border-radius: var(--r-md);
   box-shadow: var(--shadow-card);
 }
+
+/* ------------------------------------------------------------------
+   键盘焦点：只在键盘导航时出现（鼠标点击不会留下 outline）。
+   统一用品牌色 ring，与 tokens 保持一致。
+   ------------------------------------------------------------------ */
+:focus-visible {
+  outline: 2px solid var(--brand-600);
+  outline-offset: 2px;
+}
+
+/* 表格行通过 Enter 打开详情，聚焦时给整行一个可辨认的底与内描边 */
+.el-table__body .el-table__row[role='button'] {
+  cursor: pointer;
+}
+
+.el-table__body .el-table__row:focus-visible {
+  outline: 2px solid var(--brand-600);
+  outline-offset: -2px;
+  background: var(--brand-50);
+}
+
