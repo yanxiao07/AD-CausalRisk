@@ -4,6 +4,14 @@ Java负责会话、对象授权、资料、导入、质量、持久化任务/结
 
 本次交付仅包含后端、共享业务契约及相关检查/文档；前端候选页面不随本次提交交付。按需求逐项完成状态、验证与尚未验收条件见[后端验收](../docs/Backend_Requirements_Acceptance.md)。
 
+## 接收与升级
+
+原同步评估POST、JSON报告资源及当前用户接口保持兼容。新调用方按OpenAPI使用异步submit/任务查询、服务端分页、输入快照和附件download入口；取消只支持PENDING任务。管理员界面按`/api/me`的menus渲染，纯ADMIN仅audit/system/users，多角色才合并对应业务入口。
+
+已有库先完整备份，再在专用测试库验证V11/V12；应用升级后Flyway前向迁移，保留原迁移校验。回退源码不等于回退数据库，不能删表或手工改历史迁移。V12为既有演示研究账号显式保留ALL；新研究账号默认ASSIGNED，通过授权接口配置对象范围。本地源码、服务端测试和目标MySQL验收分别记录。
+
+前端应从本次契约接入，不要复制本地候选页面冒充本PR交付。此PR未配置前端专用CI；独立后端验证不依赖未提交前端。
+
 ## 构建与验证
 
 需要JDK21。Windows运行 `.\mvnw.cmd -B -ntp verify`，Linux/macOS运行 `./mvnw -B -ntp verify`。测试显式采用H2 MySQL兼容模式，不依赖MySQL或Docker。当前303项Java检查包含26项新增业务回归及1项实际路由/OpenAPI集合核对；模拟算法客户端的测试不代表真实Python或临床验收。
