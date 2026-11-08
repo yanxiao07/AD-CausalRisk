@@ -1,18 +1,81 @@
 <template>
   <div class="report-page">
-    <PageHeader back title="评估报告" subtitle="按评估 ID 生成可打印的个体化报告。">
+    <PageHeader back title="评估报告" subtitle="从评估列表选择一条，生成可打印的个体化报告。">
       <template #extra>
-        <el-input
-          v-model="inputId"
-          class="id-input"
-          placeholder="输入评估 ID"
-          clearable
-          @keyup.enter="load"
-        />
-        <el-button type="primary" :loading="loading" @click="load">生成报告</el-button>
-        <el-button :icon="Printer" :disabled="!report" @click="print">打印报告</el-button>
+        <el-button :icon="Refresh" :loading="listLoading" @click="loadPage(page)">刷新</el-button>
+        <el-button :icon="Download" :disabled="visibleItems.length === 0" @click="exportCsv">
+          导出 CSV
+        </el-button>
+        <el-button type="primary" :icon="Printer" :disabled="!report" @click="print">打印报告</el-button>
       </template>
     </PageHeader>
+
+    <!-- 列表：数据来自 GET /api/assessments（摘要，不含 agentResult） -->
+    <DataCard class="no-print" padding="none">
+      <div class="filter">
+        <el-radio-group v-model="filter" size="small">
+          <el-radio-button label="ALL">全部</el-radio-button>
+          <el-radio-button label="PENDING">待复核</el-radio-button>
+          <el-radio-button label="ACKNOWLEDGED">已确认</el-radio-button>
+        </el-radio-group>
+        <span class="filter__count">共 {{ total }} 条 · 当前页 {{ items.length }} 条</span>
+      </div>
+
+      <el-skeleton v-if="listLoading && items.length === 0" :rows="4" animated />
+
+      <EmptyState
+        v-else-if="listError"
+        :icon="WarningFilled"
+        title="评估列表加载失败"
+        :description="listError"
+        action-text="重试"
+        @action="loadPage(page)"
+      />
+
+      <EmptyState
+        v-else-if="visibleItems.length === 0"
+        :icon="Document"
+        :title="filter === 'ALL' ? '还没有评估结果' : '当前页没有符合条件的评估'"
+        description="研究员发起评估后，结果会自动出现在这里。"
+      />
+
+      <el-table v-else :data="visibleItems" class="table" row-key="assessmentId" @row-click="selectReport" @keydown.enter="onRowKeydown">
+        <el-table-column prop="assessmentId" label="评估 ID" width="100" />
+        <el-table-column prop="subjectId" label="受试者" width="100" />
+        <el-table-column label="风险概率" width="120">
+          <template #default="{ row }">{{ formatScore(row) }}</template>
+        </el-table-column>
+        <el-table-column label="等级" width="120">
+          <template #default="{ row }">
+            <StatusTag :type="row.riskLevel || 'UNAVAILABLE'" />
+          </template>
+        </el-table-column>
+        <el-table-column label="复核状态" width="140">
+          <template #default="{ row }">
+            <StatusTag :type="row.reviewStatus" :label="statusLabel(row.reviewStatus)" />
+          </template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="160">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="130" fixed="right">
+          <template #default="{ row }">
+            <el-button text type="primary" @click.stop="selectReport(row)">查看报告</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div v-if="total > pageSize" class="pager">
+        <el-pagination
+          v-model:current-page="page"
+          :page-size="pageSize"
+          :total="total"
+          layout="total, prev, pager, next"
+          background
+          @current-change="loadPage"
+        />
+      </div>
+    </DataCard>
 
     <EmptyState
       v-if="loadError"
@@ -20,14 +83,14 @@
       title="报告载入失败"
       :description="loadError"
       action-text="重试"
-      @action="load"
+      @action="load(selectedId)"
     />
 
     <EmptyState
       v-else-if="!report"
       :icon="Document"
-      title="还没有生成报告"
-      description="输入评估 ID 后生成；也可以从「待办复核」页直接跳转过来。"
+      title="请选择一条评估"
+      description="点击上方列表中的「查看报告」，或从「待办复核」页跳转过来。"
     />
 
     <article v-else id="report-sheet" class="sheet">
@@ -140,22 +203,43 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Document, Printer, WarningFilled } from '@element-plus/icons-vue'
+import { Document, Download, Printer, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import DataCard from '@/components/common/DataCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import CausalGraph from '@/components/charts/CausalGraph.vue'
+import { listAssessments } from '@/api/assessments.js'
 import { getReport } from '@/api/reports.js'
 import { getSubjectDetail } from '@/api/subjects.js'
+import { downloadCsv } from '@/utils/csv.js'
+import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
 
 const route = useRoute()
 
-const inputId = ref('')
+// ---- 评估列表（GET /api/assessments，摘要，不含 agentResult）----
+const page = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+const items = ref([])
+const filter = ref('ALL')
+const listLoading = ref(false)
+const listError = ref('')
+/** 列表请求序号：翻页竞态时只认最新一次响应 */
+let listSeq = 0
+
+const visibleItems = computed(() =>
+  filter.value === 'ALL'
+    ? items.value
+    : items.value.filter((item) => item.reviewStatus === filter.value)
+)
+
+// ---- 报告（GET /api/reports/{assessmentId}）----
+const selectedId = ref(null)
 const loading = ref(false)
 const report = ref(null)
 const subject = ref(null)
-/** 载入失败的可读原因（null = 没有错误） */
+/** 载入失败的可读原因（空串 = 没有错误） */
 const loadError = ref('')
 
 /** 每次 load 自增；只有最新一次请求的响应才写状态。 */
@@ -195,15 +279,77 @@ function formatTime(value) {
   return Number.isNaN(date.getTime()) ? '—' : timeFormatter.format(date)
 }
 
-async function load() {
-  const id = Number(inputId.value)
-  if (!Number.isInteger(id) || id <= 0) {
-    ElMessage.warning('请输入有效的评估 ID')
-    return
-  }
+function statusLabel(status) {
+  return (
+    {
+      PENDING: '待复核',
+      ACKNOWLEDGED: '已确认',
+      NEEDS_DATA: '要求补充数据',
+      REJECTED: '已驳回'
+    }[status] || '—'
+  )
+}
 
-  // 请求序号守卫：连续输入两个 ID 时，慢的那次返回会覆盖快的那次（"串人"）。
-  // 只有最后一次发出的请求才允许写进 report/subject。
+/** 列表行是摘要（riskScore 在顶层）；报告对象是完整 Assessment（分数在 agentResult 里）。 */
+function formatScore(row) {
+  const value =
+    typeof row?.riskScore === 'number' ? row.riskScore : row?.agentResult?.riskScore
+  return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '不可用'
+}
+
+async function loadPage(target = page.value) {
+  const seq = ++listSeq
+  listLoading.value = true
+  listError.value = ''
+  try {
+    const data = await listAssessments({ page: target, pageSize: pageSize.value })
+    if (seq !== listSeq) return
+    items.value = Array.isArray(data?.items) ? data.items : []
+    total.value = Number(data?.total ?? items.value.length)
+    page.value = Number(data?.page ?? target)
+    // 删到空页时自动退回上一页
+    if (items.value.length === 0 && total.value > 0 && page.value > 1) {
+      page.value -= 1
+      await loadPage(page.value)
+    }
+  } catch (problem) {
+    if (seq !== listSeq) return
+    items.value = []
+    total.value = 0
+    listError.value = problem?.message || '请稍后重试'
+  } finally {
+    if (seq === listSeq) listLoading.value = false
+  }
+}
+
+function selectReport(row) {
+  load(row.assessmentId)
+}
+
+const { onRowKeydown } = useTableKeyboard(visibleItems, selectReport)
+
+function exportCsv() {
+  const rows = visibleItems.value.map((item) => [
+    item.assessmentId,
+    item.subjectId,
+    formatScore(item),
+    item.riskLevel || '',
+    statusLabel(item.reviewStatus),
+    formatTime(item.createdAt)
+  ])
+  downloadCsv(
+    `评估报告清单-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['评估ID', '受试者ID', '风险概率', '风险等级', '复核状态', '创建时间'],
+    rows
+  )
+}
+
+async function load(id) {
+  const target = Number(id)
+  if (!Number.isInteger(target) || target <= 0) return
+  selectedId.value = target
+
+  // 请求序号守卫：连续点两条评估时，慢的那次返回会覆盖快的那次（"串报告"）。
   const seq = ++requestSeq
   loading.value = true
   loadError.value = ''
@@ -211,7 +357,7 @@ async function load() {
   subject.value = null
 
   try {
-    const data = await getReport(id)
+    const data = await getReport(target)
     if (seq !== requestSeq) return
     report.value = data
 
@@ -234,7 +380,7 @@ async function load() {
         ? '无法连接服务器，请确认后端已启动。'
         : problem?.code === 403
           ? '当前账号无权读取该评估的报告。'
-          : problem?.message || `评估 #${id} 的报告载入失败，请稍后重试。`
+          : problem?.message || `评估 #${target} 的报告载入失败，请稍后重试。`
   } finally {
     // 只有最新请求能关闭 loading，避免旧请求把新请求的转圈提前关掉
     if (seq === requestSeq) loading.value = false
@@ -245,11 +391,14 @@ function print() {
   window.print()
 }
 
-onMounted(() => {
-  const fromQuery = route.query.assessmentId
-  if (fromQuery) {
-    inputId.value = String(fromQuery)
-    load()
+onMounted(async () => {
+  await loadPage(1)
+  // 深链：从复核页/任务页带 assessmentId 过来，直接打开对应报告
+  const fromQuery = Number(route.query.assessmentId)
+  if (Number.isInteger(fromQuery) && fromQuery > 0) {
+    const row = items.value.find((item) => item.assessmentId === fromQuery)
+    if (row) selectReport(row)
+    else load(fromQuery)
   }
 })
 </script>
@@ -261,8 +410,29 @@ onMounted(() => {
   gap: 18px;
 }
 
-.id-input {
-  width: 180px;
+.filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.filter__count {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.table {
+  width: 100%;
+}
+
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
 }
 
 .sheet {
@@ -469,7 +639,8 @@ onMounted(() => {
   .shell__aside,
   .topbar,
   .page-header,
-  .el-message {
+  .el-message,
+  .no-print {
     display: none !important;
   }
 

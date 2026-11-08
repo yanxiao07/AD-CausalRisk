@@ -5,7 +5,7 @@
       :subtitle="`运营总览 · 指标每 ${Math.round(REFRESH_MS / 1000)} 秒刷新 · 审计每 ${Math.round((REFRESH_MS * AUDIT_REFRESH_EVERY) / 1000)} 秒刷新`"
     >
       <template #extra>
-        <span class="admin-updated">上次更新 {{ lastUpdatedText }}</span>
+        <span class="admin-updated">数据截至 {{ lastUpdatedText }}</span>
         <el-button :icon="Refresh" :loading="refreshing" @click="manualRefresh">
           手动刷新
         </el-button>
@@ -63,7 +63,8 @@
     </article>
 
     <p class="admin-home__foot">
-      统计口径：档案数据取自 GET /api/subjects（最多 100 条），质控取自 GET /api/qc/stats，
+      统计口径：档案数据取自 GET /api/subjects（按 total 循环拉取全量，单页 100 条），
+      质控取自 GET /api/qc/stats，
       审计取自 GET /api/audit-logs（无分页，全量返回，因此单独按 60 秒刷新，页面只展示最近 {{ AUDIT_LIMIT }} 条）；
       指标每 {{ Math.round(REFRESH_MS / 1000) }} 秒刷新，也可点右上角手动刷新。
     </p>
@@ -228,12 +229,26 @@ const statusOption = computed(() => {
   }
 })
 
+/**
+ * 全量拉取受试者：列表接口单页上限 100，之前的实现只取第一页，
+ * 大屏的"档案总数/趋势/分布"就只覆盖前 100 条。这里按 total 循环拉完，
+ * 并留一个页数上限防止异常 total 把页面拖死。
+ */
+const MAX_SUBJECT_PAGES = 20
+
 async function loadSubjects() {
   subjectsError.value = ''
   try {
-    const data = await listSubjects({ page: 1, pageSize: PAGE_SIZE })
-    subjects.value = Array.isArray(data?.items) ? data.items : []
-    total.value = Number(data?.total ?? subjects.value.length)
+    const first = await listSubjects({ page: 1, pageSize: PAGE_SIZE })
+    const collected = Array.isArray(first?.items) ? [...first.items] : []
+    const totalCount = Number(first?.total ?? collected.length)
+    total.value = totalCount
+    const pages = Math.min(MAX_SUBJECT_PAGES, Math.ceil(totalCount / PAGE_SIZE))
+    for (let nextPage = 2; nextPage <= pages; nextPage += 1) {
+      const next = await listSubjects({ page: nextPage, pageSize: PAGE_SIZE })
+      if (Array.isArray(next?.items)) collected.push(...next.items)
+    }
+    subjects.value = collected
     return true
   } catch (problem) {
     subjects.value = []

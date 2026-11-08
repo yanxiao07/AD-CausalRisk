@@ -3,6 +3,9 @@
     <PageHeader back title="评估任务" subtitle="按时间倒序展示评估任务历史；点击任意一行查看阶段耗时。">
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="loadPage(page)">刷新</el-button>
+        <el-button :icon="Download" :disabled="items.length === 0" @click="exportCsv">
+          导出 CSV
+        </el-button>
       </template>
     </PageHeader>
 
@@ -29,7 +32,7 @@
         description="在受试者档案里发起评估后，任务历史会出现在这里。"
       />
 
-      <el-table v-else :data="items" class="table" row-key="taskId" @row-click="openTask">
+      <el-table v-else :data="items" class="table" row-key="taskId" @row-click="openTask" @keydown.enter="onRowKeydown">
         <el-table-column prop="taskId" label="任务 ID" width="110" />
         <el-table-column prop="subjectId" label="受试者" width="110" />
         <el-table-column label="状态" width="130">
@@ -80,6 +83,8 @@
       direction="rtl"
       size="620px"
       destroy-on-close
+      :close-on-press-escape="true"
+      @keydown.esc="drawerOpen = false"
     >
       <el-skeleton v-if="detailLoading" :rows="8" animated />
       <template v-else-if="detail">
@@ -130,12 +135,15 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Cpu, Refresh, WarningFilled } from '@element-plus/icons-vue'
+import { Cpu, Download, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { getAssessmentTask, listAssessmentTasks } from '@/api/assessments.js'
+import { downloadCsv } from '@/utils/csv.js'
+import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
+import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -236,6 +244,31 @@ async function openTask(row) {
 
 function goReport() {
   router.push({ path: '/reports', query: { assessmentId: detail.value.assessmentId } })
+}
+
+const { onRowKeydown } = useTableKeyboard(items, openTask)
+
+useEscapeToClose(drawerOpen, () => {
+  detail.value = null
+  drawerOpen.value = false
+})
+
+function exportCsv() {
+  const rows = items.value.map((item) => [
+    item.taskId,
+    item.subjectId,
+    item.status,
+    item.assessmentId ?? '',
+    item.runId || '',
+    item.errorCode || '',
+    item.message || '',
+    formatTime(item.createdAt)
+  ])
+  downloadCsv(
+    `评估任务-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['任务ID', '受试者ID', '状态', '评估ID', 'runId', '错误码', '错误信息', '创建时间'],
+    rows
+  )
 }
 
 function goReview() {

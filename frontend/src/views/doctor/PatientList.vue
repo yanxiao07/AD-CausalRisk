@@ -70,6 +70,7 @@
             row-key="id"
             highlight-current-row
             @row-click="openDrawer"
+            @keydown.enter="onRowKeydown"
             @selection-change="onSelectionChange"
           >
             <el-table-column v-if="canBatch" type="selection" width="46" />
@@ -117,7 +118,7 @@
       </template>
     </DataCard>
 
-    <!-- 抽屉：基础信息占位，详情/因果图 P3 接入 -->
+    <!-- 抽屉：档案概览 + 风险评估（含因果图）+ 随访计划 + 历史访视 -->
     <el-drawer
       v-model="drawerOpen"
       :title="selected?.alias || '档案概览'"
@@ -125,6 +126,8 @@
       size="720px"
       destroy-on-close
       class="patient-drawer"
+      :close-on-press-escape="true"
+      @keydown.esc="drawerOpen = false"
     >
       <template v-if="selected">
         <div class="drawer__head">
@@ -209,6 +212,8 @@ import FollowUpDialog from '@/components/followup/FollowUpDialog.vue'
 import { getSubjectDetail, listSubjects } from '@/api/subjects.js'
 import { listFollowUps } from '@/api/followups.js'
 import { useUserStore } from '@/stores/user.js'
+import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
+import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
 import { useBatchAssessmentStore } from '@/stores/batch.js'
 
 const userStore = useUserStore()
@@ -314,6 +319,12 @@ function openDrawer(row) {
   loadDetail(row.id)
   loadFollowUps()
 }
+
+const { onRowKeydown } = useTableKeyboard(filteredItems, openDrawer)
+
+useEscapeToClose(drawerOpen, () => {
+  drawerOpen.value = false
+})
 
 /** 抽屉里的随访：GET /api/subjects/{subjectId}/follow-ups */
 async function loadFollowUps() {

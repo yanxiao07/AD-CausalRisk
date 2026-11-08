@@ -1,5 +1,10 @@
 <template>
   <div class="patient-home">
+    <!-- 打印：隐藏按钮与导航，只输出白底摘要 -->
+    <div class="print-actions no-print">
+      <el-button type="primary" :icon="Printer" @click="printSummary">打印摘要</el-button>
+    </div>
+
     <!-- 卡片 1：风险评估状态（来自 /api/patients/me/summary 的脱敏结论） -->
     <section class="hcard hcard--status" aria-labelledby="status-title">
       <p id="status-title" class="hcard__label">风险评估状态</p>
@@ -51,6 +56,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ElMessageBox } from 'element-plus'
+import { Printer } from '@element-plus/icons-vue'
 import { getPatientSummary } from '@/api/patients.js'
 
 /**
@@ -99,6 +105,11 @@ async function askHelp() {
     '联系医生',
     { confirmButtonText: '我知道了', type: 'info' }
   )
+}
+
+/** 打印摘要：由 @media print 规则隐藏导航、按钮与"联系医生"卡片，只留白底摘要。 */
+function printSummary() {
+  window.print()
 }
 
 onMounted(load)
@@ -185,5 +196,44 @@ onMounted(load)
   font-size: 22px;
   font-weight: 700;
   border-radius: var(--r-lg);
+}
+</style>
+
+<!-- 打印规则：作用域样式够不到 PatientLayout 的顶栏/页脚，这里用全局规则 -->
+<style>
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  .patient__bar,
+  .patient__foot,
+  .print-actions,
+  .hcard--help,
+  .hcard__retry {
+    display: none !important;
+  }
+
+  .patient__main {
+    max-width: none;
+    padding: 0;
+  }
+
+  body,
+  #app,
+  .patient {
+    background: #fff !important;
+    background-image: none !important;
+  }
+
+  .hcard {
+    box-shadow: none;
+    border-color: #d8dee4;
+    break-inside: avoid;
+  }
+
+  .hcard--status {
+    background: #fff;
+  }
 }
 </style>
