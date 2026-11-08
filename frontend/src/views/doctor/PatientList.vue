@@ -322,9 +322,14 @@ function openDrawer(row) {
 
 const { onRowKeydown } = useTableKeyboard(filteredItems, openDrawer)
 
-useEscapeToClose(drawerOpen, () => {
-  drawerOpen.value = false
-})
+useEscapeToClose(
+  drawerOpen,
+  () => {
+    drawerOpen.value = false
+  },
+  // 抽屉里开着「新建随访」对话框时，Esc 只关对话框，不关底层档案
+  () => followUpDialogOpen.value
+)
 
 /** 抽屉里的随访：GET /api/subjects/{subjectId}/follow-ups */
 async function loadFollowUps() {

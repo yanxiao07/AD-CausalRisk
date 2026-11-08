@@ -7,7 +7,7 @@
           <el-radio-button label="ALL">全部待办</el-radio-button>
         </el-radio-group>
         <el-button :icon="Refresh" :loading="loading || allLoading" @click="reload">刷新</el-button>
-        <el-button :icon="Download" :disabled="exportRows.length === 0" @click="exportCsv">
+        <el-button :icon="Download" :disabled="!canExport" @click="exportCsv">
           导出 CSV
         </el-button>
         <el-button
@@ -39,6 +39,15 @@
         :icon="WarningFilled"
         title="待办加载失败"
         :description="allError"
+        action-text="重试"
+        @action="loadAllTodos"
+      />
+
+      <EmptyState
+        v-else-if="failedSubjects > 0 && todos.length === 0"
+        :icon="WarningFilled"
+        title="暂时无法确认待办"
+        :description="`${failedSubjects} 个受试者的随访读取失败，已加载的部分没有待办。`"
         action-text="重试"
         @action="loadAllTodos"
       />
@@ -217,9 +226,12 @@ const view = ref('BY_SUBJECT')
 
 const subjects = ref([])
 const subjectsLoading = ref(false)
+const subjectsError = ref('')
 const subjectId = ref(null)
 
 const items = ref([])
+/** items 实际属于哪个受试者：导出与展示都以它为准，避免"切换中导出"串人 */
+const loadedSubjectId = ref(null)
 const loading = ref(false)
 const error = ref('')
 const updating = ref(null)
@@ -270,15 +282,32 @@ watch(todos, () => {
 /** 导出当前视图的数据：全部待办 → 待办列表；按受试者 → 该受试者的全部随访。 */
 const exportRows = computed(() => (view.value === 'ALL' ? todos.value : items.value))
 
-const currentSubject = computed(
-  () => subjects.value.find((item) => item.id === subjectId.value) || null
+/** 已加载数据所属的档案（不是下拉框当前选择），导出文案用它。 */
+const loadedSubject = computed(
+  () => subjects.value.find((item) => item.id === loadedSubjectId.value) || null
 )
 
+/**
+ * 导出可用条件：
+ *  - 全部待办：不在加载中、且确实有待办；
+ *  - 按受试者：不在加载中，且已加载数据就是当前选中档案（切换期间禁用，避免串人）。
+ */
+const canExport = computed(() => {
+  if (view.value === 'ALL') return !allLoading.value && todos.value.length > 0
+  return (
+    !loading.value &&
+    loadedSubjectId.value !== null &&
+    loadedSubjectId.value === subjectId.value &&
+    items.value.length > 0
+  )
+})
+
 function exportCsv() {
+  if (!canExport.value) return
   const rows = exportRows.value.map((item) => {
-    const alias = view.value === 'ALL' ? item.subjectAlias || '' : currentSubject.value?.alias || ''
+    const alias = view.value === 'ALL' ? item.subjectAlias || '' : loadedSubject.value?.alias || ''
     const code =
-      view.value === 'ALL' ? item.subjectCode || '' : currentSubject.value?.subjectCode || ''
+      view.value === 'ALL' ? item.subjectCode || '' : loadedSubject.value?.subjectCode || ''
     return [alias, code, formatTime(item.scheduledAt), item.purpose || '', item.status]
   })
   downloadCsv(
@@ -294,12 +323,15 @@ const visibleTodos = computed(() => {
 
 async function loadSubjects() {
   subjectsLoading.value = true
+  subjectsError.value = ''
   try {
     const data = await listSubjects({ page: 1, pageSize: 100 })
     subjects.value = Array.isArray(data?.items) ? data.items : []
     totalSubjects.value = subjects.value.length
-  } catch {
+  } catch (problem) {
     subjects.value = []
+    totalSubjects.value = 0
+    subjectsError.value = problem?.message || '档案列表加载失败'
   } finally {
     subjectsLoading.value = false
   }
@@ -308,21 +340,27 @@ async function loadSubjects() {
 async function loadFollowUps() {
   if (!subjectId.value) {
     items.value = []
+    loadedSubjectId.value = null
     return
   }
   // 请求序号：快速切换受试者时，慢的旧响应不能覆盖新受试者的随访表
   const seq = ++requestSeq
+  const targetSubjectId = subjectId.value
+  // 加载期间先摘掉数据身份，导出按钮随之禁用，避免"B 的编号 + A 的随访"
+  loadedSubjectId.value = null
   loading.value = true
   error.value = ''
   try {
-    const data = await listFollowUps(subjectId.value)
+    const data = await listFollowUps(targetSubjectId)
     if (seq !== requestSeq) return
     items.value = (Array.isArray(data) ? data : [])
       .slice()
       .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
+    loadedSubjectId.value = targetSubjectId
   } catch (problem) {
     if (seq !== requestSeq) return
     items.value = []
+    loadedSubjectId.value = null
     error.value = problem?.message || '请稍后重试'
   } finally {
     if (seq === requestSeq) loading.value = false
@@ -354,6 +392,11 @@ async function loadAllTodos() {
   try {
     if (subjects.value.length === 0) await loadSubjects()
     if (seq !== allSeq) return
+    // 档案接口本身就失败时，不能把"没有待办"当成结论
+    if (subjectsError.value) {
+      allError.value = `档案列表加载失败：${subjectsError.value}`
+      return
+    }
     const list = subjects.value
     totalSubjects.value = list.length
 

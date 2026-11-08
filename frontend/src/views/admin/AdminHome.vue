@@ -63,7 +63,8 @@
     </article>
 
     <p class="admin-home__foot">
-      统计口径：档案数据取自 GET /api/subjects（按 total 循环拉取全量，单页 100 条），
+      统计口径：档案数据取自 GET /api/subjects（按 total 循环拉取，最多
+      {{ MAX_SUBJECT_PAGES * PAGE_SIZE }} 条；超出部分未计入并会在指标上标注），
       质控取自 GET /api/qc/stats，
       审计取自 GET /api/audit-logs（无分页，全量返回，因此单独按 60 秒刷新，页面只展示最近 {{ AUDIT_LIMIT }} 条）；
       指标每 {{ Math.round(REFRESH_MS / 1000) }} 秒刷新，也可点右上角手动刷新。
@@ -90,6 +91,8 @@ const PAGE_SIZE = 100
 
 const subjects = ref([])
 const total = ref(0)
+/** 是否因为页数上限只加载了部分档案（此时不能宣称"全量统计"） */
+const truncated = ref(false)
 const stats = ref(null)
 const auditEvents = ref([])
 const loading = ref(true)
@@ -121,7 +124,11 @@ const metrics = computed(() => [
     key: 'total',
     label: '档案总数',
     value: loading.value ? null : total.value,
-    hint: subjectsError.value || '授权范围内全部档案',
+    hint:
+      subjectsError.value ||
+      (truncated.value
+        ? `仅统计前 ${MAX_SUBJECT_PAGES * PAGE_SIZE} 条（共 ${total.value} 条）`
+        : '授权范围内全部档案'),
     tone: 'is-blue'
   },
   {
@@ -255,6 +262,8 @@ async function loadSubjects() {
       }
     }
     subjects.value = collected
+    // 页数上限截断时明确标注，避免把"只统计了前 N 条"说成全量
+    truncated.value = collected.length < totalCount
     if (failedPages > 0) {
       subjectsError.value = `有 ${failedPages} 页档案加载失败，统计可能不完整`
     }
@@ -262,6 +271,7 @@ async function loadSubjects() {
   } catch (problem) {
     subjects.value = []
     total.value = 0
+    truncated.value = false
     subjectsError.value = problem?.code === 403 ? '无权限读取档案' : '档案接口不可用'
     return false
   }
