@@ -1,10 +1,9 @@
-# Dependencies and build output are never committed.
-node_modules/
+# build / dev 产物与临时目录
 dist/
-.pnpm-store/
-.pnpm-debug.log*
-npm-debug.log*
-.DS_Store
-
-# Local visual-verification screenshots and the headless-Chrome driver.
+node_modules/
+.tmp/
+.npm-cache/
+dev.log
+dev.err
+# E2E 截图（本地证据，不入库）
 .shots/

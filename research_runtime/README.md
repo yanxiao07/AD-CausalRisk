@@ -1,5 +1,73 @@
 # 离线研究计算、固定训练与图模型
 
+新七/十变量模型的[Python接入候选](../docs/Research_Model_Integration_Candidate.md)区分课程/旧V8 HTTP、离线CLI与现有内存API，提供字段差异和纯标准库人工请求/响应示例。候选不新增服务或共享契约；离线九组合与内存表格六组合的支持边界分别保留。
+
+同一人工解析案例的[预测/解释绑定候选](../docs/Prediction_Explanation_Binding_Candidate.md)复用原精确分组Shapley与单次调度，附固定JSON及16项错绑/数值检查；只需原锁NumPy。它不是实际研究模型运行或生产报告API，LIME与真实宿主证据保持未执行/未核验。
+
+## 新增离线评价与监测
+
+本次交付复用已完成实现，为第2→3环节的结构/评价与第1→3→4环节的监测提供纯内存接口。不新增文件读取器、训练器或HTTP服务，也不改变业务默认模型。
+
+| 模块 | 接口与限制 |
+| --- | --- |
+| [自然模态分层](../docs/Graph_Modality_Strata.md) | `graph_explanation.aggregate_modality_strata` / `evaluate_modality_strata`，保留三臂共同排序分母与空MRI-only组 |
+| [结构选择稳定性](../docs/Graph_Structure_Stability_Primitives.md) | 固定正则秩精度分数、100抽样/至少90共同有效、无向候选及不可估null；四折不可估，后续选边预测比较NO_GO |
+| [固定阈值评价](../docs/Table_Threshold_Evaluation.md) | `table_xai_study.evaluate_thresholds`，九方案原外折身份先核对，再按联合小组门槛发布；固定真实报告整表SUPPRESSED |
+| [未知结局补全界限](../docs/Decision_Curve_Bounds.md) | `decision_curve`，固定24月分类/DCA及同人差界限，早截尾不补0，非置信区间 |
+| [已知概率核功能量](../docs/Competing_Event_Causal_Functional.md) | `competing_event_functional`，精确Fraction传播；只检查规定数学模型，不识别观察数据的因果效应 |
+| [漂移/缺失](../docs/Feature_Drift_Monitoring.md) | `feature_drift`，固定参考分箱、十特征/单位/版本及跨批联合隐私门槛，缺支持保留null |
+| [性能/亚组](../docs/Performance_Monitoring.md) | `performance_monitor`，无拟合Brier/固定箱校准/ECE补全界限及预定义亚组，不估计KM/IPCW |
+| [联合生命周期报告](../docs/Lifecycle_Monitoring.md) | `lifecycle_monitor`，同一快照绑定并先做统一联合隐私门槛，再调用上述两个计算器 |
+
+监测依赖仅标准库及现有NumPy 2.4.6；不加载模型、预测、拟合、自动告警或更新。来源、历史可用性、真实双批及临床资格不由元数据相符认证。真实监控输入尚未准入，没有部署监测结论。
+
+从仓库根目录按依赖选择专题；前两组的最小环境安装见下节：
+
+```powershell
+# 标准库专题
+python -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve -v
+
+# NumPy专题，无需pandas、Torch或预测依赖
+.venv-research/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability -v
+
+# 图/表格编排需现有图锁环境；人工参数与模拟回调，不重放真实研究
+.venv-research-graph/Scripts/python.exe -B -m unittest research_runtime.tests.test_graph_modality_strata research_runtime.tests.test_graph_modality_evaluation research_runtime.tests.test_table_thresholds -v
+```
+
+本次只提交计算源码、人工测试与技术说明；真实临床、权重、OOF、私有折、执行授权和机器审计不在Git中。以下既有训练/加载工具的范围保持，不能因源码交付自动执行训练或部署。
+
+原源码交付验收在Windows/Python 3.11的既有环境运行上述9个专题及原`test_graph_explanation`、`test_table_xai_study`回归，共241项通过；课程标准库/契约回归733项通过。当时有pandas `astype(copy=...)`弃用提示，未修改数值实现，也未执行Linux、Python 3.12或研究原语远端CI。下面单列新增CI检查的范围。
+
+## 研究原语分层CI
+
+[独立工作流](../.github/workflows/python-research-primitives.yml)在push和pull request时分别运行两层，每层配置Windows/Ubuntu × Python 3.11/3.12。它为第1→2→3→4环节的离线计算提供工程回归，不运行训练、受控模型或真实监测。远端是否通过以对应提交的Actions结果为准。
+
+| 层 | 显式测试模块（`research_runtime.tests`下） | 依赖与范围 |
+| --- | --- | --- |
+| 标准库，35项 | `test_competing_event_functional`、`test_decision_curve` | `-S`禁用site packages；精确核功能量及未知结局界限 |
+| NumPy，139项 | `test_feature_drift`、`test_performance_monitor`、`test_lifecycle_monitor`、`test_graph_structure_stability`、`test_prediction_explanation_candidate` | 仅安装原锁中的NumPy 2.4.6；人工监测/隐私/结构稳定性及预测/解释错绑检查 |
+
+最小NumPy环境可用以下命令建立；Linux/macOS将解释器路径换成`.venv-primitives/bin/python`：
+
+```powershell
+py -3.11 -m venv .venv-primitives
+.venv-primitives/Scripts/python.exe -m pip install --only-binary=:all: --constraint research_runtime/requirements.lock numpy
+.venv-primitives/Scripts/python.exe -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve -v
+.venv-primitives/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability research_runtime.tests.test_prediction_explanation_candidate -v
+```
+
+`--constraint`复用现有NumPy版本，不安装锁中其余训练依赖。不要用全目录发现替代这些模块列表，其他专题可能需要pandas/sklearn/Torch或执行人工拟合。
+
+测试只使用仓库内源码及人工内存输入。漂移测试保留旧stage15来源摘要与同一五箱人工样例，改用独立解析式对照，不再执行仓库外脚本或导入pandas；性能测试以AST读取仓库内`evaluation.py`的固定箱边界，不导入其训练依赖。四个数值专题的受控I/O守卫以当前仓库为根，不依赖维护主机的目录深度。计算实现与统计判据保持原样。
+
+此CI不覆盖图/表格训练、全部研究编排或临床验证；固定图阴性、结构不可估、CSF NO_GO、阈值SUPPRESSED及真实监控输入未准入的结论保持。
+
+发布前的本地验收从只含Git源码的副本，在新建Windows/Python 3.11.9和3.12.13环境分别通过35+123项检查，零跳过；数值环境除环境自带工具外只安装NumPy 2.4.6。工作流通过actionlint检查。该本地记录不包含Linux与GitHub托管环境结果；远端记录以对应提交的Actions为准。
+
+接入候选发布时将16项人工预测/解释绑定测试加入现有NumPy作业，没有新增依赖或执行真实模型。Windows/Python 3.11.9和3.12.13的Git源码副本各通过35+139项，零跳过；原35+123项记录保留为上一发布的范围。
+
+## 既有研究与源码移植范围
+
 [图训练人员扰动真实研究](../docs/Graph_Training_Perturbation_Results.md)已完成225基础拟合/0校准、12780 CIF；累计真实673基础/36校准。两原因/双序聚合、固定共同排名分母及结果限制已交付；本固定问题关闭，不重复训练或切换默认。
 
 图训练扰动的[流式聚合接口](../docs/Graph_Training_Perturbation_Streaming.md)已加入现有图解释模块：三种子有符号贡献/CIF先平均、双序四游戏、共同排名分母及24 hash/12 Brier前置门槛，输出仅含聚合和尝试/完成计数。完整模拟使用解析回调，不执行优化器；225次真实矩阵已执行并聚合核验。
@@ -80,7 +148,7 @@ Python API：`run_nested(frame, output, specification, families, splits=..., exi
   --request research_runtime/examples/seven.synthetic.json
 ```
 
-入口只向标准输出返回JSON，不保存结果或请求，也不启动HTTP服务。失败以退出码1和不含输入值的类型化错误返回。三个已有HTTP通道及Java契约保持原行为；该命令不意味着Java AgentClient已经实现。
+入口只向标准输出返回JSON，不保存结果或请求，也不启动HTTP服务。失败以退出码1和不含输入值的类型化错误返回。三个已有HTTP通道及Java契约保持原行为；该CLI不提供Java研究模型适配，现有AgentClient仍调用课程合成服务。
 
 受控维护主机现另有同一工作台内的“模型与研究审查”页面，以独立进程调用本模块进行九模型合成计算，并展示既有聚合研究结果。它属于维护主机的本地Python演示接入，未成为Java共享API；本仓库的CLI继续保持上述离线范围。
 

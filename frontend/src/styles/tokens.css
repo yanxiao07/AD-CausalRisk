@@ -1,0 +1,148 @@
+/* ============================================================
+ * tokens.css —— 全站设计令牌（唯一真源）
+ *
+ * 颜色 / 圆角 / 阴影 / 字体 / 动效都从这里取，组件里不允许再写死色值。
+ * 3D 登录页沿用旧变量名（--ink / --primary / --shadow ...），这里做别名兼容。
+ * ============================================================ */
+
+:root {
+  /* ---- 品牌色 ---- */
+  --brand-600: #0a73ad;
+  --brand-700: #075c8a;
+  --brand-50: #e7f4fb;
+
+  /* 旧名兼容（3D 登录页样式直接引用这些变量） */
+  --primary: var(--brand-600);
+  --primary-dark: var(--brand-700);
+  --primary-soft: var(--brand-50);
+
+  /* ---- 四角色强调色 ---- */
+  --role-doctor: #0a73ad;
+  --role-researcher: #0e806e;
+  --role-admin: #4a57b8;
+  --role-patient: #b25d41;
+
+  /* ---- 文字 ---- */
+  --ink: #11344b;
+  --ink-700: #3d5c70;
+  --muted: #637f91;
+  --soft: #8ca5b3;
+  --placeholder: #9db4c2;
+
+  /* ---- 背景与描边 ---- */
+  --bg: #eff9fd;
+  --bg-soft: #f4fbfd;
+  --surface: #ffffff;
+  --line: #dbe9f1;
+  --line-strong: #c6dce8;
+
+  /* ---- 状态色 ---- */
+  --success: #137d5b;
+  --success-soft: #e8f6f1;
+  --warning: #b7791f;
+  --warning-soft: #fdf5e6;
+  --danger: #c53c46;
+  --danger-soft: #fff2f2;
+  --info: #4a57b8;
+  --info-soft: #eef0ff;
+
+  /* ---- 圆角 ---- */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+
+  /* ---- 阴影（永不用纯黑） ---- */
+  --shadow-panel: 0 32px 80px -24px rgba(13, 74, 110, 0.18), 0 4px 16px rgba(13, 74, 110, 0.05);
+  --shadow-card: 0 8px 24px -12px rgba(13, 74, 110, 0.14);
+  --shadow-hover: 0 14px 32px -16px rgba(13, 74, 110, 0.22);
+  /* 旧名兼容 */
+  --shadow: 0 34px 90px rgba(24, 82, 112, 0.16), 0 8px 28px rgba(22, 78, 105, 0.06);
+
+  /* ---- 字体 ---- */
+  --font-sans: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-heading: "DengXian", "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif;
+
+  /* ---- 动效 ---- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+
+  /* ---- 玻璃拟态 ---- */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.9);
+  --glass-blur: blur(18px) saturate(160%);
+
+  /* ---- 页面背景光晕（登录页与业务页共用） ---- */
+  --page-glow:
+    radial-gradient(circle at 12% 8%, #e8f7f1 0%, transparent 42%),
+    radial-gradient(circle at 55% 38%, #dcefff 0%, transparent 46%),
+    radial-gradient(circle at 88% 86%, #e3f7fb 0%, transparent 40%);
+}
+
+/* ---- 基础重置 ---- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  font-family: var(--font-heading);
+  color: var(--ink);
+}
+
+/* ---- 通用工具类 ---- */
+.text-muted { color: var(--muted); }
+.text-soft { color: var(--soft); }
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+/* 尊重系统的"减少动态效果"设置 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

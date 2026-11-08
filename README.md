@@ -19,9 +19,13 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 可移植估计器、人月/CIF、已保存模型的离线合成验收，以及固定五外折/三内折训练与嵌套校准，见[研究模型Python接入准备](docs/Research_Model_Portability.md)与[运行说明](research_runtime/README.md)。该可选模块使用独立依赖，计算源码随本分支交付；历史队列构造、全部比较/解释流水线、新模型HTTP服务和Java业务联调继续单独验收。
 
-本分支新增[分组Shapley/LIME及表格编排](docs/Table_Grouped_Study_Execution.md)、[输入声明一致性校验](docs/Real_Input_Admission.md)与[单次内存CIF调用](docs/InMemory_Research_Inference.md)。方法、构造验收和真实研究结论分别报告；不加入受控数据/权重，不改变共享HTTP或默认模型。
+研究运行时已包含[分组Shapley/LIME及表格编排](docs/Table_Grouped_Study_Execution.md)、[输入声明一致性校验](docs/Real_Input_Admission.md)与[单次内存CIF调用](docs/InMemory_Research_Inference.md)。方法、构造验收和真实研究结论分别报告；不加入受控数据/权重，不改变共享HTTP或默认模型。
+
+七/十变量的[Python接入候选](docs/Research_Model_Integration_Candidate.md)补充六个表格组合、[模型身份到宿主上下文的映射](docs/Research_Model_Identity_Map.md)和[人工预测/解释绑定示例](docs/Prediction_Explanation_Binding_Candidate.md)。[宿主证据核对](docs/Research_Host_Evidence_Admission.md)保留已定位材料与剩余资格缺口，完整准入仍为NO_GO；人工示例通过不表示真实模型已接入业务。
 
 ## 核心能力
+
+新增离线评价与监测见[研究运行说明](research_runtime/README.md)：自然模态分层、固定结构选择稳定性、未知结局分类/DCA补全界限及同一快照的漂移/性能联合报告。它们复用调用方内存，不改变当前合成业务服务或默认模型。固定图增益阴性、结构四折不可估和真实阈值报告整表抑制均保留；真实监控与临床用途未完成。
 
 - **资料与质量**：三表 CSV 预检、档案关联、日期与单位检查、缺失/重复/冲突定位，以及严重问题阻断。
 - **四阶段工作流**：`DATA_FUSION → CAUSAL_GRAPH → WARNING_MODEL → EXPLANATION`，保留原值、来源时间、版本、实际阶段与耗时。
@@ -33,14 +37,16 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 以下为当前分支的实现范围；完整验收条件以[课程需求](docs/Course_SRS_V3_2.md)为准。顶部徽章展示 `main` 分支的 CI，功能分支的检查结果请查看对应提交或 PR。
 
-2026-10-27本分支从main `94f9789`建立；[Python研究源码PR #13](https://github.com/yanxiao07/AD-CausalRisk/pull/13)及[后端/业务前端PR #11](https://github.com/yanxiao07/AD-CausalRisk/pull/11)已合并。[登录页PR #12](https://github.com/yanxiao07/AD-CausalRisk/pull/12)仍开放且与当前main冲突；本分支不修改其前端实现。业务联合验收依然以对应模块实际证据为准。
+后端业务更新：2026-11-08，59个Java操作已实现并经合成本地验证，覆盖来源与质量历史、固定输入、异步任务、账号/授权、随访、报告附件和审计。逐项需求与验收见[后端验收](docs/Backend_Requirements_Acceptance.md)，G01–G23及研究接入边界见[业务状态](docs/Business_Feature_Status.md)。本次交付不包含本地候选前端、前端CI、临床数据或研究权重；前端同学可按契约继续接入和统一风格。以下既往版本描述保留原交付背景。
+
+核对日期：2026-11-04。本次Python分支基于main `57220d3`，已包含[PR #18](https://github.com/yanxiao07/AD-CausalRisk/pull/18)的Vue业务前端和Java互操作/失败持久化修复、[PR #19](https://github.com/yanxiao07/AD-CausalRisk/pull/19)的离线评价/监测原语及[PR #20](https://github.com/yanxiao07/AD-CausalRisk/pull/20)的分层研究CI。各模块已有实现、实际验收与研究模型接入分别记录。
 
 | 模块 | 已有实现 | 后续工作 |
 | --- | --- | --- |
-| Python | 合成四阶段服务、输入与结果校验、质量阻断、融合/图/贡献追溯、客户端和工程工具 | 按实际 Java 接入反馈完成联调；真实研究模型与临床验证单独验收 |
-| Java 后端 | Spring Boot 工程、数据库迁移、认证、档案、访视及 CSV 预览/确认入库；目标契约 22 个操作中已实现 10 个，另实现质控（QC）扩展模块（审核队列列表、审核决策提交、状态统计）| 特征读取、持久化任务、AgentClient、结果、复核、随访、报告和审计等，详见[后端说明](backend/README.md) |
-| Web 前端 | main已包含PR #11引入的Vue工程及部分认证、档案/导入等页面 | 完整业务页面、对象权限状态、实际联调与交互验收仍需完成；登录页PR #12尚未合并，详见[前端说明](frontend/README.md) |
-| 全链路 | 契约、合成样例和分模块检查 | 实际 Java → Python 调用、业务保存、患者字段过滤及重启历史查询的联合验收 |
+| Python | 合成四阶段服务、契约/身份校验、客户端；可选离线训练、解释、评价与联合监测计算 | 当前业务仍使用合成规则；研究模型服务、真实监控输入及临床验证单独验收 |
+| Java 后端 | 59个已记录的业务操作，含对象范围、来源、独立质量、输入快照、异步任务、用户管理、随访、报告和审计 | MySQL实际迁移及其他验收边界见[后端说明](backend/README.md)，接口实现不等于全面验收 |
+| Web 前端 | 保持main中已交付的Vue 3/Vite/Element Plus工程、真实会话与四角色业务页面；本次后端交付不修改frontend | 新增API的页面接入、统一视觉及移动端验收由前端继续；本地候选页面不随本次交付发布 |
+| 全链路 | 浏览器→Java→Python合成调用链已有实现；Java负责业务保存与权限 | MySQL、全场景故障/重启和浏览器端到端验收单独完成；离线研究模块不自动接入业务 |
 
 接口目标、数据库表或页面片段的存在不表示对应业务已完成。Python 工程测试也不替代 Java、MySQL 或浏览器端到端验收。
 
@@ -56,12 +62,14 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 | Python 测试 | 同一解释器安装 `requirements-dev.lock` |
 | 可选离线研究模块 | 独立环境安装`research_runtime/requirements.lock`；原生图模块使用`requirements.graph.lock`，不与课程环境混装 |
 | Java 后端 | JDK 21、Maven Wrapper；目标数据库 MySQL 8，自动测试使用 H2 |
-| Web 前端 | 工程与依赖尚待完善，当前没有可用的完整安装/构建流程 |
+| Web 前端 | Node.js 22.14/npm 10.9.2已构建验证；使用frontend/package-lock.json，安装/开发/构建命令见[前端说明](frontend/README.md) |
 
 ```bash
 git clone https://github.com/yanxiao07/AD-CausalRisk.git
 cd AD-CausalRisk
 ```
+
+完整系统另需按[后端说明](backend/README.md)显式配置数据库/profile并启动Java，再在`frontend/`运行`npm ci`与`npm run dev`。默认前端5173将`/api`代理到Java8080，Java再调用Python8091；缺少数据库配置不会自动回退为已接通环境。
 
 ### 启动 Python 服务
 
@@ -134,13 +142,13 @@ curl --fail http://127.0.0.1:8091/api/agent/v1/runs/run-demo-001
 
 ## 架构与契约
 
-目标调用关系如下，虚线表示尚待完成的接入：
+当前合成业务调用关系如下；可选离线研究计算不在这条HTTP链路内：
 
 ```mermaid
 flowchart LR
-    Web["Web 前端（建设中）"] -. "业务 API" .-> Java["Java 后端（部分实现）"]
+    Web["Vue Web 前端"] -->|业务 API| Java["Java 业务后端"]
     Java --> DB["MySQL 8（目标）/ H2（测试）"]
-    Java -. "AgentClient（待接入）" .-> Python["Python 合成服务 :8091"]
+    Java -->|AgentClient| Python["Python 合成服务 :8091"]
     Python --> Workflow["融合 → 图谱 → 排序 → 解释"]
 ```
 
@@ -198,7 +206,7 @@ py -3.11 -m venv .venv-research-graph
 .venv-research-graph/Scripts/python.exe -m unittest research_runtime.tests.test_graph research_runtime.tests.test_graph_native research_runtime.tests.test_graph_training research_runtime.tests.test_graph_explanation -v
 ```
 
-上述研究测试包含人工数据构造拟合，不读取真实队列或权重。已有固定真实研究不因源码发布重训；源码交付复用既有训练验收，发布检查只运行课程回归、无优化图检查与兼容性构建，不重新训练真实模型。现有Python CI发现`tests/`，不自动覆盖可选研究模块。协议机器文件保留原始字节，阶段文档以交付状态说明区分历史与当前，最新完成项及唯一下一任务以[Python需求状态](docs/Python_Requirement_Status.md)为准。
+上述研究测试包含人工数据构造拟合，不读取真实队列或权重。已有固定真实研究不因源码发布重训。课程Python CI只发现`tests/`；独立的研究原语CI显式选择35项标准库和139项NumPy人工检查，不发现整个研究测试目录，不执行预测拟合、模型加载或真实研究。最小依赖与对应命令见[研究运行说明](research_runtime/README.md#研究原语分层ci)。协议机器文件保留原始字节，阶段文档以交付状态说明区分历史与当前，最新完成项及唯一下一任务以[Python需求状态](docs/Python_Requirement_Status.md)为准。
 
 ### Java
 
@@ -209,9 +217,12 @@ py -3.11 -m venv .venv-research-graph
 | 工作流 | 当前配置 |
 | --- | --- |
 | [Python service and contract checks](.github/workflows/python-base.yml) | Python 3.11 / 3.12，固定测试依赖，`unittest` |
+| [Python research primitive checks](.github/workflows/python-research-primitives.yml) | Windows / Ubuntu × Python 3.11 / 3.12，标准库35项与仅NumPy139项分别运行 |
 | [Java backend build and tests](.github/workflows/backend-build.yml) | JDK 21，Maven `verify`，H2 测试 |
 
-推送和 PR 会触发上述工作流；实际结果以 [GitHub Actions](https://github.com/yanxiao07/AD-CausalRisk/actions) 为准。前端工程完成后还需接入安装、构建与页面测试。
+推送和 PR 会触发上述工作流；实际结果以 [GitHub Actions](https://github.com/yanxiao07/AD-CausalRisk/actions) 为准。前端已有安装、构建和测试脚本；本次后端交付不包含本地候选的前端专用CI工作流。
+
+既有因果识别论证的[标准库精确示例](docs/Causal_Identification_Results.md)现随源码交付，运行 `python -I -S -B examples/causal_identification_audit.py` 可核对9项精确检查。该示例在研究CI标准库矩阵中单独运行；数学反例不构成本研究的因果效应或临床证据。
 
 ## 文档导航
 
@@ -234,7 +245,7 @@ py -3.11 -m venv .venv-research-graph
 .
 ├── python_service/       # 四阶段服务、客户端与工程工具
 ├── backend/              # Java 业务后端与数据库迁移
-├── frontend/             # Web 前端建设目录
+├── frontend/             # Vue业务前端、角色页面与测试脚本
 ├── contracts/            # 冻结契约与请求/响应示例
 ├── fixtures/             # 合成档案、访视和特征
 ├── tests/                # Python 与契约测试
@@ -262,13 +273,14 @@ py -3.11 -m venv .venv-research-graph
 - [x] Python 合成四阶段服务、固定契约与请求/结果校验。
 - [x] CSV 预检、质量报告、原规则来源追溯及合成工程工具。
 - [x] Java 工程、迁移、认证、档案与访视基础接口；CSV预览/确认入库与导入幂等（PR #8）。
-- [x] Java 质控（QC）模块：审核队列列表、审核决策提交与状态统计（含在 PR #11，仍待合并并与前端工程协调）。
-- [ ] Java 特征读取、持久化任务与实际 AgentClient。
-- [ ] Web 完整工程、业务页面、四角色视图与交互测试。
-- [ ] 业务复核、随访、授权报告、审计与患者结果过滤。
+- [x] Java质控（QC）模块：审核队列、审核决策与状态统计。
+- [x] Java特征读取、持久化任务与实际AgentClient；保留BLOCKED/null及失败原因。
+- [x] Web工程、业务页面、四角色视图及测试脚本；移动端与全部交互场景另验收。
+- [x] 业务复核、随访、授权报告资源及内部评估的患者访问限制。
+- [x] 业务审计、患者白名单摘要、账号/授权管理及59操作契约；验证边界见[后端验收](docs/Backend_Requirements_Acceptance.md)。
 - [ ] MySQL、浏览器及跨服务故障/重启历史的端到端验收。
 
-研究算法与科学验收单独跟踪：[图模型解释](docs/Graph_Explanation_Results.md)固定任务已关闭复用，真实累计298基础/36校准。本地8084演示入口已按四环节收敛，实际浏览器视觉与交互验收仍未完成；该维护主机页面不包含在本仓库源码交付中。原表格12包和图22包分开，涉及图的选定测试用图锁环境。严格个人因果、SHAP/LIME、跨重训/独立/as-of/QC/临床及Java业务接通继续分别开放。
+研究算法与科学验收单独跟踪：固定训练扰动、分组归因及自然模态分层已有阶段交付，真实累计673基础/36校准；[当前需求状态](docs/Python_Requirement_Status.md)保留图增益阴性、结构四折不可估、CSF NO_GO和真实阈值整表抑制。维护主机研究页面不包含在本仓库。研究依赖与课程环境分开，图专题使用图锁环境。严格个人因果、独立/as-of/QC、研究模型业务接入和临床验证仍未完成。
 
 ## 使用范围与许可
 

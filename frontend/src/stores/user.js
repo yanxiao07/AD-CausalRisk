@@ -1,17 +1,38 @@
 import { defineStore } from 'pinia'
+import { useBatchAssessmentStore } from './batch.js'
+import { clearAllAssessmentIntents } from '@/utils/assessmentIntent.js'
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
-const PERSIST_KEY = USE_MOCK ? 'ad-causalrisk-user-mock' : 'ad-causalrisk-user-live'
-
+/**
+ * 登录用户。字段与 `POST /api/auth/login` 返回的 data 对齐：
+ * { id, username, roles, menus }
+ *
+ * roles 用于路由/按钮鉴权，menus 用于侧边栏渲染（后端已按角色下发），
+ * 两者必须分开存 —— 把 menus 塞进 permissions 会让权限判断失真。
+ */
 export const useUserStore = defineStore('user', {
   state: () => ({
+    id: null,
     username: '',
     roles: [],
+    menus: [],
     permissions: []
   }),
 
   getters: {
     isLoggedIn: (state) => !!state.username,
+    /** 主角色：用于布局与首页跳转，ADMIN > RESEARCHER > DOCTOR > PATIENT。 */
+    primaryRole: (state) => {
+      for (const role of ['ADMIN', 'RESEARCHER', 'DOCTOR', 'PATIENT']) {
+        if (state.roles.includes(role)) return role
+      }
+      return ''
+    },
+    /** 角色对应的落地页。 */
+    homePath: (state) => {
+      const map = { ADMIN: '/admin', RESEARCHER: '/researcher', DOCTOR: '/doctor', PATIENT: '/patient' }
+      const role = ['ADMIN', 'RESEARCHER', 'DOCTOR', 'PATIENT'].find(r => state.roles.includes(r))
+      return role ? map[role] : '/login'
+    },
     hasRole: (state) => (role) => {
       if (!role) return true
       const need = Array.isArray(role) ? role : [role]
@@ -20,35 +41,53 @@ export const useUserStore = defineStore('user', {
     hasPermission: (state) => (perm) => {
       if (!perm) return true
       const need = Array.isArray(perm) ? perm : [perm]
-      return need.some(p => state.permissions.includes(p))
-    }
+      return need.some(p => p === '*' || state.permissions.includes(p))
+    },
+    hasMenu: (state) => (key) => !key || state.menus.includes(key)
   },
 
   actions: {
-    setUser({ username, roles = [], permissions = [] }) {
-      this.username = username
-      this.roles = roles
-      this.permissions = permissions
+    setUser(payload = {}) {
+      this.id = payload.id ?? null
+      this.username = payload.username ?? ''
+      this.roles = Array.isArray(payload.roles) ? payload.roles : []
+      this.menus = Array.isArray(payload.menus) ? payload.menus : []
+      this.permissions = Array.isArray(payload.permissions) ? payload.permissions : []
     },
-    logout() {
+
+    /**
+     * 清空登录态。
+     *
+     * 顺带中止批量评估：否则退出登录后旧的轮询定时器仍在跑，
+     * 会用下一个人的会话继续打 /api/assessment-tasks（既浪费请求也会串数据）。
+     */
+    clear() {
+      this.abortBackgroundWork()
+      this.id = null
       this.username = ''
       this.roles = []
+      this.menus = []
       this.permissions = []
     },
-    loginAsDemo(role = 'admin') {
-      const DEMO_ACCOUNTS = {
-        admin: { username: 'admin', roles: ['ADMIN'], permissions: ['*'] },
-        researcher: { username: 'researcher', roles: ['RESEARCHER'], permissions: ['subject:list', 'subject:import'] },
-        doctor: { username: 'doctor', roles: ['DOCTOR'], permissions: ['subject:list'] },
-        patient: { username: 'patient', roles: ['PATIENT'], permissions: [] }
+
+    /** 语义化别名：布局层退出登录时调用，等价于 clear()。 */
+    logout() {
+      this.clear()
+    },
+
+    abortBackgroundWork() {
+      try {
+        useBatchAssessmentStore().abort()
+      } catch {
+        // Pinia 尚未激活（例如单元测试直接调用 store）时忽略
       }
-      const acc = DEMO_ACCOUNTS[role] || DEMO_ACCOUNTS.admin
-      this.setUser(acc)
+      // 幂等键也是"这个人的意图"，换人后不能继承
+      clearAllAssessmentIntents()
     }
   },
 
   persist: {
-    key: PERSIST_KEY,
-    pick: ['username', 'roles', 'permissions']
+    key: 'ad-causalrisk-user',
+    pick: ['id', 'username', 'roles', 'menus', 'permissions']
   }
 })

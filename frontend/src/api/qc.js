@@ -1,40 +1,28 @@
 import request from './request.js'
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
-
-function mockRows() {
-  return [
-    { id: 1, subjectId: 101, visitId: 1, subjectCode: 'SUB-1001', subjectAlias: '张伟', visitCode: 'V1', targetType: 'SUBJECT', sourceType: 'QC', status: 'PENDING', abnormalItems: 'MMSE 分值异常', auditComment: '', auditorName: '', createdAt: new Date().toISOString() },
-    { id: 2, subjectId: 102, visitId: 2, subjectCode: 'SUB-1002', subjectAlias: '李娜', visitCode: 'V2', targetType: 'VISIT', sourceType: 'QC', status: 'APPROVED', abnormalItems: '血液标志物缺失', auditComment: '已核对原始数据', auditorName: '研究员甲', createdAt: new Date().toISOString() }
-  ]
+/**
+ * 质控审核（非契约扩展端点，/api/qc/*）
+ *
+ * GET  /api/qc/list?subjectCode&subjectAlias&status&page&pageSize
+ *      -> PageResult<QcListView>
+ * GET  /api/qc/stats -> { pendingCount, approvedCount, rejectedCount }
+ * POST /api/qc/{id}/audit  body { status: APPROVED|REJECTED, abnormalItems?, auditComment? }
+ *      仅 ADMIN / RESEARCHER；非 PENDING 的记录会返回 400。
+ */
+export function listQcRecords({ status, page = 1, pageSize = 20 } = {}) {
+  const params = { page, pageSize }
+  if (status) params.status = status
+  return request.get('/qc/list', { params })
 }
 
-export async function getQcList(params = {}) {
-  const { page = 1, pageSize = 10, status } = params
-  if (USE_MOCK) {
-    let items = mockRows()
-    if (status) items = items.filter(r => r.status === status)
-    return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize }
-  }
-  return request.get('/qc/list', { params: { page, pageSize, status } })
-}
-
-export async function getQcStats() {
-  if (USE_MOCK) {
-    const rows = mockRows()
-    return {
-      pendingCount: rows.filter(r => r.status === 'PENDING').length,
-      approvedCount: rows.filter(r => r.status === 'APPROVED').length,
-      rejectedCount: rows.filter(r => r.status === 'REJECTED').length
-    }
-  }
+/** GET /api/qc/stats —— 管理员大屏的质控计数。 */
+export function getQcStats() {
   return request.get('/qc/stats')
 }
 
-export async function submitAudit(id, data = {}) {
-  if (USE_MOCK) {
-    const row = mockRows().find(r => r.id === Number(id)) || {}
-    return { ...row, status: data.status, auditComment: data.auditComment, auditorName: '当前用户' }
-  }
-  return request.post(`/qc/${id}/audit`, data)
+export function submitQcAudit(id, { status, auditComment, abnormalItems }) {
+  const body = { status }
+  if (auditComment) body.auditComment = auditComment
+  if (abnormalItems) body.abnormalItems = abnormalItems
+  return request.post(`/qc/${id}/audit`, body)
 }

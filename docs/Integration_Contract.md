@@ -45,6 +45,10 @@ python_service/deepagent_contract.py负责输入校验和四阶段编排，demo_
 
 `course-python-2026.10.11.1`提供完整源码ZIP及相对`fb4a09d243bf15170b478d484963312d490da83d`的定向补丁。已有Java/前端工程优先应用补丁：先检查`git status`保留自己的工作，再运行`git apply --check <补丁路径>`；检查成功后运行`git apply <补丁路径>`并执行本仓库测试。检查失败时按实际差异处理冲突，不能用完整ZIP覆盖已有工程。完整ZIP用于独立新目录启动，不替代业务数据库或任务数据。
 
-Java业务目标接口另见contracts/java-business.target.openapi.json：22个操作是待后端同学实现的目标。患者结果必须选PatientAssessmentSummary并在后端过滤；仅隐藏前端按钮不足以防止接口泄露。成功Envelope和PythonAgentResult格式不同，不能把data.data错当原Agent对象。
+Java业务接口另见contracts/java-business.target.openapi.json：当前59个操作已实现并经合成本地验证，完整后端验收边界见[后端验收](Backend_Requirements_Acceptance.md)。患者结果必须选PatientAssessmentSummary并在后端过滤；仅隐藏前端按钮不足以防止接口泄露。成功Envelope和PythonAgentResult格式不同，不能把data.data错当原Agent对象。
 
-报告导出支持HTML/PDF/JSON是课程要求，目标OpenAPI当前冻结JSON资源。新增媒体类型、下载头、错误DTO或状态时先做契约PR，随后补Java客户端和前端验收。
+报告导出支持HTML/PDF/JSON是课程要求，当前保留JSON资源并新增download附件入口，媒体类型与下载参数已记录于同份OpenAPI。后续变更媒体类型、下载头、错误DTO或状态时继续同步契约、调用方和测试。
+
+## Java业务扩展（2026-11-08）
+
+Java OpenAPI已记录59个实际操作。浏览器使用异步submit入口，Java固定输入/质量绑定后后台调用仍为同步的Python；仅能取消Java排队任务。应用重启关闭遗留任务，不自动重放算法。原同步POST和报告JSON资源保留。raw数值参与请求；非法原始值不能经显示舍入变合法。来源、缺失、版本、授权、模板及未完成条件见[业务状态](Business_Feature_Status.md)。

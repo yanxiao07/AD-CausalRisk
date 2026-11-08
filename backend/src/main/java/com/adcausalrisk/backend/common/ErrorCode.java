@@ -5,19 +5,19 @@ import org.springframework.http.HttpStatus;
 /**
  * Stable error identifiers.
  *
- * <p>The enum <em>name</em> is the API-visible {@code errorCode} string, so renaming a
- * constant is a breaking contract change.
+ * <p>The enum <em>name</em> is the API-visible {@code errorCode} string, so renaming a constant is
+ * a breaking contract change.
  *
- * <p>{@code code} mirrors the HTTP status: the status is the coarse class a caller can
- * branch on, {@code errorCode} is the specific identifier, and the HTTP response uses the
- * same status so a refusal is never disguised as HTTP 200.
+ * <p>{@code code} mirrors the HTTP status: the status is the coarse class a caller can branch on,
+ * {@code errorCode} is the specific identifier, and the HTTP response uses the same status so a
+ * refusal is never disguised as HTTP 200.
  *
- * <p>The frozen target contract declares 400/401/403 for the operations in scope. 404,
- * 405, 415 and 500 are added because the framework can reject or fail a request before any
- * controller runs, and an unformatted error body would break the "every response is an
- * Envelope" rule. {@link #NOT_FOUND} covers <em>unrouted</em> requests only; a missing
- * business resource (for example an unknown subject) uses a module-specific code with
- * HTTP 400, because the frozen contract declares no 404 for those operations.
+ * <p>The frozen target contract declares 400/401/403 for the operations in scope. 404, 405, 415 and
+ * 500 are added because the framework can reject or fail a request before any controller runs, and
+ * an unformatted error body would break the "every response is an Envelope" rule. {@link
+ * #NOT_FOUND} covers <em>unrouted</em> requests only; a missing business resource (for example an
+ * unknown subject) uses a module-specific code with HTTP 400, because the frozen contract declares
+ * no 404 for those operations.
  */
 public enum ErrorCode {
 
@@ -40,6 +40,7 @@ public enum ErrorCode {
     NOT_FOUND(404, HttpStatus.NOT_FOUND, "请求的资源不存在"),
 
     METHOD_NOT_ALLOWED(405, HttpStatus.METHOD_NOT_ALLOWED, "请求方法不被支持"),
+    TASK_STATE_CONFLICT(409, HttpStatus.CONFLICT, "当前任务状态不支持此操作"),
 
     UNSUPPORTED_MEDIA_TYPE(415, HttpStatus.UNSUPPORTED_MEDIA_TYPE, "不支持的请求 Content-Type"),
 
