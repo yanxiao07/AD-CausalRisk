@@ -98,6 +98,12 @@ watch([eventType, actor, keyword], () => {
   page.value = 1
 })
 
+// 筛选后条目变少时，当前页可能越界，回退到最后一个有效页
+watch(filtered, () => {
+  const maxPage = Math.max(1, Math.ceil(filtered.value.length / pageSize.value))
+  if (page.value > maxPage) page.value = maxPage
+})
+
 async function load() {
   loading.value = true
   error.value = ''

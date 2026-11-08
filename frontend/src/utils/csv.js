@@ -6,8 +6,16 @@
  * - 通过临时 <a download> 触发下载，不依赖后端。
  */
 export function downloadCsv(filename, headers, rows) {
+  // CSV 公式注入防护：Excel 会把 = + - @ 与制表符开头的单元格当公式执行。
+  // 前置一个单引号让它按文本处理；纯数字（含负数）保持原样。
+  const FORMULA_START = /^[=+@\t\r]/
+  const NUMERIC = /^[+-]?\d+(\.\d+)?$/
+
   const escapeCell = (value) => {
-    const text = value == null ? '' : String(value)
+    let text = value == null ? '' : String(value)
+    if (FORMULA_START.test(text) || (text.startsWith('-') && !NUMERIC.test(text))) {
+      text = `'${text}`
+    }
     return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
   }
 

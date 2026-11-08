@@ -244,11 +244,20 @@ async function loadSubjects() {
     const totalCount = Number(first?.total ?? collected.length)
     total.value = totalCount
     const pages = Math.min(MAX_SUBJECT_PAGES, Math.ceil(totalCount / PAGE_SIZE))
+    let failedPages = 0
     for (let nextPage = 2; nextPage <= pages; nextPage += 1) {
-      const next = await listSubjects({ page: nextPage, pageSize: PAGE_SIZE })
-      if (Array.isArray(next?.items)) collected.push(...next.items)
+      try {
+        const next = await listSubjects({ page: nextPage, pageSize: PAGE_SIZE })
+        if (Array.isArray(next?.items)) collected.push(...next.items)
+      } catch {
+        // 单页失败不影响已加载的部分：保留数据并提示统计不完整
+        failedPages += 1
+      }
     }
     subjects.value = collected
+    if (failedPages > 0) {
+      subjectsError.value = `有 ${failedPages} 页档案加载失败，统计可能不完整`
+    }
     return true
   } catch (problem) {
     subjects.value = []

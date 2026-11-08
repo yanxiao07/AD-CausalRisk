@@ -198,7 +198,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Refresh, Timer, User, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -260,6 +260,12 @@ function isOverdue(row) {
 }
 
 const todos = computed(() => allItems.value.filter((item) => item.status === 'PLANNED'))
+
+// 标记完成后待办变少时，当前页可能越界，回退到最后一个有效页
+watch(todos, () => {
+  const maxPage = Math.max(1, Math.ceil(todos.value.length / todoPageSize.value))
+  if (todoPage.value > maxPage) todoPage.value = maxPage
+})
 
 /** 导出当前视图的数据：全部待办 → 待办列表；按受试者 → 该受试者的全部随访。 */
 const exportRows = computed(() => (view.value === 'ALL' ? todos.value : items.value))
