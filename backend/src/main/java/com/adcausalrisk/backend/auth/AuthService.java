@@ -7,6 +7,10 @@ import com.adcausalrisk.backend.common.ErrorCode;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.security.MenuCatalog;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -19,21 +23,16 @@ import org.springframework.security.web.authentication.session.SessionAuthentica
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.stereotype.Service;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
-
 /**
  * Login, logout and "who am I".
  *
- * <p>Login is handled here rather than by Spring's form-login filter because the contract's
- * {@code POST /api/auth/login} takes a JSON body, which that filter cannot read. The session
- * work the filter would normally do - session-fixation protection and storing the security
- * context - is therefore done explicitly, using the two beans {@code SecurityConfig}
- * provides.
+ * <p>Login is handled here rather than by Spring's form-login filter because the contract's {@code
+ * POST /api/auth/login} takes a JSON body, which that filter cannot read. The session work the
+ * filter would normally do - session-fixation protection and storing the security context - is
+ * therefore done explicitly, using the two beans {@code SecurityConfig} provides.
  *
- * <p>Not implemented in this PR: failed and successful logins are logged but not written to
- * {@code audit_log}, so FR-AUDIT-01 remains open.
+ * <p>BusinessAuditInterceptor writes the successful/failed login and logout audit events after
+ * request completion; this service does not duplicate those events or store request credentials.
  */
 @Service
 public class AuthService {
@@ -45,21 +44,29 @@ public class AuthService {
     private final SecurityContextRepository securityContextRepository;
 
     private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
-    public AuthService(AuthenticationManager authenticationManager,
-                       SecurityContextRepository securityContextRepository,
-                       SessionAuthenticationStrategy sessionAuthenticationStrategy) {
+    public AuthService(
+            AuthenticationManager authenticationManager,
+            SecurityContextRepository securityContextRepository,
+            SessionAuthenticationStrategy sessionAuthenticationStrategy,
+            org.springframework.jdbc.core.JdbcTemplate jdbc) {
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
         this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
+        this.jdbc = jdbc;
     }
 
-    public CurrentUserView login(LoginRequest request, HttpServletRequest httpRequest,
-                                 HttpServletResponse httpResponse) {
+    public CurrentUserView login(
+            LoginRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
         Authentication authentication;
         try {
-            authentication = authenticationManager.authenticate(
-                    UsernamePasswordAuthenticationToken.unauthenticated(request.username(), request.password()));
+            authentication =
+                    authenticationManager.authenticate(
+                            UsernamePasswordAuthenticationToken.unauthenticated(
+                                    request.username(), request.password()));
         } catch (AuthenticationException exception) {
             // One refusal for every cause - unknown username, wrong password, disabled account -
             // so the caller cannot probe which usernames exist (FR-AUTH-01, "统一失败提示").
@@ -77,10 +84,19 @@ public class AuthService {
         // need (id, username, roles) and nothing that resembles a credential.
         AppUserPrincipal sessionPrincipal = principal.withPasswordErased();
         SecurityContext context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(new UsernamePasswordAuthenticationToken(
-                sessionPrincipal, null, sessionPrincipal.getAuthorities()));
+        context.setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        sessionPrincipal, null, sessionPrincipal.getAuthorities()));
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, httpRequest, httpResponse);
+        httpRequest
+                .getSession()
+                .setAttribute(
+                        "AUTH_EPOCH",
+                        jdbc.queryForObject(
+                                "SELECT auth_epoch FROM sys_user WHERE id=?",
+                                Long.class,
+                                principal.userId()));
 
         log.info("login succeeded for account id={}", principal.userId());
         return viewOf(sessionPrincipal);
@@ -88,7 +104,8 @@ public class AuthService {
 
     public void logout(HttpServletRequest httpRequest) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.getPrincipal() instanceof AppUserPrincipal principal) {
+        if (authentication != null
+                && authentication.getPrincipal() instanceof AppUserPrincipal principal) {
             log.info("logout for account id={}", principal.userId());
         }
 
@@ -102,7 +119,8 @@ public class AuthService {
     }
 
     public CurrentUserView currentUser(Authentication authentication) {
-        if (authentication == null || !(authentication.getPrincipal() instanceof AppUserPrincipal principal)) {
+        if (authentication == null
+                || !(authentication.getPrincipal() instanceof AppUserPrincipal principal)) {
             // Defensive: SecurityConfig already requires authentication for /api/me.
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);
         }

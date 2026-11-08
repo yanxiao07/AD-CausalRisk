@@ -10,12 +10,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-
 import com.adcausalrisk.backend.agent.AgentRequest;
 import com.adcausalrisk.backend.agent.AgentResult;
 import com.adcausalrisk.backend.agent.RestAgentClient;
@@ -35,17 +29,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
 /**
  * Service-level guarantees that the HTTP layer cannot observe on its own: a task that reaches
- * PENDING must always leave it, and a replayed result must satisfy the same invariants as a
- * fresh one.
+ * PENDING must always leave it, and a replayed result must satisfy the same invariants as a fresh
+ * one.
  */
 class AssessmentServiceTest {
 
@@ -55,10 +54,12 @@ class AssessmentServiceTest {
     private static final String KEY = "assessment-key";
 
     private final AssessmentTaskRepository taskRepository = mock(AssessmentTaskRepository.class);
-    private final RiskAssessmentRepository assessmentRepository = mock(RiskAssessmentRepository.class);
+    private final RiskAssessmentRepository assessmentRepository =
+            mock(RiskAssessmentRepository.class);
     private final SubjectRepository subjectRepository = mock(SubjectRepository.class);
     private final VisitRepository visitRepository = mock(VisitRepository.class);
-    private final IdempotencyRecordRepository idempotencyRepository = mock(IdempotencyRecordRepository.class);
+    private final IdempotencyRecordRepository idempotencyRepository =
+            mock(IdempotencyRecordRepository.class);
     private final SubjectAccessPolicy accessPolicy = mock(SubjectAccessPolicy.class);
     private final RestAgentClient agentClient = mock(RestAgentClient.class);
     private final ObjectMapper objectMapper = mock(ObjectMapper.class);
@@ -70,40 +71,74 @@ class AssessmentServiceTest {
     private AppUserPrincipal principal;
     private Subject subject;
 
+    private com.adcausalrisk.backend.qualitycheck.QualityCheckService qualityMock() {
+        var quality =
+                org.mockito.Mockito.mock(
+                        com.adcausalrisk.backend.qualitycheck.QualityCheckService.class);
+        when(quality.check(any(), any()))
+                .thenReturn(
+                        new com.adcausalrisk.backend.qualitycheck.QualityCheckService
+                                .QualityCheckResult(
+                                1, 1, "WARN", List.of(), Instant.now(), "test"));
+        return quality;
+    }
+
     @BeforeEach
     @SuppressWarnings("unchecked")
-    void setUp() {
+    void setUp() throws Exception {
         PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
         when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
 
-        service = new AssessmentService(
-                taskRepository,
-                assessmentRepository,
-                subjectRepository,
-                visitRepository,
-                idempotencyRepository,
-                accessPolicy,
-                agentClient,
-                objectMapper,
-                jdbc,
-                clock,
-                transactionManager);
+        service =
+                new AssessmentService(
+                        taskRepository,
+                        assessmentRepository,
+                        subjectRepository,
+                        visitRepository,
+                        idempotencyRepository,
+                        accessPolicy,
+                        agentClient,
+                        objectMapper,
+                        jdbc,
+                        clock,
+                        transactionManager,
+                        qualityMock(),
+                        org.mockito.Mockito.mock(
+                                com.adcausalrisk.backend.audit.AuditService.class));
+        when(objectMapper.writeValueAsString(any(AgentRequest.class))).thenReturn("{}");
+        when(jdbc.update(
+                        org.mockito.ArgumentMatchers.startsWith(
+                                "UPDATE assessment_task SET status='RUNNING'"),
+                        any(Object[].class)))
+                .thenReturn(1);
+        when(jdbc.queryForObject(
+                        org.mockito.ArgumentMatchers.startsWith(
+                                "SELECT COUNT(*) FROM model_configuration"),
+                        org.mockito.ArgumentMatchers.eq(Integer.class),
+                        any(Object[].class)))
+                .thenReturn(1);
 
         task = new AssessmentTask(SUBJECT_ID, "run-test", "digest", Instant.now());
         when(taskRepository.saveAndFlush(any(AssessmentTask.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(taskRepository.findById(any())).thenReturn(Optional.of(task));
 
-        subject = new Subject("DEMO-900", "评估测试档案", Subject.Status.ACTIVE, DATA_VERSION, Instant.now());
+        subject =
+                new Subject(
+                        "DEMO-900", "评估测试档案", Subject.Status.ACTIVE, DATA_VERSION, Instant.now());
         when(subjectRepository.findById(SUBJECT_ID)).thenReturn(Optional.of(subject));
-        when(visitRepository.findBySubjectIdOrderByVisitDateAscIdAsc(SUBJECT_ID)).thenReturn(List.of());
-        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenReturn(List.of());
+        when(visitRepository.findBySubjectIdOrderByVisitDateAscIdAsc(SUBJECT_ID))
+                .thenReturn(List.of());
+        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenReturn(List.of());
 
-        principal = new AppUserPrincipal(USER_ID, "researcher", "hash", List.of("RESEARCHER"), true);
+        principal =
+                new AppUserPrincipal(USER_ID, "researcher", "hash", List.of("RESEARCHER"), true);
 
         when(accessPolicy.canRequestAssessment(any(), any())).thenReturn(true);
         when(accessPolicy.canView(principal, SUBJECT_ID)).thenReturn(true);
-        when(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(any(), anyString(), anyString()))
+        when(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(
+                        any(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
     }
 
@@ -116,19 +151,25 @@ class AssessmentServiceTest {
         when(agentClient.createRun(any(AgentRequest.class)))
                 .thenThrow(new IllegalStateException("unexpected client failure"));
 
-        assertThatThrownBy(() -> service.create(SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, KEY, principal))
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, KEY, principal))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unexpected client failure");
 
         assertThat(task.getStatus()).isEqualTo(AssessmentTask.Status.FAILED);
     }
 
-    /** P0-3: a serialisation failure happens before the write transaction, so persist must close it. */
+    /**
+     * P0-3: a serialisation failure happens before the write transaction, so persist must close it.
+     */
     @Test
     void serialisationFailureClosesTheTaskAsFailed() throws Exception {
         AgentResult result = mock(AgentResult.class);
         when(agentClient.createRun(any(AgentRequest.class))).thenReturn(result);
-        when(objectMapper.writeValueAsString(result)).thenThrow(mock(JsonProcessingException.class));
+        when(objectMapper.writeValueAsString(result))
+                .thenThrow(mock(JsonProcessingException.class));
 
         // A BusinessException is reported as a FAILED task in a 200 response (the contract has no
         // 5xx for this operation), so the call returns instead of throwing.
@@ -145,8 +186,8 @@ class AssessmentServiceTest {
 
     /**
      * The result could not be stored: the row is closed as {@code TASK_PERSIST_FAILED} and that
-     * code must survive the outer handler. It used to be overwritten with the generic
-     * {@code AGENT_FAILED}, which made a re-fetch claim "算法服务执行失败" for a database problem.
+     * code must survive the outer handler. It used to be overwritten with the generic {@code
+     * AGENT_FAILED}, which made a re-fetch claim "算法服务执行失败" for a database problem.
      */
     @Test
     void persistFailureKeepsItsOwnCodeInsteadOfBeingOverwritten() {
@@ -155,8 +196,10 @@ class AssessmentServiceTest {
         when(assessmentRepository.saveAndFlush(any(RiskAssessment.class)))
                 .thenThrow(new DataIntegrityViolationException("uq_risk_assessment_task"));
 
-        assertThatThrownBy(() -> service.create(
-                SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, KEY, principal))
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, KEY, principal))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         assertThat(task.getStatus()).isEqualTo(AssessmentTask.Status.FAILED);
@@ -167,15 +210,19 @@ class AssessmentServiceTest {
     /** P1-3: " key " and "key" are the same idempotency scope, so the padded call must replay. */
     @Test
     void paddedIdempotencyKeyReplaysTheSameTask() throws Exception {
-        String digest = AssessmentService.digestOf(
-                SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, DATA_VERSION);
-        IdempotencyRecord record = new IdempotencyRecord(USER_ID, AssessmentService.OPERATION, KEY, digest, 99L);
-        when(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(USER_ID, AssessmentService.OPERATION, KEY))
+        String digest =
+                AssessmentService.digestOf(
+                        SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, DATA_VERSION);
+        IdempotencyRecord record =
+                new IdempotencyRecord(USER_ID, AssessmentService.OPERATION, KEY, digest, 99L);
+        when(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(
+                        USER_ID, AssessmentService.OPERATION, KEY))
                 .thenReturn(Optional.of(record));
         when(taskRepository.findById(99L)).thenReturn(Optional.of(task));
 
         AssessmentService.Outcome outcome =
-                service.create(SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, "  " + KEY + "  ", principal);
+                service.create(
+                        SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, "  " + KEY + "  ", principal);
 
         assertThat(outcome.task()).isSameAs(task);
         verify(taskRepository, never()).saveAndFlush(any(AssessmentTask.class));
@@ -186,9 +233,16 @@ class AssessmentServiceTest {
     @Test
     void storedResultViolatingTheContractIsRejectedOnRead() throws Exception {
         AgentResult outOfRange = completedResult(new BigDecimal("2.0"));
-        RiskAssessment stored = new RiskAssessment(
-                SUBJECT_ID, 5L, "{}", RiskAssessment.QualityStatus.PASS,
-                DATA_VERSION, AgentRequest.MODEL_VERSION, AgentResult.WORKFLOW_VERSION, Instant.now());
+        RiskAssessment stored =
+                new RiskAssessment(
+                        SUBJECT_ID,
+                        5L,
+                        "{}",
+                        RiskAssessment.QualityStatus.PASS,
+                        DATA_VERSION,
+                        AgentRequest.MODEL_VERSION,
+                        AgentResult.WORKFLOW_VERSION,
+                        Instant.now());
         when(assessmentRepository.findById(5L)).thenReturn(Optional.of(stored));
         when(accessPolicy.canReadRawScores(principal, SUBJECT_ID)).thenReturn(true);
         when(objectMapper.readValue(anyString(), eq(AgentResult.class))).thenReturn(outOfRange);
@@ -204,10 +258,15 @@ class AssessmentServiceTest {
     void creatingForAnInvisibleSubjectIsAccessDenied() {
         when(accessPolicy.canView(principal, SUBJECT_ID)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.create(SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, KEY, principal))
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        SUBJECT_ID, AgentRequest.MODEL_VERSION, 24, KEY, principal))
                 .isInstanceOf(BusinessException.class)
-                .satisfies(failure -> assertThat(((BusinessException) failure).errorCode())
-                        .isEqualTo(ErrorCode.ACCESS_DENIED));
+                .satisfies(
+                        failure ->
+                                assertThat(((BusinessException) failure).errorCode())
+                                        .isEqualTo(ErrorCode.ACCESS_DENIED));
 
         verify(taskRepository, never()).saveAndFlush(any(AssessmentTask.class));
     }
@@ -229,11 +288,12 @@ class AssessmentServiceTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(new AgentResult.Stage(
-                        AgentResult.StageName.DATA_FUSION,
-                        AgentResult.StageStatus.COMPLETED,
-                        1.5,
-                        Map.of())),
+                List.of(
+                        new AgentResult.Stage(
+                                AgentResult.StageName.DATA_FUSION,
+                                AgentResult.StageStatus.COMPLETED,
+                                1.5,
+                                Map.of())),
                 AgentResult.DATA_SOURCE,
                 true);
     }

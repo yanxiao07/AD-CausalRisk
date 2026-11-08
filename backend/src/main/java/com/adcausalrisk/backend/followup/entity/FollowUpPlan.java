@@ -1,7 +1,5 @@
 package com.adcausalrisk.backend.followup.entity;
 
-import java.time.Instant;
-
 import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
 
@@ -13,6 +11,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+
+import java.time.Instant;
 
 /** One planned follow-up visit for a subject (V1 {@code follow_up_plan}, FR-FOLLOW-02). */
 @Entity
@@ -47,6 +47,19 @@ public class FollowUpPlan {
     @Column(name = "owner_id", nullable = false)
     private Long ownerId;
 
+    @Column(name = "notes", length = 1000)
+    private String notes;
+
+    public String getNotes() {
+        return notes;
+    }
+
+    public void setNotes(String notes) {
+        if (notes != null && notes.length() > 1000)
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "备注不能超过1000字");
+        if (notes != null) this.notes = notes.trim();
+    }
+
     protected FollowUpPlan() {
         // for JPA
     }
@@ -60,6 +73,9 @@ public class FollowUpPlan {
     }
 
     public void reschedule(Instant scheduledAt, String purpose) {
+        if (this.status != Status.PLANNED && (scheduledAt != null || purpose != null)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "已完结或取消的随访不可修改");
+        }
         if (scheduledAt != null) {
             this.scheduledAt = scheduledAt;
         }

@@ -37,13 +37,15 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 以下为当前分支的实现范围；完整验收条件以[课程需求](docs/Course_SRS_V3_2.md)为准。顶部徽章展示 `main` 分支的 CI，功能分支的检查结果请查看对应提交或 PR。
 
+后端业务更新：2026-11-08，59个Java操作已实现并经合成本地验证，覆盖来源与质量历史、固定输入、异步任务、账号/授权、随访、报告附件和审计。逐项需求与验收见[后端验收](docs/Backend_Requirements_Acceptance.md)，G01–G23及研究接入边界见[业务状态](docs/Business_Feature_Status.md)。本次交付不包含本地候选前端、前端CI、临床数据或研究权重；前端同学可按契约继续接入和统一风格。以下既往版本描述保留原交付背景。
+
 核对日期：2026-11-04。本次Python分支基于main `57220d3`，已包含[PR #18](https://github.com/yanxiao07/AD-CausalRisk/pull/18)的Vue业务前端和Java互操作/失败持久化修复、[PR #19](https://github.com/yanxiao07/AD-CausalRisk/pull/19)的离线评价/监测原语及[PR #20](https://github.com/yanxiao07/AD-CausalRisk/pull/20)的分层研究CI。各模块已有实现、实际验收与研究模型接入分别记录。
 
 | 模块 | 已有实现 | 后续工作 |
 | --- | --- | --- |
 | Python | 合成四阶段服务、契约/身份校验、客户端；可选离线训练、解释、评价与联合监测计算 | 当前业务仍使用合成规则；研究模型服务、真实监控输入及临床验证单独验收 |
-| Java 后端 | 已实现冻结业务契约22个操作，含AgentClient、评估任务/结果持久化、复核、随访、报告资源和审计；另有QC扩展端点 | MySQL、完整业务审计、患者摘要及其他限制见[后端说明](backend/README.md)，接口实现不等于全面验收 |
-| Web 前端 | Vue 3/Vite/Element Plus工程、真实会话与API、四角色页面、评估/图谱/复核/报告/随访等 | 移动端、部分列表/患者摘要/账号管理后端接口及实际场景验收限制见[前端说明](frontend/README.md) |
+| Java 后端 | 59个已记录的业务操作，含对象范围、来源、独立质量、输入快照、异步任务、用户管理、随访、报告和审计 | MySQL实际迁移及其他验收边界见[后端说明](backend/README.md)，接口实现不等于全面验收 |
+| Web 前端 | 保持main中已交付的Vue 3/Vite/Element Plus工程、真实会话与四角色业务页面；本次后端交付不修改frontend | 新增API的页面接入、统一视觉及移动端验收由前端继续；本地候选页面不随本次交付发布 |
 | 全链路 | 浏览器→Java→Python合成调用链已有实现；Java负责业务保存与权限 | MySQL、全场景故障/重启和浏览器端到端验收单独完成；离线研究模块不自动接入业务 |
 
 接口目标、数据库表或页面片段的存在不表示对应业务已完成。Python 工程测试也不替代 Java、MySQL 或浏览器端到端验收。
@@ -218,7 +220,7 @@ py -3.11 -m venv .venv-research-graph
 | [Python research primitive checks](.github/workflows/python-research-primitives.yml) | Windows / Ubuntu × Python 3.11 / 3.12，标准库35项与仅NumPy139项分别运行 |
 | [Java backend build and tests](.github/workflows/backend-build.yml) | JDK 21，Maven `verify`，H2 测试 |
 
-推送和 PR 会触发上述工作流；实际结果以 [GitHub Actions](https://github.com/yanxiao07/AD-CausalRisk/actions) 为准。前端已有安装、构建和测试脚本，尚未配置专用CI工作流。
+推送和 PR 会触发上述工作流；实际结果以 [GitHub Actions](https://github.com/yanxiao07/AD-CausalRisk/actions) 为准。前端已有安装、构建和测试脚本；本次后端交付不包含本地候选的前端专用CI工作流。
 
 既有因果识别论证的[标准库精确示例](docs/Causal_Identification_Results.md)现随源码交付，运行 `python -I -S -B examples/causal_identification_audit.py` 可核对9项精确检查。该示例在研究CI标准库矩阵中单独运行；数学反例不构成本研究的因果效应或临床证据。
 
@@ -275,7 +277,7 @@ py -3.11 -m venv .venv-research-graph
 - [x] Java特征读取、持久化任务与实际AgentClient；保留BLOCKED/null及失败原因。
 - [x] Web工程、业务页面、四角色视图及测试脚本；移动端与全部交互场景另验收。
 - [x] 业务复核、随访、授权报告资源及内部评估的患者访问限制。
-- [ ] 完整业务审计、患者摘要接口、账号管理及其他契约扩展。
+- [x] 业务审计、患者白名单摘要、账号/授权管理及59操作契约；验证边界见[后端验收](docs/Backend_Requirements_Acceptance.md)。
 - [ ] MySQL、浏览器及跨服务故障/重启历史的端到端验收。
 
 研究算法与科学验收单独跟踪：固定训练扰动、分组归因及自然模态分层已有阶段交付，真实累计673基础/36校准；[当前需求状态](docs/Python_Requirement_Status.md)保留图增益阴性、结构四折不可估、CSF NO_GO和真实阈值整表抑制。维护主机研究页面不包含在本仓库。研究依赖与课程环境分开，图专题使用图锁环境。严格个人因果、独立/as-of/QC、研究模型业务接入和临床验证仍未完成。

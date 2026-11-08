@@ -29,6 +29,11 @@
   </properties>
 
   <dependencies>
+    <dependency>
+      <groupId>org.apache.pdfbox</groupId>
+      <artifactId>pdfbox</artifactId>
+      <version>3.0.8</version>
+    </dependency>
     <!-- Web / DTO validation / persistence / session security -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -106,6 +111,10 @@
   </dependencies>
 
   <build>
+    <resources>
+      <resource><directory>src/main/resources</directory></resource>
+      <resource><directory>${project.basedir}/../docs</directory><targetPath>research-evidence</targetPath><includes><include>Training_Perturbation_Results.md</include><include>Graph_Training_Perturbation_Results.md</include><include>Graph_Modality_Strata_Results.md</include><include>Graph_Explanation_Results.md</include><include>Table_Grouped_XAI_Results.md</include><include>Causal_Identification_Results.md</include><include>Research_Host_Evidence_Admission.md</include><include>Feature_Drift_Monitoring.md</include><include>Performance_Monitoring.md</include><include>Lifecycle_Monitoring.md</include></includes></resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>

@@ -1,7 +1,5 @@
 package com.adcausalrisk.backend.assessment.entity;
 
-import java.time.Instant;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,18 +9,23 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import java.time.Instant;
+
 /**
  * One persisted assessment request, mapped onto the V1 {@code assessment_task} table.
  *
  * <p>The row exists before the Python call and keeps its {@code runId}, so a crash or a timeout
- * still leaves an auditable record that can be reconciled through {@code GET /runs/{runId}}.
- * {@code runId} is UNIQUE: a retry must reuse the original id instead of minting a second run.
+ * still leaves an auditable record that can be reconciled through {@code GET /runs/{runId}}. {@code
+ * runId} is UNIQUE: a retry must reuse the original id instead of minting a second run.
  */
 @Entity
 @Table(name = "assessment_task")
 public class AssessmentTask {
 
-    /** {@code ck_assessment_task_status}; FAILED is a Java-side state, Python only returns COMPLETED/BLOCKED. */
+    /**
+     * {@code ck_assessment_task_status}; FAILED is a Java-side state, Python only returns
+     * COMPLETED/BLOCKED.
+     */
     public enum Status {
         PENDING,
         RUNNING,
@@ -80,6 +83,11 @@ public class AssessmentTask {
     public void markCompleted(Instant now) {
         this.status = Status.COMPLETED;
         clearError();
+        this.updatedAt = now;
+    }
+
+    public void markRunning(Instant now) {
+        this.status = Status.RUNNING;
         this.updatedAt = now;
     }
 
