@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: ${ADCR_DB_URL:jdbc:mysql://127.0.0.1:3306/ad_causalrisk?useUnicode=true&characterEncoding=utf8&connectionTimeZone=UTC}
+    username: ${ADCR_DB_USERNAME}
+    password: ${ADCR_DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+python:
+  agent:
+    base-url: ${ADCR_PYTHON_URL:http://127.0.0.1:8091}
+    connect-timeout: 2s
+    read-timeout: 120s

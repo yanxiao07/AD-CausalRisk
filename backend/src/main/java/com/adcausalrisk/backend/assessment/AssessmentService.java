@@ -1,14 +1,5 @@
 package com.adcausalrisk.backend.assessment;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
 import com.adcausalrisk.backend.agent.AgentRequest;
 import com.adcausalrisk.backend.agent.AgentResult;
 import com.adcausalrisk.backend.agent.AgentResultValidator;
@@ -42,10 +33,19 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
 /**
- * Orchestrates one assessment: persist a PENDING task, call the Python agent, persist the
- * result. The two writes are separate short transactions and the HTTP call sits between them,
- * so no database connection is held while the synchronous workflow runs.
+ * Orchestrates one assessment: persist a PENDING task, call the Python agent, persist the result.
+ * The two writes are separate short transactions and the HTTP call sits between them, so no
+ * database connection is held while the synchronous workflow runs.
  */
 @Service
 public class AssessmentService {
@@ -59,6 +59,7 @@ public class AssessmentService {
 
     /** Java-side stable code for a task that failed while its result was being stored. */
     static final String CODE_PERSIST_FAILED = "TASK_PERSIST_FAILED";
+
     static final String MESSAGE_PERSIST_FAILED = "评估结果保存失败，请重试或联系管理员";
 
     private final AssessmentTaskRepository taskRepository;
@@ -71,7 +72,21 @@ public class AssessmentService {
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbc;
     private final java.time.Clock clock;
+    private final com.adcausalrisk.backend.audit.AuditService audit;
+    private final com.adcausalrisk.backend.qualitycheck.QualityCheckService quality;
     private final TransactionTemplate writeTransaction;
+    private final java.util.concurrent.ThreadPoolExecutor executor =
+            new java.util.concurrent.ThreadPoolExecutor(
+                    2,
+                    2,
+                    0L,
+                    java.util.concurrent.TimeUnit.MILLISECONDS,
+                    new java.util.concurrent.ArrayBlockingQueue<>(100));
+
+    @jakarta.annotation.PreDestroy
+    public void stopExecutor() {
+        executor.shutdown();
+    }
 
     public AssessmentService(
             AssessmentTaskRepository taskRepository,
@@ -84,7 +99,9 @@ public class AssessmentService {
             ObjectMapper objectMapper,
             JdbcTemplate jdbc,
             java.time.Clock clock,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            com.adcausalrisk.backend.qualitycheck.QualityCheckService quality,
+            com.adcausalrisk.backend.audit.AuditService audit) {
         this.taskRepository = taskRepository;
         this.assessmentRepository = assessmentRepository;
         this.subjectRepository = subjectRepository;
@@ -95,11 +112,14 @@ public class AssessmentService {
         this.objectMapper = objectMapper;
         this.jdbc = jdbc;
         this.clock = clock;
+        this.quality = quality;
+        this.audit = audit;
         this.writeTransaction = new TransactionTemplate(transactionManager);
         // REQUIRES_NEW, not the default REQUIRED: if this service is ever called from a
         // transactional caller, joining that transaction would hold a pooled connection for the
         // whole Python call and would defer the PENDING row until after the HTTP request.
-        this.writeTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.writeTransaction.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /** Task, optional result row and the parsed AgentResult, as needed by the HTTP layer. */
@@ -108,18 +128,41 @@ public class AssessmentService {
             RiskAssessment assessment,
             AgentResult result,
             String errorCode,
-            String errorMessage) {
-    }
+            String errorMessage) {}
 
     /**
      * {@code POST /api/assessment-tasks}.
      *
-     * <p>The contract declares only 200/400/401/403 for this operation, so an agent failure is
-     * not an HTTP error: the task becomes {@code FAILED} and the response still carries it.
+     * <p>The contract declares only 200/400/401/403 for this operation, so an agent failure is not
+     * an HTTP error: the task becomes {@code FAILED} and the response still carries it.
      */
     public Outcome create(
-            Long subjectId, String modelVersion, int predictionWindowMonths,
-            String idempotencyKey, AppUserPrincipal principal) {
+            Long subjectId,
+            String modelVersion,
+            int predictionWindowMonths,
+            String idempotencyKey,
+            AppUserPrincipal principal) {
+        return create(
+                subjectId, modelVersion, predictionWindowMonths, idempotencyKey, principal, false);
+    }
+
+    public Outcome submit(
+            Long subjectId,
+            String modelVersion,
+            int predictionWindowMonths,
+            String idempotencyKey,
+            AppUserPrincipal principal) {
+        return create(
+                subjectId, modelVersion, predictionWindowMonths, idempotencyKey, principal, true);
+    }
+
+    private Outcome create(
+            Long subjectId,
+            String modelVersion,
+            int predictionWindowMonths,
+            String idempotencyKey,
+            AppUserPrincipal principal,
+            boolean background) {
         // ADMIN / RESEARCHER 可为任意档案发起；DOCTOR 只能为已授权（VIEW/MANAGE）的档案发起。
         // 建档（POST /api/subjects）仍然只允许 ADMIN / RESEARCHER，两个权限刻意分开。
         if (!accessPolicy.canRequestAssessment(principal, subjectId)) {
@@ -132,32 +175,42 @@ public class AssessmentService {
         }
         requireKey(idempotencyKey);
 
-        Subject subject = subjectRepository.findById(subjectId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "档案不存在"));
+        Subject subject =
+                subjectRepository
+                        .findById(subjectId)
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.VALIDATION_ERROR, "档案不存在"));
         if (!accessPolicy.canView(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权访问该档案");
         }
         if (!AgentRequest.MODEL_VERSION.equals(modelVersion)) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
-                    "modelVersion 仅支持 " + AgentRequest.MODEL_VERSION);
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "modelVersion 仅支持 " + AgentRequest.MODEL_VERSION);
         }
         if (predictionWindowMonths < AgentRequest.MIN_WINDOW_MONTHS
                 || predictionWindowMonths > AgentRequest.MAX_WINDOW_MONTHS) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
-                    "predictionWindowMonths 必须在 " + AgentRequest.MIN_WINDOW_MONTHS
-                            + "-" + AgentRequest.MAX_WINDOW_MONTHS + " 之间");
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "predictionWindowMonths 必须在 "
+                            + AgentRequest.MIN_WINDOW_MONTHS
+                            + "-"
+                            + AgentRequest.MAX_WINDOW_MONTHS
+                            + " 之间");
         }
 
-        String digest = digestOf(subjectId, modelVersion, predictionWindowMonths, subject.getDataVersion());
+        String digest =
+                digestOf(subjectId, modelVersion, predictionWindowMonths, subject.getDataVersion());
 
-        Optional<IdempotencyRecord> replay = idempotencyRepository
-                .findByUserIdAndOperationAndIdempotencyKey(principal.userId(), OPERATION, idempotencyKey);
+        Optional<IdempotencyRecord> replay =
+                idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(
+                        principal.userId(), OPERATION, idempotencyKey);
         if (replay.isPresent()) {
             return replay(replay.get(), digest);
         }
 
+        var check = quality.check(subjectId, principal);
         AgentRequest request = buildRequest(subject, predictionWindowMonths);
-        Seed seed = seed(principal, idempotencyKey, digest, subject, request);
+        Seed seed = seed(principal, idempotencyKey, digest, subject, request, check.id());
         if (seed.replayed()) {
             // Another request with the same key already created this task. Replaying means
             // returning that task's current state - calling the agent again would run the
@@ -165,8 +218,49 @@ public class AssessmentService {
             return outcomeOf(seed.task(), null, null);
         }
         AssessmentTask seeded = seed.task();
+        if (background) {
+            try {
+                executor.execute(
+                        () -> {
+                            try {
+                                execute(seeded, request, subject, principal.userId());
+                            } catch (RuntimeException failure) {
+                                log.warn("异步任务 {} 已记录失败", seeded.getId());
+                            }
+                        });
+            } catch (java.util.concurrent.RejectedExecutionException full) {
+                return outcomeOf(
+                        markFailedOrThrow(
+                                seeded.getId(), full, "TASK_QUEUE_FULL", "任务队列已满，请稍后创建新任务"),
+                        null,
+                        null);
+            }
+            return outcomeOf(seeded, null, null);
+        }
+        return execute(seeded, request, subject, principal.userId());
+    }
 
+    private Outcome execute(
+            AssessmentTask seeded, AgentRequest request, Subject subject, long actor) {
+        boolean started = false;
         try {
+            started =
+                    jdbc.update(
+                                    "UPDATE assessment_task SET"
+                                            + " status='RUNNING',updated_at=CURRENT_TIMESTAMP WHERE"
+                                            + " id=? AND status='PENDING'",
+                                    seeded.getId())
+                            == 1;
+            if (!started)
+                return outcomeOf(taskRepository.findById(seeded.getId()).orElseThrow(), null, null);
+            Integer enabled =
+                    jdbc.queryForObject(
+                            "SELECT COUNT(*) FROM model_configuration WHERE model_version=? AND"
+                                    + " enabled=TRUE",
+                            Integer.class,
+                            request.modelVersion());
+            if (enabled == null || enabled == 0)
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "AGENT_UNAVAILABLE: 模型已停用");
             AgentResult result = agentClient.createRun(request);
             return persist(seeded.getId(), subject.getId(), result);
         } catch (TaskClosedAsFailed closed) {
@@ -176,16 +270,17 @@ public class AssessmentService {
             AssessmentTask failed = closed.task();
             Throwable cause = closed.getCause();
             if (cause instanceof BusinessException) {
-                return new Outcome(failed, null, null,
-                        failed.getErrorCode(), failed.getErrorMessage());
+                return new Outcome(
+                        failed, null, null, failed.getErrorCode(), failed.getErrorMessage());
             }
             throw cause instanceof RuntimeException runtime ? runtime : closed;
         } catch (RuntimeException failure) {
             // Anything that escapes from here would leave the row PENDING forever, so the task is
             // closed out first and the original failure is what the caller sees.
             String errorCode = stableErrorCode(failure);
-            AssessmentTask failed = markFailedOrThrow(
-                    seeded.getId(), failure, errorCode, userFacingMessage(errorCode));
+            AssessmentTask failed =
+                    markFailedOrThrow(
+                            seeded.getId(), failure, errorCode, userFacingMessage(errorCode));
             if (failure instanceof BusinessException) {
                 // The contract declares only 200/400/401/403 for this operation, so an agent
                 // failure is a FAILED task in a 200 response, not an HTTP error.
@@ -193,17 +288,41 @@ public class AssessmentService {
                 // Only the persisted stable code and the fixed user-facing sentence are returned:
                 // the original exception text can contain upstream URLs, response bodies or stack
                 // details, and must never reach the browser - not even on the first response.
-                return new Outcome(failed, null, null,
-                        failed.getErrorCode(), failed.getErrorMessage());
+                return new Outcome(
+                        failed, null, null, failed.getErrorCode(), failed.getErrorMessage());
             }
             throw failure;
+        } finally {
+            if (started)
+                try {
+                    taskRepository
+                            .findById(seeded.getId())
+                            .ifPresent(
+                                    task ->
+                                            audit.recordQuietly(
+                                                    actor,
+                                                    "ASSESSMENT_TASK_FINISHED",
+                                                    "taskId="
+                                                            + task.getId()
+                                                            + " subjectId="
+                                                            + subject.getId()
+                                                            + " status="
+                                                            + task.getStatus()
+                                                            + " errorCode="
+                                                            + task.getErrorCode()));
+                } catch (RuntimeException auditFailure) {
+                    log.warn("任务 {} 完成审计不可用", seeded.getId());
+                }
         }
     }
 
     /** {@code GET /api/assessment-tasks/{taskId}}. */
     public Outcome findTask(Long taskId, AppUserPrincipal principal) {
-        AssessmentTask task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "评估任务不存在"));
+        AssessmentTask task =
+                taskRepository
+                        .findById(taskId)
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.VALIDATION_ERROR, "评估任务不存在"));
         // The task view carries runId and stage summaries, i.e. raw-pipeline internals. Visibility
         // must match GET /api/assessments/{id}: canView alone would let a bound PATIENT read them
         // by guessing the id, even though the list endpoints already refuse.
@@ -213,25 +332,37 @@ public class AssessmentService {
         RiskAssessment assessment = assessmentRepository.findByTaskId(taskId).orElse(null);
         // A FAILED task keeps its persisted code/reason, so a re-fetch (or an idempotent replay)
         // explains the failure instead of returning a bare status.
-        return new Outcome(task, assessment, assessment == null ? null : parse(assessment),
-                task.getErrorCode(), task.getErrorMessage());
+        return new Outcome(
+                task,
+                assessment,
+                assessment == null ? null : parse(assessment),
+                task.getErrorCode(),
+                task.getErrorMessage());
     }
 
     /**
      * {@code GET /api/assessments/{assessmentId}}.
      *
      * <p>Only the full {@code Assessment} shape is served here, which includes the raw result;
-     * callers without raw-score access get 403. The patient summary is a separate contract type
-     * and belongs with the patient views.
+     * callers without raw-score access get 403. The patient summary is a separate contract type and
+     * belongs with the patient views.
      */
     public Outcome findAssessment(Long assessmentId, AppUserPrincipal principal) {
-        RiskAssessment assessment = assessmentRepository.findById(assessmentId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "评估结果不存在"));
+        RiskAssessment assessment =
+                assessmentRepository
+                        .findById(assessmentId)
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.VALIDATION_ERROR, "评估结果不存在"));
         if (!accessPolicy.canReadRawScores(principal, assessment.getSubjectId())) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权查看该评估结果");
         }
-        AssessmentTask task = taskRepository.findById(assessment.getTaskId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "评估任务与结果不一致"));
+        AssessmentTask task =
+                taskRepository
+                        .findById(assessment.getTaskId())
+                        .orElseThrow(
+                                () ->
+                                        new BusinessException(
+                                                ErrorCode.INTERNAL_ERROR, "评估任务与结果不一致"));
         return new Outcome(task, assessment, parse(assessment), null, null);
     }
 
@@ -248,8 +379,7 @@ public class AssessmentService {
             String riskLevel,
             String qualityStatus,
             String reviewStatus,
-            Instant createdAt) {
-    }
+            Instant createdAt) {}
 
     /** One row of {@code GET /api/assessment-tasks}; no stage details. */
     public record AssessmentTaskSummary(
@@ -261,8 +391,7 @@ public class AssessmentService {
             String errorCode,
             String message,
             Instant createdAt,
-            Instant updatedAt) {
-    }
+            Instant updatedAt) {}
 
     private static final int MAX_PAGE_SIZE = 100;
 
@@ -270,9 +399,9 @@ public class AssessmentService {
      * {@code GET /api/assessments} - paged result summaries, newest first.
      *
      * <p>The response intentionally carries no {@code agentResult}: a page of 100 full results
-     * would be tens of megabytes and would freeze the review queue. Only the scalar fields the
-     * list needs are returned; {@code riskScore}/{@code riskLevel} are read out of the stored JSON
-     * with a single {@code readTree} pass, and a malformed legacy row degrades to nulls instead of
+     * would be tens of megabytes and would freeze the review queue. Only the scalar fields the list
+     * needs are returned; {@code riskScore}/{@code riskLevel} are read out of the stored JSON with
+     * a single {@code readTree} pass, and a malformed legacy row degrades to nulls instead of
      * failing the whole page.
      *
      * <p>Visibility follows the same rule as the subject list: ADMIN/RESEARCHER see everything,
@@ -282,7 +411,8 @@ public class AssessmentService {
             int page, int pageSize, AppUserPrincipal principal) {
         int safePage = Math.max(1, page);
         int safePageSize = Math.max(1, Math.min(MAX_PAGE_SIZE, pageSize));
-        Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "id"));
+        Pageable pageable =
+                PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "id"));
 
         Page<RiskAssessment> paged;
         if (accessPolicy.hasFullRawScoreVisibility(principal)) {
@@ -291,11 +421,13 @@ public class AssessmentService {
             // Raw-score window, applied before paging: a PATIENT (or a SUMMARY_READ-only doctor)
             // must not see these rows at all, and filtering after paging would leak the total.
             java.util.Set<Long> visible = accessPolicy.rawScoreVisibleSubjectIds(principal);
-            paged = visible.isEmpty()
-                    ? Page.empty(pageable)
-                    : assessmentRepository.findBySubjectIdIn(visible, pageable);
+            paged =
+                    visible.isEmpty()
+                            ? Page.empty(pageable)
+                            : assessmentRepository.findBySubjectIdIn(visible, pageable);
         }
-        List<AssessmentSummary> items = paged.getContent().stream().map(this::toAssessmentSummary).toList();
+        List<AssessmentSummary> items =
+                paged.getContent().stream().map(this::toAssessmentSummary).toList();
         return new PageResult<>(items, safePage, safePageSize, paged.getTotalElements());
     }
 
@@ -330,14 +462,15 @@ public class AssessmentService {
     /**
      * {@code GET /api/assessment-tasks} - paged task history, newest first.
      *
-     * <p>Assessment ids are resolved for the whole page in one query, so a 100-row page costs
-     * two queries rather than 101.
+     * <p>Assessment ids are resolved for the whole page in one query, so a 100-row page costs two
+     * queries rather than 101.
      */
     public PageResult<AssessmentTaskSummary> listTasks(
             int page, int pageSize, AppUserPrincipal principal) {
         int safePage = Math.max(1, page);
         int safePageSize = Math.max(1, Math.min(MAX_PAGE_SIZE, pageSize));
-        Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "id"));
+        Pageable pageable =
+                PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "id"));
 
         Page<AssessmentTask> paged;
         if (accessPolicy.hasFullRawScoreVisibility(principal)) {
@@ -345,30 +478,38 @@ public class AssessmentService {
         } else {
             // Task history carries runId and assessment ids: same raw-score window as the list.
             java.util.Set<Long> visible = accessPolicy.rawScoreVisibleSubjectIds(principal);
-            paged = visible.isEmpty()
-                    ? Page.empty(pageable)
-                    : taskRepository.findBySubjectIdIn(visible, pageable);
+            paged =
+                    visible.isEmpty()
+                            ? Page.empty(pageable)
+                            : taskRepository.findBySubjectIdIn(visible, pageable);
         }
 
         List<Long> taskIds = paged.getContent().stream().map(AssessmentTask::getId).toList();
-        java.util.Map<Long, Long> assessmentByTask = taskIds.isEmpty()
-                ? java.util.Map.of()
-                : assessmentRepository.findByTaskIdIn(taskIds).stream().collect(
-                        java.util.stream.Collectors.toMap(
-                                RiskAssessment::getTaskId, RiskAssessment::getId, (first, second) -> first));
+        java.util.Map<Long, Long> assessmentByTask =
+                taskIds.isEmpty()
+                        ? java.util.Map.of()
+                        : assessmentRepository.findByTaskIdIn(taskIds).stream()
+                                .collect(
+                                        java.util.stream.Collectors.toMap(
+                                                RiskAssessment::getTaskId,
+                                                RiskAssessment::getId,
+                                                (first, second) -> first));
 
-        List<AssessmentTaskSummary> items = paged.getContent().stream()
-                .map(task -> new AssessmentTaskSummary(
-                        task.getId(),
-                        task.getSubjectId(),
-                        task.getStatus().name(),
-                        task.getRunId(),
-                        assessmentByTask.get(task.getId()),
-                        task.getErrorCode(),
-                        task.getErrorMessage(),
-                        task.getCreatedAt(),
-                        task.getUpdatedAt()))
-                .toList();
+        List<AssessmentTaskSummary> items =
+                paged.getContent().stream()
+                        .map(
+                                task ->
+                                        new AssessmentTaskSummary(
+                                                task.getId(),
+                                                task.getSubjectId(),
+                                                task.getStatus().name(),
+                                                task.getRunId(),
+                                                assessmentByTask.get(task.getId()),
+                                                task.getErrorCode(),
+                                                task.getErrorMessage(),
+                                                task.getCreatedAt(),
+                                                task.getUpdatedAt()))
+                        .toList();
         return new PageResult<>(items, safePage, safePageSize, paged.getTotalElements());
     }
 
@@ -377,22 +518,76 @@ public class AssessmentService {
     // ------------------------------------------------------------------
 
     /** A seeded task plus whether it was created here or adopted from a concurrent request. */
-    private record Seed(AssessmentTask task, boolean replayed) {
-    }
+    private record Seed(AssessmentTask task, boolean replayed) {}
 
     private Seed seed(
-            AppUserPrincipal principal, String idempotencyKey, String digest,
-            Subject subject, AgentRequest request) {
+            AppUserPrincipal principal,
+            String idempotencyKey,
+            String digest,
+            Subject subject,
+            AgentRequest request,
+            long qualityCheckId) {
         Instant now = Instant.now(clock);
         try {
-            return writeTransaction.execute(status -> {
-                AssessmentTask task = new AssessmentTask(
-                        subject.getId(), request.runId(), digest, now);
-                taskRepository.saveAndFlush(task);
-                idempotencyRepository.saveAndFlush(new IdempotencyRecord(
-                        principal.userId(), OPERATION, idempotencyKey, digest, task.getId()));
-                return new Seed(task, false);
-            });
+            return writeTransaction.execute(
+                    status -> {
+                        String currentVersion =
+                                jdbc.queryForObject(
+                                        "SELECT data_version FROM subject WHERE id=? FOR UPDATE",
+                                        String.class,
+                                        subject.getId());
+                        if (currentVersion != null
+                                && !currentVersion.equals(subject.getDataVersion()))
+                            throw new BusinessException(
+                                    ErrorCode.VALIDATION_ERROR, "输入在创建任务前已变化，请重新加载档案");
+                        AssessmentTask task =
+                                new AssessmentTask(subject.getId(), request.runId(), digest, now);
+                        taskRepository.saveAndFlush(task);
+                        String inputJson;
+                        String provenance;
+                        try {
+                            inputJson = objectMapper.writeValueAsString(request);
+                            provenance =
+                                    objectMapper.writeValueAsString(
+                                            java.util.Map.of(
+                                                    "visits",
+                                                    jdbc.queryForList(
+                                                            "SELECT"
+                                                                + " id,source,missing_reason,data_version,import_job_id"
+                                                                + " FROM visit WHERE subject_id=?"
+                                                                + " ORDER BY visit_date,id",
+                                                            subject.getId()),
+                                                    "features",
+                                                    jdbc.queryForList(
+                                                            "SELECT"
+                                                                + " id,source,missing_reason,data_version,import_job_id"
+                                                                + " FROM subject_feature WHERE"
+                                                                + " subject_id=? ORDER BY"
+                                                                + " recorded_at,id",
+                                                            subject.getId())));
+                        } catch (JsonProcessingException invalid) {
+                            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法保存评估输入快照");
+                        }
+                        jdbc.update(
+                                "INSERT INTO"
+                                    + " task_input_snapshot(task_id,request_json,input_digest,data_version,captured_at,quality_check_id,provenance_json)"
+                                    + " VALUES(?,?,?,?,?,?,?)",
+                                task.getId(),
+                                inputJson,
+                                sha256(inputJson),
+                                request.dataVersion(),
+                                java.sql.Timestamp.from(now),
+                                qualityCheckId,
+                                provenance);
+                        idempotencyRepository.saveAndFlush(
+                                new IdempotencyRecord(
+                                        principal.userId(),
+                                        OPERATION,
+                                        idempotencyKey,
+                                        digest,
+                                        task.getId()));
+                        return new Seed(task, false);
+                    });
         } catch (DataIntegrityViolationException race) {
             // Two requests with the same key. The loser adopts the winner's task instead of
             // running the workflow a second time, which is also what keeps it from colliding
@@ -409,17 +604,18 @@ public class AssessmentService {
     private AssessmentTask awaitWinner(
             AppUserPrincipal principal, String idempotencyKey, String digest) {
         for (int attempt = 0; attempt < 5; attempt++) {
-            Optional<IdempotencyRecord> winner = idempotencyRepository
-                    .findByUserIdAndOperationAndIdempotencyKey(
+            Optional<IdempotencyRecord> winner =
+                    idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(
                             principal.userId(), OPERATION, idempotencyKey);
             if (winner.isPresent()) {
                 if (!winner.get().getRequestDigest().equals(digest)) {
-                    throw new BusinessException(ErrorCode.VALIDATION_ERROR,
-                            "该 Idempotency-Key 已用于不同的评估请求");
+                    throw new BusinessException(
+                            ErrorCode.VALIDATION_ERROR, "该 Idempotency-Key 已用于不同的评估请求");
                 }
-                return taskRepository.findById(winner.get().getResultId())
-                        .orElseThrow(() -> new BusinessException(
-                                ErrorCode.VALIDATION_ERROR, "评估任务不存在"));
+                return taskRepository
+                        .findById(winner.get().getResultId())
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.VALIDATION_ERROR, "评估任务不存在"));
             }
             try {
                 Thread.sleep(100L);
@@ -433,11 +629,13 @@ public class AssessmentService {
 
     private Outcome replay(IdempotencyRecord record, String digest) {
         if (!record.getRequestDigest().equals(digest)) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
-                    "该 Idempotency-Key 已用于不同的评估请求");
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "该 Idempotency-Key 已用于不同的评估请求");
         }
-        AssessmentTask task = taskRepository.findById(record.getResultId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "评估任务不存在"));
+        AssessmentTask task =
+                taskRepository
+                        .findById(record.getResultId())
+                        .orElseThrow(
+                                () -> new BusinessException(ErrorCode.VALIDATION_ERROR, "评估任务不存在"));
         return outcomeOf(task, null, null);
     }
 
@@ -447,8 +645,8 @@ public class AssessmentService {
         // so replays and concurrent-winner lookups keep the original explanation.
         String code = errorCode != null ? errorCode : task.getErrorCode();
         String message = errorCode != null ? errorMessage : task.getErrorMessage();
-        return new Outcome(task, assessment, assessment == null ? null : parse(assessment),
-                code, message);
+        return new Outcome(
+                task, assessment, assessment == null ? null : parse(assessment), code, message);
     }
 
     private Outcome persist(Long taskId, Long subjectId, AgentResult result) {
@@ -458,38 +656,53 @@ public class AssessmentService {
             try {
                 json = objectMapper.writeValueAsString(result);
             } catch (JsonProcessingException failure) {
-                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                throw new BusinessException(
+                        ErrorCode.INTERNAL_ERROR,
                         "AGENT_CONTRACT_MISMATCH: 结果无法序列化 " + failure.getOriginalMessage());
             }
-            return writeTransaction.execute(status -> {
-                AssessmentTask task = taskRepository.findById(taskId)
-                        .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "评估任务丢失"));
-                if (result.status() == AgentResult.Status.BLOCKED) {
-                    task.markBlocked(now);
-                } else {
-                    task.markCompleted(now);
-                }
-                taskRepository.saveAndFlush(task);
+            return writeTransaction.execute(
+                    status -> {
+                        AssessmentTask task =
+                                taskRepository
+                                        .findById(taskId)
+                                        .orElseThrow(
+                                                () ->
+                                                        new BusinessException(
+                                                                ErrorCode.INTERNAL_ERROR,
+                                                                "评估任务丢失"));
+                        if (result.status() == AgentResult.Status.BLOCKED) {
+                            task.markBlocked(now);
+                        } else {
+                            task.markCompleted(now);
+                        }
+                        taskRepository.saveAndFlush(task);
 
-                RiskAssessment assessment = new RiskAssessment(
-                        subjectId,
-                        taskId,
-                        json,
-                        RiskAssessment.QualityStatus.valueOf(result.qualityStatus().name()),
-                        result.dataVersion(),
-                        result.modelVersion(),
-                        result.workflowVersion(),
-                        now);
-                assessmentRepository.saveAndFlush(assessment);
-                return new Outcome(task, assessment, result, null, null);
-            });
+                        RiskAssessment assessment =
+                                new RiskAssessment(
+                                        subjectId,
+                                        taskId,
+                                        json,
+                                        RiskAssessment.QualityStatus.valueOf(
+                                                result.qualityStatus().name()),
+                                        result.dataVersion(),
+                                        result.modelVersion(),
+                                        result.workflowVersion(),
+                                        now);
+                        assessmentRepository.saveAndFlush(assessment);
+                        jdbc.update(
+                                "UPDATE risk_assessment SET risk_score=?,risk_level=? WHERE id=?",
+                                result.riskScore(),
+                                result.riskLevel().name(),
+                                assessment.getId());
+                        return new Outcome(task, assessment, result, null, null);
+                    });
         } catch (RuntimeException failure) {
             // Serialisation, an unknown qualityStatus, a unique-constraint clash: all of them
             // would roll the transaction back and leave the task PENDING. Close it out first with
             // the most precise code available, then let create() know the row is already closed.
             String errorCode = persistFailureCode(failure);
-            AssessmentTask failed = markFailedOrThrow(
-                    taskId, failure, errorCode, userFacingMessage(errorCode));
+            AssessmentTask failed =
+                    markFailedOrThrow(taskId, failure, errorCode, userFacingMessage(errorCode));
             throw new TaskClosedAsFailed(failed, failure);
         }
     }
@@ -497,9 +710,9 @@ public class AssessmentService {
     /**
      * Marker raised after a row has already been closed as FAILED with a precise code.
      *
-     * <p>{@link #create} uses it to skip its generic "mark FAILED" step: overwriting
-     * {@code TASK_PERSIST_FAILED} (or {@code AGENT_CONTRACT_MISMATCH}) with {@code AGENT_FAILED}
-     * would make a later re-fetch report the wrong cause.
+     * <p>{@link #create} uses it to skip its generic "mark FAILED" step: overwriting {@code
+     * TASK_PERSIST_FAILED} (or {@code AGENT_CONTRACT_MISMATCH}) with {@code AGENT_FAILED} would
+     * make a later re-fetch report the wrong cause.
      */
     private static final class TaskClosedAsFailed extends RuntimeException {
 
@@ -516,9 +729,9 @@ public class AssessmentService {
     }
 
     /**
-     * The code to persist when the result could not be stored: keep an explicit
-     * {@code AGENT_*} prefix when the failure carries one (serialisation/contract mismatch),
-     * otherwise fall back to the Java-side {@code TASK_PERSIST_FAILED}.
+     * The code to persist when the result could not be stored: keep an explicit {@code AGENT_*}
+     * prefix when the failure carries one (serialisation/contract mismatch), otherwise fall back to
+     * the Java-side {@code TASK_PERSIST_FAILED}.
      */
     static String persistFailureCode(Throwable failure) {
         if (failure instanceof BusinessException) {
@@ -532,23 +745,29 @@ public class AssessmentService {
 
     private AssessmentTask markFailed(Long taskId, String errorCode, String errorMessage) {
         Instant now = Instant.now(clock);
-        return writeTransaction.execute(status -> {
-            AssessmentTask task = taskRepository.findById(taskId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR, "评估任务丢失"));
-            task.markFailed(now, errorCode, errorMessage);
-            return taskRepository.saveAndFlush(task);
-        });
+        return writeTransaction.execute(
+                status -> {
+                    AssessmentTask task =
+                            taskRepository
+                                    .findById(taskId)
+                                    .orElseThrow(
+                                            () ->
+                                                    new BusinessException(
+                                                            ErrorCode.INTERNAL_ERROR, "评估任务丢失"));
+                    task.markFailed(now, errorCode, errorMessage);
+                    return taskRepository.saveAndFlush(task);
+                });
     }
 
     /**
-     * Marks the task FAILED in its own committed transaction and returns the reloaded row.
-     * If the update itself fails (the database is gone), the original failure is the one
-     * propagated, and the PENDING row is left for the reconciliation task instead of hidden.
+     * Marks the task FAILED in its own committed transaction and returns the reloaded row. If the
+     * update itself fails (the database is gone), the original failure is the one propagated, and
+     * the PENDING row is left for the reconciliation task instead of hidden.
      *
-     * <p>The stable code and the fixed reason are persisted with the row, so a later
-     * {@code GET /api/assessment-tasks/{id}} or an idempotent replay can still explain why the
-     * task failed. Only the code and a whitelisted sentence are stored - never a stack trace,
-     * an upstream response body or a host address.
+     * <p>The stable code and the fixed reason are persisted with the row, so a later {@code GET
+     * /api/assessment-tasks/{id}} or an idempotent replay can still explain why the task failed.
+     * Only the code and a whitelisted sentence are stored - never a stack trace, an upstream
+     * response body or a host address.
      */
     private AssessmentTask markFailedOrThrow(
             Long taskId, RuntimeException failure, String errorCode, String errorMessage) {
@@ -566,27 +785,31 @@ public class AssessmentService {
     // ------------------------------------------------------------------
 
     private AgentRequest buildRequest(Subject subject, int predictionWindowMonths) {
-        List<AgentRequest.Visit> visits = visitRepository
-                .findBySubjectIdOrderByVisitDateAscIdAsc(subject.getId()).stream()
-                .map(visit -> new AgentRequest.Visit(
-                        visit.getVisitCode(),
-                        visit.getVisitDate().toString(),
-                        visit.getMmse(),
-                        visit.getMoca(),
-                        visit.getCdrSb()))
-                .toList();
+        List<AgentRequest.Visit> visits =
+                visitRepository.findBySubjectIdOrderByVisitDateAscIdAsc(subject.getId()).stream()
+                        .map(
+                                visit ->
+                                        new AgentRequest.Visit(
+                                                visit.getVisitCode(),
+                                                visit.getVisitDate().toString(),
+                                                original(visit.getRawMmse(), visit.getMmse()),
+                                                original(visit.getRawMoca(), visit.getMoca()),
+                                                original(visit.getRawCdrSb(), visit.getCdrSb())))
+                        .toList();
 
         // subject_feature has no JPA entity yet; the two Python feature names are the same
         // strings the import pipeline stores, so a direct projection keeps this read-only.
-        List<AgentRequest.Feature> features = jdbc.query(
-                "SELECT feature_name, feature_value, recorded_at, unit FROM subject_feature"
-                        + " WHERE subject_id = ? ORDER BY recorded_at, id",
-                (rs, rowNum) -> new AgentRequest.Feature(
-                        rs.getString("feature_name"),
-                        rs.getBigDecimal("feature_value"),
-                        rs.getDate("recorded_at").toLocalDate().toString(),
-                        rs.getString("unit")),
-                subject.getId());
+        List<AgentRequest.Feature> features =
+                jdbc.query(
+                        "SELECT feature_name, feature_value, recorded_at, unit FROM subject_feature"
+                                + " WHERE subject_id = ? ORDER BY recorded_at, id",
+                        (rs, rowNum) ->
+                                new AgentRequest.Feature(
+                                        rs.getString("feature_name"),
+                                        rs.getBigDecimal("feature_value"),
+                                        rs.getDate("recorded_at").toLocalDate().toString(),
+                                        rs.getString("unit")),
+                        subject.getId());
 
         return AgentRequest.of(
                 "run-" + UUID.randomUUID(),
@@ -602,7 +825,8 @@ public class AssessmentService {
         try {
             result = objectMapper.readValue(assessment.getAgentResultJson(), AgentResult.class);
         } catch (JsonProcessingException failure) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+            throw new BusinessException(
+                    ErrorCode.INTERNAL_ERROR,
                     "AGENT_CONTRACT_MISMATCH: 已存结果无法解析 " + failure.getOriginalMessage());
         }
         // Stored JSON may predate the current rules (or have been edited by hand); the same
@@ -612,17 +836,18 @@ public class AssessmentService {
     }
 
     private static void requireKey(String idempotencyKey) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()
+        if (idempotencyKey == null
+                || idempotencyKey.isBlank()
                 || idempotencyKey.length() > MAX_KEY_LENGTH) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
-                    "Idempotency-Key 长度须为 1-" + MAX_KEY_LENGTH);
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR, "Idempotency-Key 长度须为 1-" + MAX_KEY_LENGTH);
         }
     }
 
     /**
-     * The stable code persisted on a FAILED row. Business exceptions already carry an
-     * {@code AGENT_*} prefix that {@link RestAgentClient#errorCodeOf(Throwable)} extracts;
-     * anything else (an unexpected runtime failure) is reported as {@code AGENT_FAILED}.
+     * The stable code persisted on a FAILED row. Business exceptions already carry an {@code
+     * AGENT_*} prefix that {@link RestAgentClient#errorCodeOf(Throwable)} extracts; anything else
+     * (an unexpected runtime failure) is reported as {@code AGENT_FAILED}.
      */
     static String stableErrorCode(Throwable failure) {
         String code = RestAgentClient.errorCodeOf(failure);
@@ -653,13 +878,43 @@ public class AssessmentService {
         };
     }
 
-    static String digestOf(Long subjectId, String modelVersion, int predictionWindowMonths, String dataVersion) {
-        String canonical = subjectId + "|" + modelVersion + "|" + predictionWindowMonths + "|" + dataVersion;
+    static String digestOf(
+            Long subjectId, String modelVersion, int predictionWindowMonths, String dataVersion) {
+        String canonical =
+                subjectId + "|" + modelVersion + "|" + predictionWindowMonths + "|" + dataVersion;
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of()
+                    .formatHex(digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 不可用", impossible);
         }
+    }
+
+    private static java.math.BigDecimal original(String raw, java.math.BigDecimal fallback) {
+        return raw == null ? fallback : new java.math.BigDecimal(raw);
+    }
+
+    private static String sha256(String text) {
+        try {
+            return HexFormat.of()
+                    .formatHex(
+                            MessageDigest.getInstance("SHA-256")
+                                    .digest(text.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    public Outcome cancel(long id, AppUserPrincipal principal) {
+        var outcome = findTask(id, principal);
+        int changed =
+                jdbc.update(
+                        "UPDATE assessment_task SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP"
+                                + " WHERE id=? AND status='PENDING'",
+                        id);
+        if (changed == 0)
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "仅尚未调用算法的排队任务可取消");
+        return findTask(id, principal);
     }
 }

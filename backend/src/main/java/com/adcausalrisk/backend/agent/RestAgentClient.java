@@ -4,6 +4,7 @@ import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.ResourceAccessException;
@@ -15,8 +16,8 @@ import org.springframework.web.client.RestClientResponseException;
  * Synchronous client for the Python agent service.
  *
  * <p>Deliberately no retries: a timed-out POST may or may not have executed, and the service's own
- * contract forbids minting a second runId to work around it. Timeouts surface as
- * {@code AGENT_TIMEOUT} and the runId stays with the caller for reconciliation through {@link #getRun}.
+ * contract forbids minting a second runId to work around it. Timeouts surface as {@code
+ * AGENT_TIMEOUT} and the runId stays with the caller for reconciliation through {@link #getRun}.
  *
  * <p>Every failure is a {@link BusinessException} whose message starts with a machine code, which
  * {@link #errorCodeOf(Throwable)} extracts for the assessment_task row.
@@ -37,8 +38,8 @@ public class RestAgentClient {
     private static final int MAX_DETAIL_LENGTH = 300;
 
     /**
-     * Jackson 的 ObjectMapper 是线程安全的，这里共用一个静态实例即可；
-     * 不改成构造器注入是为了让本类保持独立（AgentClientConfig 只负责注入 RestClient）。
+     * Jackson 的 ObjectMapper 是线程安全的，这里共用一个静态实例即可； 不改成构造器注入是为了让本类保持独立（AgentClientConfig 只负责注入
+     * RestClient）。
      */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -46,6 +47,20 @@ public class RestAgentClient {
 
     public RestAgentClient(RestClient agentRestClient) {
         this.restClient = agentRestClient;
+    }
+
+    public java.util.Map<?, ?> health() {
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(java.time.Duration.ofSeconds(2));
+        factory.setReadTimeout(java.time.Duration.ofSeconds(2));
+        return restClient
+                .mutate()
+                .requestFactory(factory)
+                .build()
+                .get()
+                .uri("/api/health")
+                .retrieve()
+                .body(java.util.Map.class);
     }
 
     /** {@code POST /api/agent/v1/runs}. Blocks until the four-stage workflow finishes. */
@@ -56,29 +71,32 @@ public class RestAgentClient {
         try {
             bodyBytes = OBJECT_MAPPER.writeValueAsBytes(request);
         } catch (JsonProcessingException failure) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                    CODE_PROTOCOL_ERROR + ": 请求序列化失败 " + detail(failure));
+            throw new BusinessException(
+                    ErrorCode.INTERNAL_ERROR, CODE_PROTOCOL_ERROR + ": 请求序列化失败 " + detail(failure));
         }
 
         try {
-            AgentResult result = restClient.post()
-                    .uri(RUNS_PATH)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .accept(MediaType.APPLICATION_JSON)
-                    .contentLength(bodyBytes.length)
-                    .body(bodyBytes)
-                    .retrieve()
-                    .body(AgentResult.class);
+            AgentResult result =
+                    restClient
+                            .post()
+                            .uri(RUNS_PATH)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .accept(MediaType.APPLICATION_JSON)
+                            .contentLength(bodyBytes.length)
+                            .body(bodyBytes)
+                            .retrieve()
+                            .body(AgentResult.class);
 
             AgentResultValidator.validate(request, result);
             return result;
         } catch (ResourceAccessException failure) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, CODE_TIMEOUT + ": " + detail(failure));
+            throw new BusinessException(
+                    ErrorCode.INTERNAL_ERROR, CODE_TIMEOUT + ": " + detail(failure));
         } catch (RestClientResponseException failure) {
             throw mapResponse(failure, false);
         } catch (RestClientException failure) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                    AgentResultValidator.CODE + ": " + detail(failure));
+            throw new BusinessException(
+                    ErrorCode.INTERNAL_ERROR, AgentResultValidator.CODE + ": " + detail(failure));
         }
     }
 
@@ -88,20 +106,25 @@ public class RestAgentClient {
      */
     public AgentResult getRun(String runId) {
         try {
-            AgentResult result = restClient.get()
-                    .uri(uriBuilder -> uriBuilder.path(RUNS_PATH).pathSegment(runId).build())
-                    .accept(MediaType.APPLICATION_JSON)
-                    .retrieve()
-                    .body(AgentResult.class);
+            AgentResult result =
+                    restClient
+                            .get()
+                            .uri(
+                                    uriBuilder ->
+                                            uriBuilder.path(RUNS_PATH).pathSegment(runId).build())
+                            .accept(MediaType.APPLICATION_JSON)
+                            .retrieve()
+                            .body(AgentResult.class);
             AgentResultValidator.validate(result);
             return result;
         } catch (ResourceAccessException failure) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, CODE_TIMEOUT + ": " + detail(failure));
+            throw new BusinessException(
+                    ErrorCode.INTERNAL_ERROR, CODE_TIMEOUT + ": " + detail(failure));
         } catch (RestClientResponseException failure) {
             throw mapResponse(failure, true);
         } catch (RestClientException failure) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                    AgentResultValidator.CODE + ": " + detail(failure));
+            throw new BusinessException(
+                    ErrorCode.INTERNAL_ERROR, AgentResultValidator.CODE + ": " + detail(failure));
         }
     }
 
@@ -120,20 +143,23 @@ public class RestAgentClient {
         return CODE_FAILED;
     }
 
-    private BusinessException mapResponse(RestClientResponseException failure, boolean readOperation) {
+    private BusinessException mapResponse(
+            RestClientResponseException failure, boolean readOperation) {
         HttpStatusCode status = failure.getStatusCode();
-        String code = switch (status.value()) {
-            case 400 -> CODE_VALIDATION;
-            case 404 -> readOperation ? CODE_RUN_NOT_FOUND : CODE_FAILED;
-            case 408 -> CODE_TIMEOUT;
-            case 409 -> CODE_RUN_CONFLICT;
-            case 413 -> CODE_PAYLOAD_TOO_LARGE;
-            case 415 -> CODE_PROTOCOL_ERROR;
-            case 500 -> CODE_FAILED;
-            case 503 -> CODE_CAPACITY;
-            default -> CODE_FAILED;
-        };
-        return new BusinessException(ErrorCode.INTERNAL_ERROR,
+        String code =
+                switch (status.value()) {
+                    case 400 -> CODE_VALIDATION;
+                    case 404 -> readOperation ? CODE_RUN_NOT_FOUND : CODE_FAILED;
+                    case 408 -> CODE_TIMEOUT;
+                    case 409 -> CODE_RUN_CONFLICT;
+                    case 413 -> CODE_PAYLOAD_TOO_LARGE;
+                    case 415 -> CODE_PROTOCOL_ERROR;
+                    case 500 -> CODE_FAILED;
+                    case 503 -> CODE_CAPACITY;
+                    default -> CODE_FAILED;
+                };
+        return new BusinessException(
+                ErrorCode.INTERNAL_ERROR,
                 code + ": HTTP " + status.value() + " " + detail(failure));
     }
 
@@ -143,6 +169,8 @@ public class RestAgentClient {
             return failure.getClass().getSimpleName();
         }
         String single = message.replaceAll("\\s+", " ").trim();
-        return single.length() <= MAX_DETAIL_LENGTH ? single : single.substring(0, MAX_DETAIL_LENGTH) + "…";
+        return single.length() <= MAX_DETAIL_LENGTH
+                ? single
+                : single.substring(0, MAX_DETAIL_LENGTH) + "…";
     }
 }

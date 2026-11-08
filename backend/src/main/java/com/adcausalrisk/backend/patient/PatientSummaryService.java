@@ -1,12 +1,5 @@
 package com.adcausalrisk.backend.patient;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-
 import com.adcausalrisk.backend.agent.AgentResult;
 import com.adcausalrisk.backend.assessment.RiskAssessmentRepository;
 import com.adcausalrisk.backend.assessment.entity.RiskAssessment;
@@ -24,13 +17,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
 /**
  * Builds the patient-facing summary ({@code GET /api/patients/me/summary}).
  *
  * <p>This is the de-identified view: it never returns the raw {@code riskScore}, the causal graph,
  * the explanation contributions, or any internal trace. Only a plain-language conclusion, the next
- * follow-up and a short list of limitations are exposed - which is exactly what
- * {@code PatientAssessmentSummary} in the contract describes.
+ * follow-up and a short list of limitations are exposed - which is exactly what {@code
+ * PatientAssessmentSummary} in the contract describes.
  */
 @Service
 public class PatientSummaryService {
@@ -72,18 +72,23 @@ public class PatientSummaryService {
             boolean pendingReview,
             String summary,
             String followUpSummary,
-            List<String> limitations) {
-    }
+            List<String> limitations) {}
 
     public PatientSummaryView currentSummary(AppUserPrincipal principal) {
         if (!principal.roleCodes().contains("PATIENT")) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "仅患者本人可查看该摘要");
         }
 
-        List<Long> boundSubjects = permissionRepository.findDistinctSubjectIdByUserId(principal.userId());
+        List<Long> boundSubjects =
+                permissionRepository.findDistinctSubjectIdByUserId(principal.userId());
         if (boundSubjects.isEmpty()) {
             return new PatientSummaryView(
-                    null, null, null, null, false, false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    false,
                     "您的账号还没有绑定健康档案，绑定后这里会显示医生复核过的结论。",
                     "绑定档案后，这里会显示医生安排的复诊时间。",
                     List.of("如需绑定，请联系您的主治医生。"));
@@ -94,7 +99,8 @@ public class PatientSummaryService {
         // then fall back to the smallest id so the answer stays deterministic.
         Long subjectId = pickSubject(boundSubjects);
         Subject subject = subjectRepository.findById(subjectId).orElse(null);
-        RiskAssessment latest = assessmentRepository.findFirstBySubjectIdOrderByIdDesc(subjectId).orElse(null);
+        RiskAssessment latest =
+                assessmentRepository.findFirstBySubjectIdOrderByIdDesc(subjectId).orElse(null);
         AgentResult result = latest == null ? null : parse(latest);
 
         return new PatientSummaryView(
@@ -115,14 +121,15 @@ public class PatientSummaryService {
      * back to the smallest id so the answer stays deterministic.
      *
      * <p>Deliberately no {@code Map.entry(id, null)}: {@link java.util.Map#entry} rejects null
-     * values, and a bound subject that simply has no assessment yet would then throw NPE and turn
-     * a normal "no report yet" page into a 500.
+     * values, and a bound subject that simply has no assessment yet would then throw NPE and turn a
+     * normal "no report yet" page into a 500.
      */
     private Long pickSubject(List<Long> boundSubjects) {
         Long newestSubjectId = null;
         Instant newestAt = null;
         for (Long id : boundSubjects) {
-            RiskAssessment latest = assessmentRepository.findFirstBySubjectIdOrderByIdDesc(id).orElse(null);
+            RiskAssessment latest =
+                    assessmentRepository.findFirstBySubjectIdOrderByIdDesc(id).orElse(null);
             if (latest == null || latest.getCreatedAt() == null) {
                 continue;
             }
@@ -137,7 +144,8 @@ public class PatientSummaryService {
         return boundSubjects.stream().min(Long::compareTo).orElseThrow();
     }
 
-    private AgentResult parse(RiskAssessment assessment) {        try {
+    private AgentResult parse(RiskAssessment assessment) {
+        try {
             return objectMapper.readValue(assessment.getAgentResultJson(), AgentResult.class);
         } catch (Exception failure) {
             log.warn("评估 {} 的 agentResult 无法解析，患者摘要降级为通用文案", assessment.getId());
@@ -160,27 +168,37 @@ public class PatientSummaryService {
             return "本次评估未通过医生复核，请联系医生了解下一步安排。";
         }
 
-        String level = result == null || result.riskLevel() == null ? null : result.riskLevel().name();
+        String level =
+                result == null || result.riskLevel() == null ? null : result.riskLevel().name();
         if ("UNAVAILABLE".equals(level)) {
             return "医生已确认本次评估：由于数据不足，暂未给出风险结论。";
         }
         return switch (level == null ? "" : level) {
-            case "LOW" -> "医生已确认本次评估：目前风险较低，建议按计划随访。";
-            case "MEDIUM" -> "医生已确认本次评估：风险中等，建议关注记忆与日常能力变化，并按期复诊。";
-            case "HIGH" -> "医生已确认本次评估：风险偏高，建议尽快与医生沟通并安排专项随访。";
+            case "LOW" -> "医生已复核课程演示结果：演示排序较低。它不能判断您的真实患病风险，请按医嘱随访。";
+            case "MEDIUM" -> "医生已复核课程演示结果：演示排序居中。它不能判断您的真实患病风险，请按医嘱随访。";
+            case "HIGH" -> "医生已复核课程演示结果：演示排序较高。它不能判断您的真实患病风险，请按医嘱随访。";
             default -> "医生已确认本次评估，具体结论请以门诊沟通为准。";
         };
     }
 
     private String buildFollowUpSummary(Long subjectId) {
-        Instant next = followUpRepository.findBySubjectIdOrderByScheduledAtAscIdAsc(subjectId).stream()
-                .filter(plan -> plan.getStatus() == FollowUpPlan.Status.PLANNED)
-                .map(FollowUpPlan::getScheduledAt)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(null);
+        Instant next =
+                followUpRepository.findBySubjectIdOrderByScheduledAtAscIdAsc(subjectId).stream()
+                        .filter(plan -> plan.getStatus() == FollowUpPlan.Status.PLANNED)
+                        .map(FollowUpPlan::getScheduledAt)
+                        .filter(Objects::nonNull)
+                        .filter(at -> !at.isBefore(Instant.now()))
+                        .findFirst()
+                        .orElse(null);
         if (next == null) {
-            return "目前没有已安排的复诊。";
+            boolean overdue =
+                    followUpRepository.findBySubjectIdOrderByScheduledAtAscIdAsc(subjectId).stream()
+                            .anyMatch(
+                                    p ->
+                                            p.getStatus() == FollowUpPlan.Status.PLANNED
+                                                    && p.getScheduledAt() != null
+                                                    && p.getScheduledAt().isBefore(Instant.now()));
+            return overdue ? "有未完成的过期随访，目前没有未来复诊安排，请联系医生重新确认。" : "目前没有已安排的复诊。";
         }
         return "已为您安排 " + FOLLOW_UP_DATE.format(next) + " 复诊。";
     }
@@ -188,18 +206,10 @@ public class PatientSummaryService {
     private List<String> buildLimitations(AgentResult result) {
         List<String> limitations = new ArrayList<>();
         limitations.add("本摘要为面向患者的通俗说明，不构成诊断，具体诊疗请遵医嘱。");
+        limitations.add("当前为合成课程演示，排序不代表经临床验证的个人风险概率。");
         if (result == null || result.limitations() == null) {
             return limitations;
         }
-        result.limitations().stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(text -> !text.isEmpty())
-                .limit(MAX_EXTRA_LIMITATIONS)
-                .forEach(text -> limitations.add(
-                        text.length() > MAX_LIMITATION_LENGTH
-                                ? text.substring(0, MAX_LIMITATION_LENGTH) + "…"
-                                : text));
         return List.copyOf(limitations);
     }
 }

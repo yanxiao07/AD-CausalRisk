@@ -9,16 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Optional;
+import static org.mockito.Mockito.when;
 
 import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.importjob.csv.CsvImportParser;
@@ -41,10 +32,20 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Optional;
+
 /**
  * Pure Mockito tests for the two branches of {@link ImportJobService} that the API suite cannot
- * reach deterministically: losing the {@code uq_idempotency_record} race, and finding that the
- * data moved between preview and commit.
+ * reach deterministically: losing the {@code uq_idempotency_record} race, and finding that the data
+ * moved between preview and commit.
  */
 class ImportJobServiceTest {
 
@@ -55,8 +56,8 @@ class ImportJobServiceTest {
     private static final AppUserPrincipal RESEARCHER =
             new AppUserPrincipal(USER_ID, "researcher", "", List.of("RESEARCHER"), true);
 
-    private static final byte[] CSV = "subjectCode,alias,status\nDEMO-001,甲,ACTIVE\n"
-            .getBytes(StandardCharsets.UTF_8);
+    private static final byte[] CSV =
+            "subjectCode,alias,status\nDEMO-001,甲,ACTIVE\n".getBytes(StandardCharsets.UTF_8);
 
     private final DataImportJobRepository jobRepository = mock(DataImportJobRepository.class);
 
@@ -84,11 +85,21 @@ class ImportJobServiceTest {
 
     private ImportJobService service(Clock clock) {
         // canCreate only inspects role codes, so the real policy is enough here.
-        SubjectAccessPolicy accessPolicy =
-                new SubjectAccessPolicy(mock(SubjectPermissionRepository.class));
-        return new ImportJobService(jobRepository, idempotencyRepository, subjectRepository,
-                visitRepository, jdbcTemplate, accessPolicy, parser, new ObjectMapper(),
-                clock, transactionManager);
+        var permissions = mock(SubjectPermissionRepository.class);
+        when(permissions.findDataScope(any())).thenReturn("ALL");
+        SubjectAccessPolicy accessPolicy = new SubjectAccessPolicy(permissions);
+        return new ImportJobService(
+                jobRepository,
+                idempotencyRepository,
+                subjectRepository,
+                visitRepository,
+                jdbcTemplate,
+                accessPolicy,
+                parser,
+                new ObjectMapper(),
+                clock,
+                transactionManager,
+                mock(org.springframework.context.ApplicationEventPublisher.class));
     }
 
     /**
@@ -98,10 +109,13 @@ class ImportJobServiceTest {
     @Test
     void losingTheIdempotencyRaceReplaysTheWinnerInsteadOfFailing() {
         given(transactionManager.getTransaction(any())).willReturn(new SimpleTransactionStatus());
-        given(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(USER_ID, OPERATION, "k"))
+        given(
+                        idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(
+                                USER_ID, OPERATION, "k"))
                 .willReturn(Optional.empty())
-                .willReturn(Optional.of(new IdempotencyRecord(USER_ID, OPERATION, "k",
-                        sha256(CSV), 99L)));
+                .willReturn(
+                        Optional.of(
+                                new IdempotencyRecord(USER_ID, OPERATION, "k", sha256(CSV), 99L)));
         given(parser.parse(anyString(), any(), any())).willReturn(preview(1, 1));
         given(jobRepository.saveAndFlush(any(DataImportJob.class)))
                 .willThrow(new DataIntegrityViolationException("uq_idempotency_record"));
@@ -116,9 +130,17 @@ class ImportJobServiceTest {
     /** The same key with different bytes is a different request and must be refused. */
     @Test
     void reusingAKeyForDifferentContentIsRejected() {
-        given(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(USER_ID, OPERATION, "k"))
-                .willReturn(Optional.of(new IdempotencyRecord(USER_ID, OPERATION, "k",
-                        sha256("别的文件".getBytes(StandardCharsets.UTF_8)), 5L)));
+        given(
+                        idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(
+                                USER_ID, OPERATION, "k"))
+                .willReturn(
+                        Optional.of(
+                                new IdempotencyRecord(
+                                        USER_ID,
+                                        OPERATION,
+                                        "k",
+                                        sha256("别的文件".getBytes(StandardCharsets.UTF_8)),
+                                        5L)));
 
         assertThatThrownBy(() -> service().preview(RESEARCHER, "k", CSV))
                 .isInstanceOf(BusinessException.class)
@@ -141,9 +163,9 @@ class ImportJobServiceTest {
     }
 
     /**
-     * The lock is the whole point of the concurrency fix: {@code commit} must read the job
-     * through the write-locking query, never the plain one. Without it two concurrent commits
-     * both observe PREVIEW_READY and both insert.
+     * The lock is the whole point of the concurrency fix: {@code commit} must read the job through
+     * the write-locking query, never the plain one. Without it two concurrent commits both observe
+     * PREVIEW_READY and both insert.
      */
     @Test
     void commitReadsTheJobUnderAWriteLock() {
@@ -188,13 +210,15 @@ class ImportJobServiceTest {
 
     /**
      * A failed insert that is not an idempotency-key collision (a foreign key, a truncated key)
-     * must still be a controlled 400 - the race handler previously rethrew the raw exception,
-     * which became a 500.
+     * must still be a controlled 400 - the race handler previously rethrew the raw exception, which
+     * became a 500.
      */
     @Test
     void previewWithoutARecordedKeyBecomesValidationErrorInsteadOf500() {
         given(transactionManager.getTransaction(any())).willReturn(new SimpleTransactionStatus());
-        given(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(USER_ID, OPERATION, "k"))
+        given(
+                        idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(
+                                USER_ID, OPERATION, "k"))
                 .willReturn(Optional.empty());
         given(parser.parse(anyString(), any(), any())).willReturn(preview(1, 1));
         given(jobRepository.saveAndFlush(any(DataImportJob.class)))
@@ -225,9 +249,12 @@ class ImportJobServiceTest {
      */
     @Test
     void replayRefusesARecordWithoutAResultId() {
-        given(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(USER_ID, OPERATION, "k"))
-                .willReturn(Optional.of(new IdempotencyRecord(USER_ID, OPERATION, "k",
-                        sha256(CSV), null)));
+        given(
+                        idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(
+                                USER_ID, OPERATION, "k"))
+                .willReturn(
+                        Optional.of(
+                                new IdempotencyRecord(USER_ID, OPERATION, "k", sha256(CSV), null)));
 
         assertThatThrownBy(() -> service().preview(RESEARCHER, "k", CSV))
                 .isInstanceOf(BusinessException.class)
@@ -242,11 +269,25 @@ class ImportJobServiceTest {
      */
     @Test
     void replayRefusesAJobOwnedByAnotherUser() {
-        DataImportJob foreign = new DataImportJob(99L, "demo-foreign", Instant.now(),
-                ImportTable.SUBJECT, 1, 1, 0, "[]", null, sha256(CSV), null);
-        given(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(USER_ID, OPERATION, "k"))
-                .willReturn(Optional.of(new IdempotencyRecord(USER_ID, OPERATION, "k",
-                        sha256(CSV), 7L)));
+        DataImportJob foreign =
+                new DataImportJob(
+                        99L,
+                        "demo-foreign",
+                        Instant.now(),
+                        ImportTable.SUBJECT,
+                        1,
+                        1,
+                        0,
+                        "[]",
+                        null,
+                        sha256(CSV),
+                        null);
+        given(
+                        idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(
+                                USER_ID, OPERATION, "k"))
+                .willReturn(
+                        Optional.of(
+                                new IdempotencyRecord(USER_ID, OPERATION, "k", sha256(CSV), 7L)));
         given(jobRepository.findById(7L)).willReturn(Optional.of(foreign));
 
         assertThatThrownBy(() -> service().preview(RESEARCHER, "k", CSV))
@@ -255,16 +296,18 @@ class ImportJobServiceTest {
     }
 
     /**
-     * "Today" must come from the configured business zone, never from the host's default zone.
-     * At 2026-02-28T20:00Z it is 2026-03-01 in Asia/Shanghai, so the captured date proves which
-     * zone the parser was given.
+     * "Today" must come from the configured business zone, never from the host's default zone. At
+     * 2026-02-28T20:00Z it is 2026-03-01 in Asia/Shanghai, so the captured date proves which zone
+     * the parser was given.
      */
     @Test
     void theBusinessDayComesFromTheConfiguredClockNotTheHostZone() {
-        Clock shanghai = Clock.fixed(Instant.parse("2026-02-28T20:00:00Z"),
-                ZoneId.of("Asia/Shanghai"));
+        Clock shanghai =
+                Clock.fixed(Instant.parse("2026-02-28T20:00:00Z"), ZoneId.of("Asia/Shanghai"));
         given(transactionManager.getTransaction(any())).willReturn(new SimpleTransactionStatus());
-        given(idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(USER_ID, OPERATION, "k"))
+        given(
+                        idempotencyRepository.findByUserIdAndOperationAndIdempotencyKey(
+                                USER_ID, OPERATION, "k"))
                 .willReturn(Optional.empty());
         given(parser.parse(anyString(), any(), any())).willReturn(preview(1, 1));
         given(jobRepository.saveAndFlush(any(DataImportJob.class)))
@@ -286,7 +329,12 @@ class ImportJobServiceTest {
     @Test
     void commitRefusesWhenTheValidRowSetChangedEvenWithTheSameCount() {
         given(jobRepository.findByIdForUpdate(1L))
-                .willReturn(Optional.of(ready(sha256("a completely different set".getBytes(StandardCharsets.UTF_8)))));
+                .willReturn(
+                        Optional.of(
+                                ready(
+                                        sha256(
+                                                "a completely different set"
+                                                        .getBytes(StandardCharsets.UTF_8)))));
         given(parser.parse(anyString(), any(), any())).willReturn(preview(2, 2));
 
         assertThatThrownBy(() -> service().commit(1L, RESEARCHER))
@@ -308,11 +356,12 @@ class ImportJobServiceTest {
     }
 
     private static ParsedImport preview(int totalRows, int validRows) {
-        List<ImportRow> rows = validRows == 1
-                ? List.of(new ImportRow.Subject(2, "DEMO-001", "甲", "ACTIVE"))
-                : List.of();
-        return new ParsedImport(ImportTable.SUBJECT, totalRows, validRows,
-                totalRows - validRows, List.of(), rows);
+        List<ImportRow> rows =
+                validRows == 1
+                        ? List.of(new ImportRow.Subject(2, "DEMO-001", "甲", "ACTIVE"))
+                        : List.of();
+        return new ParsedImport(
+                ImportTable.SUBJECT, totalRows, validRows, totalRows - validRows, List.of(), rows);
     }
 
     private static DataImportJob ready() {
@@ -320,14 +369,33 @@ class ImportJobServiceTest {
     }
 
     private static DataImportJob ready(String previewDigest) {
-        return new DataImportJob(USER_ID, "demo-ready", Instant.now(), ImportTable.SUBJECT,
-                2, 2, 0, "[]", "subjectCode,alias,status\nDEMO-001,甲,ACTIVE\n", sha256(CSV),
+        return new DataImportJob(
+                USER_ID,
+                "demo-ready",
+                Instant.now(),
+                ImportTable.SUBJECT,
+                2,
+                2,
+                0,
+                "[]",
+                "subjectCode,alias,status\nDEMO-001,甲,ACTIVE\n",
+                sha256(CSV),
                 previewDigest);
     }
 
     private static DataImportJob winner() {
-        return new DataImportJob(USER_ID, "demo-winner", Instant.now(), ImportTable.SUBJECT,
-                1, 1, 0, "[]", null, sha256(CSV), null);
+        return new DataImportJob(
+                USER_ID,
+                "demo-winner",
+                Instant.now(),
+                ImportTable.SUBJECT,
+                1,
+                1,
+                0,
+                "[]",
+                null,
+                sha256(CSV),
+                null);
     }
 
     private static String sha256(byte[] bytes) {
