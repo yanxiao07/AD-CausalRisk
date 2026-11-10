@@ -1,5 +1,9 @@
 # Python需求覆盖、科研限制与后续计划
 
+## 2026-11-10合成输入报告CSV导出
+
+FR-22第1→3→4环节有界工程支撑：原报告仅HTML/JSON，现由同一校验入口新增离线`render_course_csv`及CLI `--format csv`，固定`field,valueJson`格式完整保留来源/版本、BLOCKED的null、精度、限制及简版裁剪；不执行模型或扩展HTTP。格式和使用方法见[报告导出](Python_Course_Reports.md#csv格式)。它只关闭合成结果CSV子集，不表示真实研究报告、模型接入或临床验证完成。
+
 ## 2026-11-10其他Python任务：图配置导出
 
 用户明确暂无新材料、转找其他未完成任务后，补齐FR-22原配置API的图分支：[图模型配置](Research_Experiment_Config.md#图模型配置)支持原三臂/三固定种子的9单模型和3三种子CIF均值声明。独立图schema，按种子绑定artifact，拒绝漏/错/重复、非CIF聚合、协议错绑与私人字段；表格六组合原v1输出字节保持。新增17检查，Python3.11/3.12各69标准库检查通过，图示例独立`-S`无需NumPy/Torch；0临床/模型/私有折读取、预测/CIF/拟合。

@@ -5,8 +5,10 @@ Teaching output is a teaching view, not a Java patient-authorization boundary.
 """
 import argparse
 import copy
+import csv
 import hashlib
 from html import escape
+import io
 import json
 from pathlib import Path
 from .course_protocol import CourseContract, CourseProtocolError, decode_json, validate_course_result
@@ -106,17 +108,38 @@ def render_course_html(request, result, *, audience='research', stylesheet_href=
     return f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程合成报告</title>{style}</head><body><main><h1>课程合成演示报告</h1><p class="scope">仅合成案例 · 非诊疗报告 · {e(audience)} · {e(report["status"])}</p><p class="print-help">浏览器打印可另存PDF；不是服务端原生PDF导出。示例文件中的耗时不代表本次运行。</p><section><h2>质量与演示排序</h2><p>质量：{e(report["qualityStatus"])}；窗口：{report["predictionWindowMonths"]}个月；等级：{e(report["riskLevel"])}</p><p class="value">{score}</p><p>缺失模态：{e("、".join(report["missingModalities"]) or "无")}</p><ul>{warnings}</ul></section>{content}<section><h2>版本与内容绑定</h2><p>内容hash不是来源签名或授权凭证。</p><dl>{metadata}</dl></section><section><h2>限制与复核</h2><ul>{limits}</ul></section></main></body></html>'
 
 
+def render_course_csv(request, result, *, audience='research'):
+    """Lossless field/value CSV of the validated report, without executing a model.
+
+    Each value is a JSON literal: null, false and zero stay distinct. Strings
+    retain their JSON quotes, so source text cannot start a spreadsheet formula.
+    Nested values remain one JSON cell rather than duplicating personal rows.
+    """
+    report = build_course_report(request, result, audience=audience)
+    stream = io.StringIO(newline='')
+    writer = csv.writer(stream, lineterminator='\r\n')
+    writer.writerow(('field', 'valueJson'))
+    for field in sorted(report):
+        writer.writerow((field, _encoded(report[field]).decode('utf-8')))
+    return stream.getvalue()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Validate and render declared synthetic course request/result files; no prediction')
     parser.add_argument('--request', type=Path, required=True); parser.add_argument('--result', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--audience', choices=('research','teaching'), default='research')
-    parser.add_argument('--format', choices=('html','json'), default='html')
+    parser.add_argument('--format', choices=('html','json','csv'), default='html')
     args = parser.parse_args()
     try:
         require(args.request.stat().st_size + args.result.stat().st_size <= MAX_PAIR_BYTES, 'REPORT_SIZE')
         request, result = decode_json(args.request.read_bytes()), decode_json(args.result.read_bytes())
-        output = render_course_html(request, result, audience=args.audience) if args.format == 'html' else json.dumps(build_course_report(request, result, audience=args.audience), ensure_ascii=False, indent=2)
+        if args.format == 'html':
+            output = render_course_html(request, result, audience=args.audience)
+        elif args.format == 'csv':
+            output = render_course_csv(request, result, audience=args.audience)
+        else:
+            output = json.dumps(build_course_report(request, result, audience=args.audience), ensure_ascii=False, indent=2)
         # Never replace an existing result or accidentally overwrite either input.
         with args.output.open('x', encoding='utf-8', newline='\n') as stream: stream.write(output)
     except (OSError, ValueError) as error:
