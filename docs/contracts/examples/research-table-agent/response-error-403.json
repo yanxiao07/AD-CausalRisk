@@ -1,0 +1,7 @@
+{
+  "contractVersion": "research-table-agent-v1",
+  "runId": "run-constructed-research-wire",
+  "status": "FAILED",
+  "code": "INDEPENDENT_EXECUTION_PERMISSION_REQUIRED",
+  "message": "研究评估未完成，请按错误码核对请求或宿主配置。"
+}

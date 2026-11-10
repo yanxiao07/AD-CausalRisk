@@ -1,0 +1,235 @@
+{
+  "contractVersion": "research-table-agent-v1",
+  "runId": "run-constructed-research-wire",
+  "modelKey": "constructed-multimodal_values-logistic",
+  "subjectCode": "CONSTRUCTED-001",
+  "dataVersion": "constructed-snapshot-v1",
+  "indexDate": "2020-01-02",
+  "availabilityPolicy": "RETROSPECTIVE_SNAPSHOT",
+  "predictionWindowMonths": 24,
+  "dataScope": "CONSTRUCTED_VALIDATION",
+  "status": "COMPLETED",
+  "model": {
+    "family": "logistic",
+    "specification": "multimodal_values",
+    "role": "MULTIMODAL_FULL_COHORT_RESEARCH",
+    "features": [
+      "age_years",
+      "education_years",
+      "mmse",
+      "cdr_sb",
+      "cdr_global",
+      "adas__total13",
+      "faq__faqtotal",
+      "apoe4_count",
+      "mri_left_hippocampus_volume",
+      "mri_right_hippocampus_volume"
+    ],
+    "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "trainingPlanSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "runtimeSourceSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "softwareLockSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "sourceMappingSha256": "19cb500dd884c9e6d9fe69a234bfab65a52996ba86943ae621466485d07d265e",
+    "graphProtocolSha256": null,
+    "predictionPolicy": "raw_uncalibrated_24month_CIF"
+  },
+  "admission": {
+    "schemaVersion": "research-input-admission-result-v1",
+    "status": "METADATA_CONSISTENT",
+    "recordCount": 1,
+    "blockedRecordCount": 0,
+    "featureOrder": [
+      "age_years",
+      "education_years",
+      "mmse",
+      "cdr_sb",
+      "cdr_global",
+      "adas__total13",
+      "faq__faqtotal",
+      "apoe4_count",
+      "mri_left_hippocampus_volume",
+      "mri_right_hippocampus_volume"
+    ],
+    "missingFeatureCounts": {
+      "age_years": 0,
+      "education_years": 0,
+      "mmse": 0,
+      "cdr_sb": 0,
+      "cdr_global": 0,
+      "adas__total13": 0,
+      "faq__faqtotal": 0,
+      "apoe4_count": 0,
+      "mri_left_hippocampus_volume": 0,
+      "mri_right_hippocampus_volume": 0
+    },
+    "availabilityPolicy": "RETROSPECTIVE_SNAPSHOT",
+    "model": {
+      "family": "logistic",
+      "specification": "multimodal_values",
+      "role": "MULTIMODAL_FULL_COHORT_RESEARCH",
+      "features": [
+        "age_years",
+        "education_years",
+        "mmse",
+        "cdr_sb",
+        "cdr_global",
+        "adas__total13",
+        "faq__faqtotal",
+        "apoe4_count",
+        "mri_left_hippocampus_volume",
+        "mri_right_hippocampus_volume"
+      ],
+      "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "trainingPlanSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "runtimeSourceSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "softwareLockSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "sourceMappingSha256": "19cb500dd884c9e6d9fe69a234bfab65a52996ba86943ae621466485d07d265e",
+      "graphProtocolSha256": null,
+      "predictionPolicy": "raw_uncalibrated_24month_CIF"
+    },
+    "issues": [],
+    "predictionAllowed": false,
+    "clinicalUse": false,
+    "sourceAuthenticityCertified": false,
+    "historicalAvailabilityCertified": false,
+    "individualCausalEffectIdentified": false
+  },
+  "prediction": {
+    "adCif24m": 0.595190929027834,
+    "otherDementiaCif24m": 0.2087181893612757
+  },
+  "explanation": {
+    "method": "exact-single-reference-group-shapley-v1",
+    "groups": [
+      "age_years",
+      "education_years",
+      "mmse",
+      "cdr_sb",
+      "cdr_global",
+      "adas__total13",
+      "faq__faqtotal",
+      "apoe4_count",
+      "bilateral_hippocampus"
+    ],
+    "referenceCif": [
+      [
+        0.5708558252674671,
+        0.2157860927764526
+      ]
+    ],
+    "predictionCif": [
+      [
+        0.595190929027834,
+        0.2087181893612757
+      ]
+    ],
+    "contributions": [
+      [
+        [
+          0.02433510376036685,
+          -0.007067903415176906
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ]
+    ],
+    "reconstructionMaxError": 0.0,
+    "missingnessEffectsExplained": false,
+    "isCausalEffect": false,
+    "limeStatus": "NOT_EVALUATED_NO_LOCAL_FIT"
+  },
+  "binding": {
+    "inputSha256": "b2466f783cbafd3ed15f20a70cc3de5ceb8a8197eede03cc9b74e02382efdb7f",
+    "trustedContextSha256": "be058090f071deb55b9b54ecdbe3b9f06eaf8195fe1b8fbf3ed214cdd7112a57",
+    "model": {
+      "family": "logistic",
+      "specification": "multimodal_values",
+      "role": "MULTIMODAL_FULL_COHORT_RESEARCH",
+      "features": [
+        "age_years",
+        "education_years",
+        "mmse",
+        "cdr_sb",
+        "cdr_global",
+        "adas__total13",
+        "faq__faqtotal",
+        "apoe4_count",
+        "mri_left_hippocampus_volume",
+        "mri_right_hippocampus_volume"
+      ],
+      "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "trainingPlanSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "runtimeSourceSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "softwareLockSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "sourceMappingSha256": "19cb500dd884c9e6d9fe69a234bfab65a52996ba86943ae621466485d07d265e",
+      "graphProtocolSha256": null,
+      "predictionPolicy": "raw_uncalibrated_24month_CIF"
+    },
+    "modelStateToken": "fdc9c3e72b0e2d45eb931965a8f6309d0cd659b4ca07f3cf98bbeaed64f3738f",
+    "referenceSha256": "e4ff7f9bc226cce7275c64868a8ba244a7d80df05559e590645bf49a5a87dc75",
+    "referencePolicy": "SAVED_TABLE_MEDIAN",
+    "featureOrder": [
+      "age_years",
+      "education_years",
+      "mmse",
+      "cdr_sb",
+      "cdr_global",
+      "adas__total13",
+      "faq__faqtotal",
+      "apoe4_count",
+      "mri_left_hippocampus_volume",
+      "mri_right_hippocampus_volume"
+    ],
+    "causeOrder": [
+      "AD",
+      "OTHER_DEMENTIA"
+    ],
+    "predictionWindowMonths": 24,
+    "predictionPolicy": "raw_uncalibrated_24month_CIF"
+  },
+  "requestSha256": "9f0910370b0c68cbe4ec0bbfb4496fc8868aea6addaeb95033282fe6f702f825",
+  "computation": {
+    "directCifCalls": 1,
+    "explanationCifCalls": 8
+  },
+  "synchronousExecution": true,
+  "persistentRunStore": false,
+  "clinicalUse": false,
+  "sourceAuthenticityCertified": false,
+  "historicalAvailabilityCertified": false,
+  "individualCausalEffectIdentified": false,
+  "defaultModelChanged": false
+}

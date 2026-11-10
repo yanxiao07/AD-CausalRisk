@@ -1,5 +1,7 @@
 # Java与Python联调约定
 
+独立真实研究模型通道的[请求/返回候选与Java字段映射](Research_Table_Agent_Contract.md)已在文档目录准备，Python内存适配/语义校验可用，尚未注册HTTP或接入Java。以下仍描述当前活动合成接口；不能将双原因CIF套入旧riskScore，也不能从请求传入可信上下文或执行权限。
+
 Python只承担合成工作流，不访问Java数据库、不管理用户会话、不写业务任务表。Java向Python传当前任务需要的合成输入，按contracts/python-agent.openapi.json校验结果后保存；前端只调用Java。
 
 | Python情况 | HTTP | Java应做什么 |

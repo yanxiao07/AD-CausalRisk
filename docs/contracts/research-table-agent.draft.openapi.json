@@ -1,0 +1,1370 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AD-CausalRisk research table agent candidate",
+    "version": "research-table-agent-v1",
+    "description": "评审草案。Python仅实现内存适配；没有注册HTTP监听或Java业务路由。"
+  },
+  "servers": [],
+  "security": [
+    {
+      "LocalBearer": []
+    }
+  ],
+  "paths": {
+    "/api/research-table/v1/assessments": {
+      "post": {
+        "operationId": "assessResearchTable",
+        "summary": "独立研究评估通道候选",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssessmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已完成或资格阻断；阻断无预测和解释",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssessmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "稳定错误码；不含内部异常或部分分数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "稳定错误码；不含内部异常或部分分数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "稳定错误码；不含内部异常或部分分数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "稳定错误码；不含内部异常或部分分数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "稳定错误码；不含内部异常或部分分数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "稳定错误码；不含内部异常或部分分数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-state": "IN_PROCESS_ADAPTER_ONLY_HTTP_NOT_REGISTERED"
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "LocalBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "未来服务间认证；尚未实现监听，不能代替Java对象授权。"
+      }
+    },
+    "schemas": {
+      "Observation": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "mm3",
+              "score",
+              "years"
+            ]
+          },
+          "measuredDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "availableDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "dateBasis": {
+            "enum": [
+              "MEASUREMENT_DATE",
+              "REGISTRY_PROXY",
+              "DERIVED_AT_INDEX",
+              "UNKNOWN"
+            ]
+          },
+          "sourceRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          },
+          "qc": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "UNKNOWN",
+              "NOT_APPLICABLE"
+            ]
+          },
+          "completion": {
+            "enum": [
+              "COMPLETE",
+              "INCOMPLETE",
+              "UNKNOWN",
+              "NOT_APPLICABLE"
+            ]
+          },
+          "missingReason": {
+            "enum": [
+              null,
+              "UNKNOWN",
+              "NOT_COLLECTED",
+              "UNAVAILABLE",
+              "QC_FAILED"
+            ]
+          },
+          "scanId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          },
+          "evidenceRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          }
+        },
+        "required": [
+          "value",
+          "unit",
+          "measuredDate",
+          "availableDate",
+          "dateBasis",
+          "sourceRef",
+          "qc",
+          "completion",
+          "missingReason",
+          "scanId",
+          "evidenceRef"
+        ],
+        "additionalProperties": false
+      },
+      "Observation_age_years": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "properties": {
+              "unit": {
+                "const": "years"
+              },
+              "scanId": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      },
+      "Observation_education_years": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "properties": {
+              "unit": {
+                "const": "years"
+              },
+              "scanId": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      },
+      "Observation_mmse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "properties": {
+              "unit": {
+                "const": "score"
+              },
+              "scanId": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      },
+      "Observation_cdr_sb": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "properties": {
+              "unit": {
+                "const": "score"
+              },
+              "scanId": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      },
+      "Observation_cdr_global": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "properties": {
+              "unit": {
+                "const": "score"
+              },
+              "scanId": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      },
+      "Observation_adas__total13": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "properties": {
+              "unit": {
+                "const": "score"
+              },
+              "scanId": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      },
+      "Observation_faq__faqtotal": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "properties": {
+              "unit": {
+                "const": "score"
+              },
+              "scanId": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      },
+      "Observation_apoe4_count": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "properties": {
+              "unit": {
+                "const": "count"
+              },
+              "value": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 2
+              },
+              "scanId": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      },
+      "Observation_mri_left_hippocampus_volume": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "properties": {
+              "unit": {
+                "const": "mm3"
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "Observation_mri_right_hippocampus_volume": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "properties": {
+              "unit": {
+                "const": "mm3"
+              },
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        ]
+      },
+      "SevenFeatures": {
+        "type": "object",
+        "properties": {
+          "age_years": {
+            "$ref": "#/components/schemas/Observation_age_years"
+          },
+          "education_years": {
+            "$ref": "#/components/schemas/Observation_education_years"
+          },
+          "mmse": {
+            "$ref": "#/components/schemas/Observation_mmse"
+          },
+          "cdr_sb": {
+            "$ref": "#/components/schemas/Observation_cdr_sb"
+          },
+          "cdr_global": {
+            "$ref": "#/components/schemas/Observation_cdr_global"
+          },
+          "adas__total13": {
+            "$ref": "#/components/schemas/Observation_adas__total13"
+          },
+          "faq__faqtotal": {
+            "$ref": "#/components/schemas/Observation_faq__faqtotal"
+          }
+        },
+        "required": [
+          "age_years",
+          "education_years",
+          "mmse",
+          "cdr_sb",
+          "cdr_global",
+          "adas__total13",
+          "faq__faqtotal"
+        ],
+        "additionalProperties": false
+      },
+      "TenFeatures": {
+        "type": "object",
+        "properties": {
+          "age_years": {
+            "$ref": "#/components/schemas/Observation_age_years"
+          },
+          "education_years": {
+            "$ref": "#/components/schemas/Observation_education_years"
+          },
+          "mmse": {
+            "$ref": "#/components/schemas/Observation_mmse"
+          },
+          "cdr_sb": {
+            "$ref": "#/components/schemas/Observation_cdr_sb"
+          },
+          "cdr_global": {
+            "$ref": "#/components/schemas/Observation_cdr_global"
+          },
+          "adas__total13": {
+            "$ref": "#/components/schemas/Observation_adas__total13"
+          },
+          "faq__faqtotal": {
+            "$ref": "#/components/schemas/Observation_faq__faqtotal"
+          },
+          "apoe4_count": {
+            "$ref": "#/components/schemas/Observation_apoe4_count"
+          },
+          "mri_left_hippocampus_volume": {
+            "$ref": "#/components/schemas/Observation_mri_left_hippocampus_volume"
+          },
+          "mri_right_hippocampus_volume": {
+            "$ref": "#/components/schemas/Observation_mri_right_hippocampus_volume"
+          }
+        },
+        "required": [
+          "age_years",
+          "education_years",
+          "mmse",
+          "cdr_sb",
+          "cdr_global",
+          "adas__total13",
+          "faq__faqtotal",
+          "apoe4_count",
+          "mri_left_hippocampus_volume",
+          "mri_right_hippocampus_volume"
+        ],
+        "additionalProperties": false
+      },
+      "AssessmentRequest": {
+        "type": "object",
+        "properties": {
+          "contractVersion": {
+            "const": "research-table-agent-v1"
+          },
+          "runId": {
+            "type": "string",
+            "pattern": "^run-[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+          },
+          "modelKey": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          },
+          "subjectCode": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          },
+          "dataVersion": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          },
+          "indexDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "availabilityPolicy": {
+            "enum": [
+              "RETROSPECTIVE_SNAPSHOT",
+              "AS_OF_INDEX"
+            ]
+          },
+          "predictionWindowMonths": {
+            "type": "integer",
+            "const": 24
+          },
+          "features": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SevenFeatures"
+              },
+              {
+                "$ref": "#/components/schemas/TenFeatures"
+              }
+            ]
+          }
+        },
+        "required": [
+          "contractVersion",
+          "runId",
+          "modelKey",
+          "subjectCode",
+          "dataVersion",
+          "indexDate",
+          "availabilityPolicy",
+          "predictionWindowMonths",
+          "features"
+        ],
+        "additionalProperties": false
+      },
+      "ModelIdentity": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "enum": [
+              "logistic",
+              "random_forest",
+              "xgboost"
+            ]
+          },
+          "specification": {
+            "enum": [
+              "seven",
+              "multimodal_values"
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "age_years",
+                "education_years",
+                "mmse",
+                "cdr_sb",
+                "cdr_global",
+                "adas__total13",
+                "faq__faqtotal",
+                "apoe4_count",
+                "mri_left_hippocampus_volume",
+                "mri_right_hippocampus_volume"
+              ]
+            },
+            "minItems": 7,
+            "maxItems": 10
+          },
+          "predictionPolicy": {
+            "const": "raw_uncalibrated_24month_CIF"
+          },
+          "graphProtocolSha256": {
+            "type": "null"
+          },
+          "manifestSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "artifactSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "trainingPlanSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "runtimeSourceSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "softwareLockSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "sourceMappingSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "family",
+          "specification",
+          "role",
+          "features",
+          "predictionPolicy",
+          "graphProtocolSha256",
+          "manifestSha256",
+          "artifactSha256",
+          "trainingPlanSha256",
+          "runtimeSourceSha256",
+          "softwareLockSha256",
+          "sourceMappingSha256"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "specification": {
+                  "const": "seven"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "features": {
+                  "const": [
+                    "age_years",
+                    "education_years",
+                    "mmse",
+                    "cdr_sb",
+                    "cdr_global",
+                    "adas__total13",
+                    "faq__faqtotal"
+                  ]
+                },
+                "role": {
+                  "const": "FULL_COHORT_SEVEN_VARIABLE_RESEARCH_MODEL"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "features": {
+                  "const": [
+                    "age_years",
+                    "education_years",
+                    "mmse",
+                    "cdr_sb",
+                    "cdr_global",
+                    "adas__total13",
+                    "faq__faqtotal",
+                    "apoe4_count",
+                    "mri_left_hippocampus_volume",
+                    "mri_right_hippocampus_volume"
+                  ]
+                },
+                "role": {
+                  "const": "MULTIMODAL_FULL_COHORT_RESEARCH"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "AdmissionIssue": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z0-9_]+$"
+          },
+          "severity": {
+            "enum": [
+              "BLOCK",
+              "WARN"
+            ]
+          },
+          "feature": {
+            "enum": [
+              null,
+              "age_years",
+              "education_years",
+              "mmse",
+              "cdr_sb",
+              "cdr_global",
+              "adas__total13",
+              "faq__faqtotal",
+              "apoe4_count",
+              "mri_left_hippocampus_volume",
+              "mri_right_hippocampus_volume"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "feature",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "Admission": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "const": "research-input-admission-result-v1"
+          },
+          "status": {
+            "enum": [
+              "METADATA_CONSISTENT",
+              "BLOCKED"
+            ]
+          },
+          "recordCount": {
+            "const": 1
+          },
+          "blockedRecordCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "featureOrder": {
+            "enum": [
+              [
+                "age_years",
+                "education_years",
+                "mmse",
+                "cdr_sb",
+                "cdr_global",
+                "adas__total13",
+                "faq__faqtotal"
+              ],
+              [
+                "age_years",
+                "education_years",
+                "mmse",
+                "cdr_sb",
+                "cdr_global",
+                "adas__total13",
+                "faq__faqtotal",
+                "apoe4_count",
+                "mri_left_hippocampus_volume",
+                "mri_right_hippocampus_volume"
+              ]
+            ]
+          },
+          "missingFeatureCounts": {
+            "type": "object",
+            "properties": {
+              "age_years": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "education_years": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "mmse": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "cdr_sb": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "cdr_global": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "adas__total13": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "faq__faqtotal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "apoe4_count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "mri_left_hippocampus_volume": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "mri_right_hippocampus_volume": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          "availabilityPolicy": {
+            "enum": [
+              "RETROSPECTIVE_SNAPSHOT",
+              "AS_OF_INDEX"
+            ]
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelIdentity"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdmissionIssue"
+            },
+            "minItems": 0,
+            "maxItems": 200
+          },
+          "predictionAllowed": {
+            "const": false
+          },
+          "clinicalUse": {
+            "const": false
+          },
+          "sourceAuthenticityCertified": {
+            "const": false
+          },
+          "historicalAvailabilityCertified": {
+            "const": false
+          },
+          "individualCausalEffectIdentified": {
+            "const": false
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "status",
+          "recordCount",
+          "blockedRecordCount",
+          "featureOrder",
+          "missingFeatureCounts",
+          "availabilityPolicy",
+          "model",
+          "issues",
+          "predictionAllowed",
+          "clinicalUse",
+          "sourceAuthenticityCertified",
+          "historicalAvailabilityCertified",
+          "individualCausalEffectIdentified"
+        ],
+        "additionalProperties": false
+      },
+      "Prediction": {
+        "type": "object",
+        "properties": {
+          "adCif24m": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "otherDementiaCif24m": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "adCif24m",
+          "otherDementiaCif24m"
+        ],
+        "additionalProperties": false
+      },
+      "Explanation": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "const": "exact-single-reference-group-shapley-v1"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 7,
+            "maxItems": 9
+          },
+          "referenceCif": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "minItems": 1,
+            "maxItems": 1
+          },
+          "predictionCif": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "minItems": 1,
+            "maxItems": 1
+          },
+          "contributions": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "minItems": 7,
+              "maxItems": 9
+            },
+            "minItems": 1,
+            "maxItems": 1
+          },
+          "reconstructionMaxError": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1e-12
+          },
+          "missingnessEffectsExplained": {
+            "const": false
+          },
+          "isCausalEffect": {
+            "const": false
+          },
+          "limeStatus": {
+            "const": "NOT_EVALUATED_NO_LOCAL_FIT"
+          }
+        },
+        "required": [
+          "method",
+          "groups",
+          "referenceCif",
+          "predictionCif",
+          "contributions",
+          "reconstructionMaxError",
+          "missingnessEffectsExplained",
+          "isCausalEffect",
+          "limeStatus"
+        ],
+        "additionalProperties": false
+      },
+      "Binding": {
+        "type": "object",
+        "properties": {
+          "inputSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "trustedContextSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelIdentity"
+          },
+          "modelStateToken": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "referenceSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "referencePolicy": {
+            "enum": [
+              "SAVED_TABLE_MEDIAN",
+              "SAVED_TABLE_MEAN"
+            ]
+          },
+          "featureOrder": {
+            "enum": [
+              [
+                "age_years",
+                "education_years",
+                "mmse",
+                "cdr_sb",
+                "cdr_global",
+                "adas__total13",
+                "faq__faqtotal"
+              ],
+              [
+                "age_years",
+                "education_years",
+                "mmse",
+                "cdr_sb",
+                "cdr_global",
+                "adas__total13",
+                "faq__faqtotal",
+                "apoe4_count",
+                "mri_left_hippocampus_volume",
+                "mri_right_hippocampus_volume"
+              ]
+            ]
+          },
+          "causeOrder": {
+            "const": [
+              "AD",
+              "OTHER_DEMENTIA"
+            ]
+          },
+          "predictionWindowMonths": {
+            "const": 24
+          },
+          "predictionPolicy": {
+            "const": "raw_uncalibrated_24month_CIF"
+          }
+        },
+        "required": [
+          "inputSha256",
+          "trustedContextSha256",
+          "model",
+          "modelStateToken",
+          "referenceSha256",
+          "referencePolicy",
+          "featureOrder",
+          "causeOrder",
+          "predictionWindowMonths",
+          "predictionPolicy"
+        ],
+        "additionalProperties": false
+      },
+      "Computation": {
+        "type": "object",
+        "properties": {
+          "directCifCalls": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "explanationCifCalls": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 512
+          }
+        },
+        "required": [
+          "directCifCalls",
+          "explanationCifCalls"
+        ],
+        "additionalProperties": false
+      },
+      "AssessmentResponse": {
+        "type": "object",
+        "properties": {
+          "contractVersion": {
+            "const": "research-table-agent-v1"
+          },
+          "runId": {
+            "type": "string",
+            "pattern": "^run-[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+          },
+          "modelKey": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          },
+          "subjectCode": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          },
+          "dataVersion": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          },
+          "indexDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "availabilityPolicy": {
+            "enum": [
+              "RETROSPECTIVE_SNAPSHOT",
+              "AS_OF_INDEX"
+            ]
+          },
+          "predictionWindowMonths": {
+            "const": 24
+          },
+          "dataScope": {
+            "enum": [
+              "CONSTRUCTED_VALIDATION",
+              "CONTROLLED_RESEARCH"
+            ]
+          },
+          "status": {
+            "enum": [
+              "COMPLETED",
+              "BLOCKED"
+            ]
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelIdentity"
+          },
+          "admission": {
+            "$ref": "#/components/schemas/Admission"
+          },
+          "prediction": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Prediction"
+              }
+            ]
+          },
+          "explanation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Explanation"
+              }
+            ]
+          },
+          "binding": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Binding"
+              }
+            ]
+          },
+          "requestSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "computation": {
+            "$ref": "#/components/schemas/Computation"
+          },
+          "synchronousExecution": {
+            "const": true
+          },
+          "persistentRunStore": {
+            "const": false
+          },
+          "clinicalUse": {
+            "const": false
+          },
+          "sourceAuthenticityCertified": {
+            "const": false
+          },
+          "historicalAvailabilityCertified": {
+            "const": false
+          },
+          "individualCausalEffectIdentified": {
+            "const": false
+          },
+          "defaultModelChanged": {
+            "const": false
+          }
+        },
+        "required": [
+          "contractVersion",
+          "runId",
+          "modelKey",
+          "subjectCode",
+          "dataVersion",
+          "indexDate",
+          "availabilityPolicy",
+          "predictionWindowMonths",
+          "dataScope",
+          "status",
+          "model",
+          "admission",
+          "prediction",
+          "explanation",
+          "binding",
+          "requestSha256",
+          "computation",
+          "synchronousExecution",
+          "persistentRunStore",
+          "clinicalUse",
+          "sourceAuthenticityCertified",
+          "historicalAvailabilityCertified",
+          "individualCausalEffectIdentified",
+          "defaultModelChanged"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "BLOCKED"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "prediction": {
+                  "type": "null"
+                },
+                "explanation": {
+                  "type": "null"
+                },
+                "binding": {
+                  "type": "null"
+                },
+                "admission": {
+                  "properties": {
+                    "status": {
+                      "const": "BLOCKED"
+                    }
+                  }
+                },
+                "computation": {
+                  "properties": {
+                    "directCifCalls": {
+                      "const": 0
+                    },
+                    "explanationCifCalls": {
+                      "const": 0
+                    }
+                  }
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "prediction": {
+                  "$ref": "#/components/schemas/Prediction"
+                },
+                "explanation": {
+                  "$ref": "#/components/schemas/Explanation"
+                },
+                "binding": {
+                  "$ref": "#/components/schemas/Binding"
+                },
+                "admission": {
+                  "properties": {
+                    "status": {
+                      "const": "METADATA_CONSISTENT"
+                    }
+                  }
+                },
+                "computation": {
+                  "properties": {
+                    "directCifCalls": {
+                      "const": 1
+                    },
+                    "explanationCifCalls": {
+                      "minimum": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "contractVersion": {
+            "const": "research-table-agent-v1"
+          },
+          "runId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^run-[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+          },
+          "status": {
+            "const": "FAILED"
+          },
+          "code": {
+            "enum": [
+              "REQUEST_JSON_INVALID",
+              "REQUEST_TOO_LARGE",
+              "REQUEST_FIELDS_INVALID",
+              "RESEARCH_CONTRACT_MISMATCH",
+              "RUN_ID_INVALID",
+              "MODEL_NOT_BOUND",
+              "SUBJECT_NOT_BOUND",
+              "SNAPSHOT_BINDING_MISMATCH",
+              "INDEPENDENT_EXECUTION_PERMISSION_REQUIRED",
+              "HOST_BINDING_INVALID",
+              "INPUT_DECLARATION_INVALID",
+              "ASSESSMENT_FAILED"
+            ]
+          },
+          "message": {
+            "const": "研究评估未完成，请按错误码核对请求或宿主配置。"
+          }
+        },
+        "required": [
+          "contractVersion",
+          "runId",
+          "status",
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "x-implementation-state": "DRAFT_FOR_BACKEND_REVIEW",
+  "x-maximum-request-bytes": 131072,
+  "x-error-http-status": {
+    "REQUEST_JSON_INVALID": 400,
+    "REQUEST_TOO_LARGE": 413,
+    "REQUEST_FIELDS_INVALID": 400,
+    "RESEARCH_CONTRACT_MISMATCH": 409,
+    "RUN_ID_INVALID": 400,
+    "MODEL_NOT_BOUND": 409,
+    "SUBJECT_NOT_BOUND": 403,
+    "SNAPSHOT_BINDING_MISMATCH": 409,
+    "INDEPENDENT_EXECUTION_PERMISSION_REQUIRED": 403,
+    "HOST_BINDING_INVALID": 503,
+    "INPUT_DECLARATION_INVALID": 400,
+    "ASSESSMENT_FAILED": 500
+  },
+  "x-run-id-semantics": "CORRELATION_ONLY_NO_REPLAY_STORE",
+  "x-semantic-validation": [
+    "APOE和窗口严格JSON整数token，1.0/24.0不能仅凭Schema整数类型放行",
+    "模型/subject/snapshot与宿主独立绑定；请求不能提供context、授权或文件路径",
+    "复用来源/QC/完成/日期/单位/缺失门槛，Schema形状通过不是资格认证",
+    "双原因CIF和不超过1；同次端点/贡献/模型状态/参考由TableAssessment核验",
+    "Java消费端须核请求/响应身份、预期模型身份及所有false边界，不靠字段存在宣称临床可用",
+    "标准库消费者入口research_runtime.research_table_protocol.validate_response执行身份、独立模型pin、CIF和与贡献重构校验；Schema不能替代它"
+  ]
+}

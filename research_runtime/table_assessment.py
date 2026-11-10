@@ -52,6 +52,11 @@ class TableAssessment:
         self._predictor = bind_existing_model(model, verified_identity=identity,
             state_token=lambda: table.model_state_identity(model))
 
+    @property
+    def model_identity(self):
+        """An independent copy for the host's transport binding."""
+        return deepcopy(self._identity)
+
     def run(self, request, *, trusted_context, permit=None,
             explanation_authorization_ref=None, explanation_authorized=False,
             max_coalitions=512):
