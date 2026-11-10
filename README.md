@@ -226,6 +226,8 @@ py -3.11 -m venv .venv-research-graph
 
 FR-22的[实验配置限定导出](docs/Research_Experiment_Config.md)提供标准库内存API和人工示例，仅导出模型选择、策略及发布级摘要；不授予执行或临床权限。[6模型组件与人工数值绑定](docs/Model_Artifact_Admission.md)续轮已通过：6份参数各加载一次，9个人工案例69次CIF的预测/解释一致性通过；首轮停止记录保留，真实宿主独立资格仍NO_GO。
 
+[运行源码/锁一致性范围](docs/Research_Runtime_Binding.md)记录8源码、12依赖及安装RECORD核对；锁LF/CRLF字节对象、无哈希成员及发行/执行资格限制分列，不作为真实业务准入许可。
+
 ## 文档导航
 
 | 主题 | 文档 |
