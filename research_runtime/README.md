@@ -1,5 +1,7 @@
 # 离线研究计算、固定训练与图模型
 
+[统一表格评估入口](../docs/Table_Assessment_Integration.md)将原许可预测与保存参考SHAP连接成同一输入/模型状态的内存结果，保留来源准入、独立解释权限和失败无部分数值。它是后续真实业务接入的计算步骤，不读取真实数据/参数、不新增HTTP或更换默认服务。
+
 新七/十变量模型的[Python接入候选](../docs/Research_Model_Integration_Candidate.md)区分课程/旧V8 HTTP、离线CLI与现有内存API，提供字段差异和纯标准库人工请求/响应示例。候选不新增服务或共享契约；离线九组合与内存表格六组合的支持边界分别保留。
 
 同一人工解析案例的[预测/解释绑定候选](../docs/Prediction_Explanation_Binding_Candidate.md)复用原精确分组Shapley与单次调度，附固定JSON及16项错绑/数值检查；只需原锁NumPy。它不是实际研究模型运行或生产报告API，LIME与真实宿主证据保持未执行/未核验。
