@@ -20,7 +20,33 @@
 
 特征顺序和单位复用`input_admission.SPECS/UNITS`，不从任意来件推断。输出固定为`purpose=REPRODUCIBILITY_METADATA_ONLY`、`executionAuthorized=false`、`clinicalUse=false`。JSON可以记录调用方从已有计划选出的上述字段，但不是完整的旧计划格式，也不提供参数或受控输入的自动查找/重建。
 
-这是当前六个表格组合的配置子集：可获得性置0对照、图模型、校准策略及训练调度未纳入。不能将已有最终模型的配置改称已经完成的新训练或临床实时模型。
+表格分支保持原六组合及`research-experiment-config-v1`输出字节；新增图分支见下节。可获得性置0对照、校准策略及训练调度未纳入。不能将已有最终模型的配置改称已经完成的新训练或临床实时模型。
+
+## 图模型配置
+
+仍使用同一导出/回读API；`family=conditional_graph_attention`是配置格式标签，不是对原表格加载器、真实输入准入或Java契约增加图支持。图输出独立使用`research-graph-experiment-config-v1`，不能与表格schema互换。
+
+图选择使用十变量`multimodal_values`、原始24月CIF及`SAVED_GRAPH_MEDIAN`/`SAVED_GRAPH_MEAN`参考声明；不含表格的`randomSeed`或单个`artifactSha256`字段。公共hashes为manifest、训练计划、源码、软件锁及原`graphProtocolSha256`。固定协议原字节SHA为`ee74d09fff5f530e086dff5c0f3dd49513ffe6db42cb6ef8f05c8a4799413c49`，未知协议拒绝；原协议的历史状态字段不改写当前实现状态。
+
+新增graph字段必须完整：
+
+| 字段 | 范围 |
+| --- | --- |
+| arm | self_only、prior、semantic_permutation；沿用原三臂，不新增边或替换图 |
+| initializationSeeds | 单种子时为原20260926/27/28之一的单元素列表；三种子时严格为原三者固定顺序 |
+| aggregationPolicy | SINGLE_SEED_CIF，或MEAN_3_SEED_CIF；后者声明对三种子两原因CIF等权均值，不平均logit/危险率或选最好种子 |
+| artifactSha256BySeed | 精确覆盖所列种子的参数摘要映射；不得漏项、多项或用同一摘要冒充多个种子 |
+
+该子集覆盖9个单模型声明和3个三种子聚合声明。它只记录选定artifact/策略，既不打开文件验证摘要，也不执行求均值、归因或训练；声明正确不认证模型资格或解释稳定性。图结构/超参数由固定协议身份约束，不把参数数组、私有折、参考数值或个人图内容塞入配置。
+
+```powershell
+# 人工三种子CIF均值配置
+python -B -S -m research_runtime.examples.graph_experiment_config_constructed
+# 人工单模型配置
+python -B -S -m research_runtime.examples.graph_experiment_config_constructed --arm self_only --single-seed 20260927
+```
+
+示例发布摘要为人工值（协议身份除外），不得当作实际参数已核验。图模型原生源码、协议机器文件和依赖锁保持原字节，旧图增益阴性与全部已关闭研究不重跑。
 
 ## 人工运行示例
 
@@ -49,6 +75,6 @@ restored = load_experiment_config(raw, expected_sha256=independently_retained_di
 
 ## 验收与下一项
 
-17项人工标准库检查覆盖六组合往返、语义变化改变导出、字段顺序确定性、私人字段拒绝、错误信息不回显、输入副本隔离、摘要篡改、无默认补齐、重复键/深层JSON和权限升级。新增检查加入现有标准库CI；远端结果以发布后的Actions为准，本地检查不冒充已运行远端矩阵。
+原17项表格人工检查保持；新增17项图检查覆盖9单模型/3聚合往返、表格六组合封存字节、协议/特征/种子/arm/参数映射一致、错聚合与私有字段拒绝、schema隔离、确定性/副本隔离以及独立`-S`解释器无需模型依赖。当前配置专题34项，连同原功能量/界限检查，标准库层69项。新增检查加入现有标准库CI；远端结果以发布后的Actions为准，本地检查不冒充已运行远端矩阵。
 
 本配置子集的终点是可调用导出/回读和人工验收，不以配置替代真实参数核验。实际模型状态核验及其首轮停止结果见[模型组件核验](Model_Artifact_Admission.md)。真实宿主独立来源、QC/首次可用与权限仍需证据，固定研究结论及673/36拟合账本保持。

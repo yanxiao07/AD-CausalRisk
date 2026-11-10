@@ -12,6 +12,8 @@
 
 [源码/锁及安装记录检查](../docs/Research_Runtime_Binding.md)补充表格数值8成员范围、两种锁字节对象和12版本/6274带哈希安装成员的一致性证据；3875无哈希成员、受阻模块导入、发行来源/缓存身份不升级为认证。未改原锁或环境，未签发可信上下文/许可。
 
+[图实验配置导出](../docs/Research_Experiment_Config.md#图模型配置)复用同一API，新增独立图schema、固定协议三臂和种子，区分单种子CIF与三种子CIF等权均值；各参数摘要按种子绑定，拒绝漏种子/重复参数/错误聚合策略。`python -B -S -m research_runtime.examples.graph_experiment_config_constructed`输出人工均值配置，`--arm self_only --single-seed 20260927`输出单模型配置。无需Torch/NumPy/参数读取；新增17检查加入标准库层，当前69项，原六表格v1字节不变。
+
 ## 新增离线评价与监测
 
 本次交付复用已完成实现，为第2→3环节的结构/评价与第1→3→4环节的监测提供纯内存接口。不新增文件读取器、训练器或HTTP服务，也不改变业务默认模型。
@@ -33,7 +35,7 @@
 
 ```powershell
 # 标准库专题
-python -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve research_runtime.tests.test_experiment_config -v
+python -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve research_runtime.tests.test_experiment_config research_runtime.tests.test_graph_experiment_config -v
 
 # NumPy专题，无需pandas、Torch或预测依赖
 .venv-research/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability -v
@@ -52,7 +54,7 @@ python -B -S -m unittest research_runtime.tests.test_competing_event_functional 
 
 | 层 | 显式测试模块（`research_runtime.tests`下） | 依赖与范围 |
 | --- | --- | --- |
-| 标准库，52项 | `test_competing_event_functional`、`test_decision_curve`、`test_experiment_config` | `-S`禁用site packages；精确核功能量、未知结局界限及配置绑定/受限导出 |
+| 标准库，69项 | `test_competing_event_functional`、`test_decision_curve`、`test_experiment_config`、`test_graph_experiment_config` | `-S`禁用site packages；精确核功能量、未知结局界限及配置绑定/受限导出 |
 | NumPy，139项 | `test_feature_drift`、`test_performance_monitor`、`test_lifecycle_monitor`、`test_graph_structure_stability`、`test_prediction_explanation_candidate` | 仅安装原锁中的NumPy 2.4.6；人工监测/隐私/结构稳定性及预测/解释错绑检查 |
 
 最小NumPy环境可用以下命令建立；Linux/macOS将解释器路径换成`.venv-primitives/bin/python`：
@@ -60,7 +62,7 @@ python -B -S -m unittest research_runtime.tests.test_competing_event_functional 
 ```powershell
 py -3.11 -m venv .venv-primitives
 .venv-primitives/Scripts/python.exe -m pip install --only-binary=:all: --constraint research_runtime/requirements.lock numpy
-.venv-primitives/Scripts/python.exe -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve research_runtime.tests.test_experiment_config -v
+.venv-primitives/Scripts/python.exe -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve research_runtime.tests.test_experiment_config research_runtime.tests.test_graph_experiment_config -v
 .venv-primitives/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability research_runtime.tests.test_prediction_explanation_candidate -v
 ```
 
