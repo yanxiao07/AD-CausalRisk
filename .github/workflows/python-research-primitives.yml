@@ -26,7 +26,9 @@ jobs:
         run: >-
           python -B -S -m unittest
           research_runtime.tests.test_competing_event_functional
-          research_runtime.tests.test_decision_curve -v
+          research_runtime.tests.test_decision_curve
+          research_runtime.tests.test_experiment_config
+          research_runtime.tests.test_graph_experiment_config -v
 
   numpy:
     name: NumPy (${{ matrix.os }}, Python ${{ matrix.python-version }})

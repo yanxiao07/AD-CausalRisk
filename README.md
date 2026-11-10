@@ -1,6 +1,6 @@
 # AD-CausalRisk
 
-面向阿尔茨海默病风险研究与课程协作的多源数据、条件图谱和可解释排序项目。
+面向阿尔茨海默病风险研究的多源数据、条件图谱和可解释排序系统。
 
 [![Python CI — main](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/python-base.yml/badge.svg?branch=main)](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/python-base.yml?query=branch%3Amain)
 [![Java CI — main](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/backend-build.yml/badge.svg?branch=main)](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/backend-build.yml?query=branch%3Amain)
@@ -35,7 +35,7 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 ## 项目状态
 
-以下为当前分支的实现范围；完整验收条件以[课程需求](docs/Course_SRS_V3_2.md)为准。顶部徽章展示 `main` 分支的 CI，功能分支的检查结果请查看对应提交或 PR。
+以下为当前分支的实现范围；完整验收条件以[需求基线](docs/Course_SRS_V3_2.md)为准。顶部徽章展示 `main` 分支的 CI，功能分支的检查结果请查看对应提交或 PR。
 
 后端业务更新：2026-11-08，59个Java操作已实现并经合成本地验证，覆盖来源与质量历史、固定输入、异步任务、账号/授权、随访、报告附件和审计。逐项需求与验收见[后端验收](docs/Backend_Requirements_Acceptance.md)，G01–G23及研究接入边界见[业务状态](docs/Business_Feature_Status.md)。本次交付不包含本地候选前端、前端CI、临床数据或研究权重；前端同学可按契约继续接入和统一风格。以下既往版本描述保留原交付背景。
 
@@ -206,7 +206,7 @@ py -3.11 -m venv .venv-research-graph
 .venv-research-graph/Scripts/python.exe -m unittest research_runtime.tests.test_graph research_runtime.tests.test_graph_native research_runtime.tests.test_graph_training research_runtime.tests.test_graph_explanation -v
 ```
 
-上述研究测试包含人工数据构造拟合，不读取真实队列或权重。已有固定真实研究不因源码发布重训。课程Python CI只发现`tests/`；独立的研究原语CI显式选择35项标准库和139项NumPy人工检查，不发现整个研究测试目录，不执行预测拟合、模型加载或真实研究。最小依赖与对应命令见[研究运行说明](research_runtime/README.md#研究原语分层ci)。协议机器文件保留原始字节，阶段文档以交付状态说明区分历史与当前，最新完成项及唯一下一任务以[Python需求状态](docs/Python_Requirement_Status.md)为准。
+上述研究测试包含人工数据构造拟合，不读取真实队列或权重。已有固定真实研究不因源码发布重训。课程Python CI只发现`tests/`；独立的研究原语CI显式选择69项标准库和139项NumPy人工检查，不发现整个研究测试目录，不执行预测拟合、模型加载或真实研究。最小依赖与对应命令见[研究运行说明](research_runtime/README.md#研究原语分层ci)。协议机器文件保留原始字节，阶段文档以交付状态说明区分历史与当前，最新完成项及唯一下一任务以[Python需求状态](docs/Python_Requirement_Status.md)为准。
 
 ### Java
 
@@ -217,12 +217,16 @@ py -3.11 -m venv .venv-research-graph
 | 工作流 | 当前配置 |
 | --- | --- |
 | [Python service and contract checks](.github/workflows/python-base.yml) | Python 3.11 / 3.12，固定测试依赖，`unittest` |
-| [Python research primitive checks](.github/workflows/python-research-primitives.yml) | Windows / Ubuntu × Python 3.11 / 3.12，标准库35项与仅NumPy139项分别运行 |
+| [Python research primitive checks](.github/workflows/python-research-primitives.yml) | Windows / Ubuntu × Python 3.11 / 3.12，标准库69项与仅NumPy139项分别运行 |
 | [Java backend build and tests](.github/workflows/backend-build.yml) | JDK 21，Maven `verify`，H2 测试 |
 
 推送和 PR 会触发上述工作流；实际结果以 [GitHub Actions](https://github.com/yanxiao07/AD-CausalRisk/actions) 为准。前端已有安装、构建和测试脚本；本次后端交付不包含本地候选的前端专用CI工作流。
 
 既有因果识别论证的[标准库精确示例](docs/Causal_Identification_Results.md)现随源码交付，运行 `python -I -S -B examples/causal_identification_audit.py` 可核对9项精确检查。该示例在研究CI标准库矩阵中单独运行；数学反例不构成本研究的因果效应或临床证据。
+
+FR-22的[实验配置限定导出](docs/Research_Experiment_Config.md)提供标准库内存API和人工示例，覆盖六表格组合及固定三臂/三种子的单图模型、三种子CIF均值配置；仅导出选择、策略及发布级摘要，表格v1字节兼容，不授予执行或临床权限。[6模型组件与人工数值绑定](docs/Model_Artifact_Admission.md)续轮已通过：6份参数各加载一次，9个人工案例69次CIF的预测/解释一致性通过；首轮停止记录保留，真实宿主独立资格仍NO_GO。
+
+[运行源码/锁一致性范围](docs/Research_Runtime_Binding.md)记录8源码、12依赖及安装RECORD核对；锁LF/CRLF字节对象、无哈希成员及发行/执行资格限制分列，不作为真实业务准入许可。
 
 ## 文档导航
 
@@ -233,7 +237,7 @@ py -3.11 -m venv .venv-research-graph
 | 数据与质量 | [CSV 预检](docs/Python_Csv_Preflight.md) · [质量报告](docs/Python_Quality_Review.md) · [特征融合](docs/Python_Feature_Fusion.md) |
 | 图与解释 | [核心结果校验](docs/Python_Core_Validation.md) · [图谱证据](docs/Python_Graph_Evidence.md) · [解释一致性](docs/Python_Explanation_Consistency.md) · [输出审查](docs/Python_Output_Review.md) |
 | 评估与缺失 | [构造预测评估](docs/Python_Prediction_Evaluation.md) · [缺失输入敏感性](docs/Python_Missingness_Sensitivity.md) |
-| 合成报告与批处理 | [课程报告](docs/Python_Course_Reports.md) · [合成批处理](docs/Python_Synthetic_Batches.md) · [演示报告适配](docs/Synthetic_Reports.md) |
+| 合成报告与批处理 | [HTML/JSON/CSV报告](docs/Python_Course_Reports.md) · [合成批处理](docs/Python_Synthetic_Batches.md) · [报告适配](docs/Synthetic_Reports.md) |
 | 可选受控研究接入 | [运行时集成](docs/Research_Runtime_Integration.md) · [受控客户端](docs/Controlled_Research_Client.md) · [研究基底与验收](docs/Research_Backend_Acceptance.md) · [模型与任务反馈](docs/Model_And_Task_Feedback.md) |
 | 团队开发 | [贡献指南](CONTRIBUTING.md) · [AI 协作指南](docs/AI_Collaboration.md) · [助手规则](AGENTS.md) |
 
@@ -284,6 +288,6 @@ py -3.11 -m venv .venv-research-graph
 
 ## 使用范围与许可
 
-仓库中的 `DEMO-*` 与 `SYNTHETIC_DEMO` 资料用于课程演示。真实来源数据、个人身份信息、凭据、模型授权材料及运行缓存不得随代码提交。教学报告和自动校验不代替医生人工复核、对象授权或临床验证。
+仓库中的 `DEMO-*` 与 `SYNTHETIC_DEMO` 资料用于系统联调与功能验证。真实来源数据、个人身份信息、凭据、模型授权材料及运行缓存不得随代码提交。合成报告和自动校验不代替医生人工复核、对象授权或临床验证。
 
 当前仓库尚未提供 `LICENSE` 文件，许可证方案待维护者确定。

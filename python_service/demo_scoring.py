@@ -183,7 +183,7 @@ def score_java_synthetic_payload(payload: dict[str, Any]) -> dict[str, Any]:
         contribution = _clamp(latest["cdrSb"] / 10.0, 0.0, 0.20)
         score += contribution
         explanations.append(_python_explanation(
-            "CDR_SB", "CDR-SB", contribution, "CDR-SB 信号在当前演示排序中贡献上移",
+            "CDR_SB", "CDR-SB", contribution, "CDR-SB 信号在当前排序中贡献上移",
         ))
     else:
         warnings.append("最近访视缺少 CDR-SB，结果需人工复核")

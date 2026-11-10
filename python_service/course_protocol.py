@@ -321,7 +321,7 @@ def _validate_output_narrative(result,raw_terms):
     text={
         'MMSE':('MMSE 认知评分','当前认知评分对风险排序贡献偏高','当前认知评分对风险排序贡献偏低'),
         'MoCA':('MoCA 认知评分','MoCA 信号使排序分数上移','MoCA 信号使排序分数下移'),
-        'CDR_SB':('CDR-SB','CDR-SB 信号在当前演示排序中贡献上移',None),
+        'CDR_SB':('CDR-SB','CDR-SB 信号在当前排序中贡献上移',None),
         'MMSE_DELTA':('纵向 MMSE 变化','纵向变化使排序分数上移','纵向变化暂未使排序分数上移'),
         'APOE_E4_COUNT':('APOE ε4 计数','遗传模态作为个体化上下文进入排序',None),
         'MRI_HIPPOCAMPUS':('MRI 海马数值','影像模态作为结构性上下文进入排序',None),
@@ -331,5 +331,11 @@ def _validate_output_narrative(result,raw_terms):
         # Text follows the original raw contribution, not displayed rounding or
         # the separate +/-0.002 direction thresholds (zero delta is special).
         up=raw_terms[name]>0 if name=='MMSE_DELTA' else raw_terms[name]>=0
-        require(item['label']==label and item['message']==(positive if up or negative is None else negative)
+        expected=positive if up or negative is None else negative
+        # Read old saved results without rewriting their original text. Only
+        # this exact copy change is accepted; other messages remain strict.
+        messages=(expected,)
+        if name=='CDR_SB':
+            messages+=('CDR-SB 信号在当前演示排序中贡献上移',)
+        require(item['label']==label and item['message'] in messages
                 and item['interpretation']=='预测贡献，不是因果效应','OUTPUT_EXPLANATION_TEXT')

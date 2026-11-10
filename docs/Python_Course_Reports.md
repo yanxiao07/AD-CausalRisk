@@ -1,6 +1,18 @@
-# 原课程Agent结果报告
+# 合成输入报告的离线导出
 
-`course_report.py`接收原`AgentRequest`与对应`AgentResult`，提供课程合成报告。与现有研究合成任务报告分开：课程报告没有采用研究双分支CIF、研究模型或五来源撤除结果来替代课程分数。
+`course_report.py`接收原`AgentRequest`与对应`AgentResult`，导出已经校验的合成结果。内部模块名和机器范围标识保持兼容；此工具不调用真实研究模型，也不把合成评分转换成临床风险概率。
+
+## CSV格式
+
+`render_course_csv(request, result, audience='research')`与HTML/JSON复用同一个报告校验和裁剪入口。CSV使用UTF-8、CRLF、固定两列`field,valueJson`，每个报告字段一行，按字段名排序。值是严格JSON字面量，嵌套结构保留在一个单元格；可用`json.loads(valueJson)`重建整个报告。`null`、零、`false`和空列表保持区别，原始精度、版本、来源和限制均保留。
+
+字符串保留JSON引号，换行被JSON转义，不会作为以`= + - @`或控制符开头的电子表格公式单元格输出。表格软件打开后不应手工移除这些引号并将来源文本作为公式运行。简版仍省略原输入、图和内部轨迹，不是患者权限边界。非法输入先拒绝，不生成部分报告。
+
+```powershell
+python -B -m python_service.course_report --request contracts/examples/deepagent-v1.request.example.json --result contracts/examples/deepagent-v1.response.example.json --format csv --output report.csv
+```
+
+这只增加显式指定新文件的离线CSV导出；已有HTML/JSON输出、静态示例HTTP格式和Java附件下载接口不变。真实研究报告和完整FR-22仍需分别验收。
 
 ```python
 from python_service.course_report import build_course_report, render_course_html
