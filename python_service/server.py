@@ -67,7 +67,7 @@ class RunStore:
                     raise AgentContractError('runId已用于不同请求',409,'RUN_ID_CONFLICT')
             else:
                 if len(self.runs)+len(self._pending)>=self.capacity:
-                    raise AgentContractError('本机演示缓存已满，请由Java保存历史结果',503,'RUN_CAPACITY_REACHED')
+                    raise AgentContractError('运行缓存已满；历史结果请从业务服务查询',503,'RUN_CAPACITY_REACHED')
                 flight=_PendingRun(digest)
                 self._pending[run_id]=flight
         # No computation, result validation, copying or waiting holds the
@@ -100,7 +100,7 @@ class RunStore:
     def get(self,run_id):
         with self.lock:
             if run_id not in self.runs:
-                raise AgentContractError('runId不存在；演示缓存重启后清空',404,'RUN_NOT_FOUND')
+                raise AgentContractError('未找到该运行记录；运行缓存会在服务重启后清空，历史结果请从业务服务查询',404,'RUN_NOT_FOUND')
             result=self.runs[run_id][1]
         return copy.deepcopy(result)
 

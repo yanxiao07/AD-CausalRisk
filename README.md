@@ -1,6 +1,6 @@
 # AD-CausalRisk
 
-面向阿尔茨海默病风险研究与课程协作的多源数据、条件图谱和可解释排序项目。
+面向阿尔茨海默病风险研究的多源数据、条件图谱和可解释排序系统。
 
 [![Python CI — main](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/python-base.yml/badge.svg?branch=main)](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/python-base.yml?query=branch%3Amain)
 [![Java CI — main](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/backend-build.yml/badge.svg?branch=main)](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/backend-build.yml?query=branch%3Amain)
@@ -35,7 +35,7 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 ## 项目状态
 
-以下为当前分支的实现范围；完整验收条件以[课程需求](docs/Course_SRS_V3_2.md)为准。顶部徽章展示 `main` 分支的 CI，功能分支的检查结果请查看对应提交或 PR。
+以下为当前分支的实现范围；完整验收条件以[需求基线](docs/Course_SRS_V3_2.md)为准。顶部徽章展示 `main` 分支的 CI，功能分支的检查结果请查看对应提交或 PR。
 
 后端业务更新：2026-11-08，59个Java操作已实现并经合成本地验证，覆盖来源与质量历史、固定输入、异步任务、账号/授权、随访、报告附件和审计。逐项需求与验收见[后端验收](docs/Backend_Requirements_Acceptance.md)，G01–G23及研究接入边界见[业务状态](docs/Business_Feature_Status.md)。本次交付不包含本地候选前端、前端CI、临床数据或研究权重；前端同学可按契约继续接入和统一风格。以下既往版本描述保留原交付背景。
 
@@ -288,6 +288,6 @@ FR-22的[实验配置限定导出](docs/Research_Experiment_Config.md)提供标�
 
 ## 使用范围与许可
 
-仓库中的 `DEMO-*` 与 `SYNTHETIC_DEMO` 资料用于课程演示。真实来源数据、个人身份信息、凭据、模型授权材料及运行缓存不得随代码提交。教学报告和自动校验不代替医生人工复核、对象授权或临床验证。
+仓库中的 `DEMO-*` 与 `SYNTHETIC_DEMO` 资料用于系统联调与功能验证。真实来源数据、个人身份信息、凭据、模型授权材料及运行缓存不得随代码提交。合成报告和自动校验不代替医生人工复核、对象授权或临床验证。
 
 当前仓库尚未提供 `LICENSE` 文件，许可证方案待维护者确定。
