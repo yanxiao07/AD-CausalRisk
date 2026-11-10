@@ -4,6 +4,12 @@
 
 同一人工解析案例的[预测/解释绑定候选](../docs/Prediction_Explanation_Binding_Candidate.md)复用原精确分组Shapley与单次调度，附固定JSON及16项错绑/数值检查；只需原锁NumPy。它不是实际研究模型运行或生产报告API，LIME与真实宿主证据保持未执行/未核验。
 
+## 实验配置导出与参数核验
+
+[FR-22配置元数据导出](../docs/Research_Experiment_Config.md)新增纯标准库内存导出/回读，显式选择两规格三算法、原始24月策略、保存参考政策、seed/划分政策及5项发布级摘要；特征/单位复用原准入定义，个人内容/路径/参数/许可无导出字段。人工示例：`python -B -S -m research_runtime.examples.experiment_config_constructed`。新增17项检查加入标准库层，当前52项；历史35项记录仍保留原范围，不冒充新远端结果。
+
+[实际参数核验](../docs/Model_Artifact_Admission.md)首轮只读2份参数，首个LR组件检查通过，RF在审计脚本的跨深拷贝摘要断言处停止，余4份未读。人工反例证明该断言不适合作通用等价要求，生产状态函数未改，真实核验未重试；同次实际预测/解释未运行，完整宿主仍NO_GO。
+
 ## 新增离线评价与监测
 
 本次交付复用已完成实现，为第2→3环节的结构/评价与第1→3→4环节的监测提供纯内存接口。不新增文件读取器、训练器或HTTP服务，也不改变业务默认模型。
@@ -25,7 +31,7 @@
 
 ```powershell
 # 标准库专题
-python -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve -v
+python -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve research_runtime.tests.test_experiment_config -v
 
 # NumPy专题，无需pandas、Torch或预测依赖
 .venv-research/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability -v
@@ -44,7 +50,7 @@ python -B -S -m unittest research_runtime.tests.test_competing_event_functional 
 
 | 层 | 显式测试模块（`research_runtime.tests`下） | 依赖与范围 |
 | --- | --- | --- |
-| 标准库，35项 | `test_competing_event_functional`、`test_decision_curve` | `-S`禁用site packages；精确核功能量及未知结局界限 |
+| 标准库，52项 | `test_competing_event_functional`、`test_decision_curve`、`test_experiment_config` | `-S`禁用site packages；精确核功能量、未知结局界限及配置绑定/受限导出 |
 | NumPy，139项 | `test_feature_drift`、`test_performance_monitor`、`test_lifecycle_monitor`、`test_graph_structure_stability`、`test_prediction_explanation_candidate` | 仅安装原锁中的NumPy 2.4.6；人工监测/隐私/结构稳定性及预测/解释错绑检查 |
 
 最小NumPy环境可用以下命令建立；Linux/macOS将解释器路径换成`.venv-primitives/bin/python`：
@@ -52,7 +58,7 @@ python -B -S -m unittest research_runtime.tests.test_competing_event_functional 
 ```powershell
 py -3.11 -m venv .venv-primitives
 .venv-primitives/Scripts/python.exe -m pip install --only-binary=:all: --constraint research_runtime/requirements.lock numpy
-.venv-primitives/Scripts/python.exe -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve -v
+.venv-primitives/Scripts/python.exe -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve research_runtime.tests.test_experiment_config -v
 .venv-primitives/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability research_runtime.tests.test_prediction_explanation_candidate -v
 ```
 
