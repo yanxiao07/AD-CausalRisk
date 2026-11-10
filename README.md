@@ -224,7 +224,7 @@ py -3.11 -m venv .venv-research-graph
 
 既有因果识别论证的[标准库精确示例](docs/Causal_Identification_Results.md)现随源码交付，运行 `python -I -S -B examples/causal_identification_audit.py` 可核对9项精确检查。该示例在研究CI标准库矩阵中单独运行；数学反例不构成本研究的因果效应或临床证据。
 
-FR-22的[实验配置限定导出](docs/Research_Experiment_Config.md)提供标准库内存API和人工示例，仅导出模型选择、策略及发布级摘要；不授予执行或临床权限。已有参数的[组件核验首轮](docs/Model_Artifact_Admission.md)在第2个模型的审计断言处停止，6模型尚未全部验收，真实宿主准入保持NO_GO。
+FR-22的[实验配置限定导出](docs/Research_Experiment_Config.md)提供标准库内存API和人工示例，仅导出模型选择、策略及发布级摘要；不授予执行或临床权限。[6模型组件与人工数值绑定](docs/Model_Artifact_Admission.md)续轮已通过：6份参数各加载一次，9个人工案例69次CIF的预测/解释一致性通过；首轮停止记录保留，真实宿主独立资格仍NO_GO。
 
 ## 文档导航
 
