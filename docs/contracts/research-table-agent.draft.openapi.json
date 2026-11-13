@@ -3,7 +3,7 @@
   "info": {
     "title": "AD-CausalRisk research table agent candidate",
     "version": "research-table-agent-v1",
-    "description": "评审草案。Python仅实现内存适配；没有注册HTTP监听或Java业务路由。"
+    "description": "评审草案。独立环回宿主以固定人工上下文提供合成联调，生产配置与真实来源待验收。"
   },
   "servers": [],
   "security": [
@@ -98,7 +98,7 @@
             }
           }
         },
-        "x-implementation-state": "IN_PROCESS_ADAPTER_ONLY_HTTP_NOT_REGISTERED"
+        "x-implementation-state": "CONSTRUCTED_LOOPBACK_VALIDATION"
       }
     }
   },
@@ -107,7 +107,7 @@
       "LocalBearer": {
         "type": "http",
         "scheme": "bearer",
-        "description": "未来服务间认证；尚未实现监听，不能代替Java对象授权。"
+        "description": "合成环回宿主的服务间认证。Java独立校验档案访问及快照授权。"
       }
     },
     "schemas": {

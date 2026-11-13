@@ -2,11 +2,11 @@
 
 第1→3→4环节有界工程支撑。此候选连接已完成的`TableAssessment`与业务调用方，复用原输入准入及数值实现，不训练、不读取临床/参数、不更换现有服务。
 
-当前状态：**Python内存请求适配和返回语义校验已实现；HTTP监听、Java接入、真实数据准入未完成**。[OpenAPI草案](contracts/research-table-agent.draft.openapi.json)位于文档目录，`DRAFT_FOR_BACKEND_REVIEW`，不是活动`contracts/`或已部署路由。PR27已由远端合并至main `3774929`，本轮未执行合并；本候选仍是后续本地工作。
+Python 内存适配与返回语义校验已由 PR28 交付。独立环回宿主通过固定人工上下文执行草案接口。Java 研究任务以已登记的人工冻结快照调用该宿主。真实来源和生产配置待验收。[后端说明](../backend/README.md#表格研究评估适配) · [OpenAPI 草案](contracts/research-table-agent.draft.openapi.json)
 
 ## 接口边界
 
-候选操作为`POST /api/research-table/v1/assessments`，版本`research-table-agent-v1`。没有当前监听地址，不复用`deepagent-v1`或旧V8研究路径。`LocalBearer`只是将来服务间认证的设计，当前内存适配器不实现HTTP认证。
+候选操作为 `POST /api/research-table/v1/assessments`，版本 `research-table-agent-v1`。合成宿主独立监听环回地址，通过 `LocalBearer` 校验服务间凭据，再调用内存适配器。生产宿主和地址由后续联调确定。
 
 请求仅有9项：`contractVersion/runId/modelKey/subjectCode/dataVersion/indexDate/availabilityPolicy/predictionWindowMonths/features`。窗口严格整数24，特征为七变量或十变量精确集合，元数据必须显式存在；未知值保留null/UNKNOWN，不补0。输入UTF-8严格JSON最多128KiB，拒绝重复键、非有限值和额外字段。
 
@@ -67,10 +67,10 @@ JSON Schema将1.0视为integer，不能据此放行APOE；适配器和语义校�
 
 Java继续做对象权限、用户会话、持久任务/幂等、原始输入快照、复核和审计。研究结果应以独立版本/JSON结构保存，不能覆盖历史agentResult或把AD CIF写入原演示排序列后丢弃另一原因。审计不记录完整输入/权限引用；患者摘要仍由后端白名单处理。
 
-本轮不修改Java实体、DTO、数据库迁移、前端或共享活动契约。Java负责人需评审字段来源、授权/快照注册方式、新结果存储与超时语义，再确定HTTP宿主及双方适配；当前没有独立真实上下文，不得为联调造一份。
+Java 使用独立研究快照和任务保存结构。提交接口只接受已登记的快照 ID，Java 从存储取请求与独立预期值。研究对象授权与 Python 宿主的计算授权分别执行。人工样例供联调，真实来源登记依赖该档案的独立证据。
 
 ## 已验证与下一步
 
 15项适配检查、13项统一入口检查（合计28）通过；另12项OpenAPI/Schema/语义检查通过，校验模块在`-S`下不导入NumPy/pandas/sklearn/joblib/Torch。七份公开样例含两规格完成、QC阻断和403；全部显式人工，不含真实数据/参数。
 
-本工程达到可调用内存适配、可校验候选协议及Java映射终点。下一唯一工程为Java负责人对本候选与字段/快照责任给出具体确认后，实施独立研究HTTP宿主的有限联调；真实来源完成/QC/语言版本等资格继续独立等待，手机溢出后置。不为本任务重训或重读已关闭模型/研究。
+独立 Python HTTP 宿主与 Java 研究任务已验证两规格完成、QC 阻断、权限和错绑拒绝、持久回读及幂等重放。真实来源完成状态、QC 和语言版本等待适用证据。

@@ -64,7 +64,9 @@ class SchemaMigrationTest {
                     "qc_audit_record",
                     "task_input_snapshot",
                     "user_preferences",
-                    "model_configuration");
+                    "model_configuration",
+                    "research_table_snapshot",
+                    "research_table_task");
 
     /** Flyway's own bookkeeping table; created by Flyway, not by V1. */
     private static final String FLYWAY_HISTORY_TABLE = "flyway_schema_history";
@@ -88,7 +90,7 @@ class SchemaMigrationTest {
         // Every new migration file must be appended here; the list is deliberately explicit so a
         // gap, a re-ordering or a forgotten migration fails loudly instead of silently passing.
         assertThat(versions)
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
     }
 
     /**
@@ -189,7 +191,7 @@ class SchemaMigrationTest {
 
     @Test
     void baselineDefinesExactlyTheExpectedTables() throws SQLException {
-        assertThat(BASELINE_TABLES).hasSize(19).doesNotHaveDuplicates();
+        assertThat(BASELINE_TABLES).hasSize(21).doesNotHaveDuplicates();
 
         assertThat(applicationTables())
                 .containsExactlyInAnyOrderElementsOf(
