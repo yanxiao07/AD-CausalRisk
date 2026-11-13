@@ -132,7 +132,7 @@ def main():
     parser.add_argument("--serve", action="store_true", help="Leave snapshots unconsumed and serve until Ctrl+C")
     args = parser.parse_args()
     output = args.output.resolve()
-    output.mkdir()
+    output.mkdir(parents=True)
     manifest = output / "manifest.json"
     handoff = output / "handoff.json"
     root = Path(__file__).resolve().parents[2]
