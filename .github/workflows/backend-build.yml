@@ -13,14 +13,22 @@ jobs:
           java-version: '21'
           cache: maven
           cache-dependency-path: backend/pom.xml
-      # The wrapper was added from a Windows checkout, where git cannot record the
-      # executable bit (core.filemode=false), so the POSIX script arrives as 100644 and
-      # ./mvnw would fail with "Permission denied". Committing it with
-      # `git add --chmod=+x backend/mvnw` removes the need for this step; until then it
-      # keeps CI working on Linux.
-      - run: chmod +x mvnw
-        working-directory: backend
       # Tests run on H2 in MySQL compatibility mode, so no database service is required.
       # Flyway migrates the schema during the test context startup.
       - run: ./mvnw -B -ntp verify
         working-directory: backend
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: research_runtime/requirements.lock
+      - name: Install the locked research dependencies
+        run: python -m pip install -r research_runtime/requirements.lock
+      - name: Verify the research demo over HTTP with real Java sessions
+        run: python -B -m research_runtime.examples.run_research_table_integration runtime/research-http-ci
+      - name: Show research HTTP diagnostics on failure
+        if: failure()
+        run: |
+          for log in runtime/research-http-ci/{build.log,java.log,python.stderr}; do
+            if [ -f "$log" ]; then tail -n 100 "$log"; fi
+          done

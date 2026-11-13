@@ -43,14 +43,14 @@ python_service/deepagent_contract.py负责输入校验和四阶段编排，demo_
 
 `python-demo-logistic-v1`是保留的旧接口标识；实际算法是加性演示规则加上下界截断，不是拟合的逻辑回归。贡献使用四位小数，基准为0.18，最终分数截断至[0.05,0.95]；解释贡献总和应结合基准、截断和舍入理解。`deepagent-causal-warning-v1`也不表示因果效应已识别。
 
-本地修订强化图到输入的计算连接、归并重复观测及严格日期校验，保持deepagent-v1字段、现有模型标识和正常输入的分数。原课程发布记录仍绑定其原提交；本地修改需要另外交付后才会出现在远端，同学不能依据旧CI记录推断新代码已经发布。
+联调时从同一提交取得服务源码、契约和示例，避免混用不同版本。
 
-`course-python-2026.10.11.1`提供完整源码ZIP及相对`fb4a09d243bf15170b478d484963312d490da83d`的定向补丁。已有Java/前端工程优先应用补丁：先检查`git status`保留自己的工作，再运行`git apply --check <补丁路径>`；检查成功后运行`git apply <补丁路径>`并执行本仓库测试。检查失败时按实际差异处理冲突，不能用完整ZIP覆盖已有工程。完整ZIP用于独立新目录启动，不替代业务数据库或任务数据。
-
-Java业务接口另见contracts/java-business.target.openapi.json：当前59个操作已实现并经合成本地验证，完整后端验收边界见[后端验收](Backend_Requirements_Acceptance.md)。患者结果必须选PatientAssessmentSummary并在后端过滤；仅隐藏前端按钮不足以防止接口泄露。成功Envelope和PythonAgentResult格式不同，不能把data.data错当原Agent对象。
+Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)：课程业务 59 个操作，另有 2 个独立表格研究任务操作。完整边界见[后端验收](Backend_Requirements_Acceptance.md)。患者结果必须选 PatientAssessmentSummary 并在后端过滤；仅隐藏前端按钮不足以防止接口泄露。成功 Envelope 和 Python AgentResult 格式不同，不能把 data.data 错当原 Agent 对象。
 
 报告导出支持HTML/PDF/JSON是课程要求，当前保留JSON资源并新增download附件入口，媒体类型与下载参数已记录于同份OpenAPI。后续变更媒体类型、下载头、错误DTO或状态时继续同步契约、调用方和测试。
 
-## Java业务扩展（2026-11-08）
+## Java 业务调用
 
-Java OpenAPI已记录59个实际操作。浏览器使用异步submit入口，Java固定输入/质量绑定后后台调用仍为同步的Python；仅能取消Java排队任务。应用重启关闭遗留任务，不自动重放算法。原同步POST和报告JSON资源保留。raw数值参与请求；非法原始值不能经显示舍入变合法。来源、缺失、版本、授权、模板及未完成条件见[业务状态](Business_Feature_Status.md)。
+新增课程任务页面应使用异步 submit 入口，Java 固定输入/质量绑定后后台调用仍为同步的 Python；仅能取消 Java 排队任务。应用重启关闭遗留任务，不自动重放算法。原同步 POST 和报告 JSON 资源保留。raw 数值参与请求；非法原始值不能经显示舍入变合法。来源、缺失、版本、授权、模板及未完成条件见[业务状态](Business_Feature_Status.md)。
+
+发送后超时不得盲目重复 POST。课程通道可按原 runId 只读核对 Python 缓存；缓存未命中不证明任务未执行。研究通道的 runId 只用于关联，原幂等键与 GET 只读取 Java 已保存任务。旧版需求中的可配置重试次数不描述当前实现。

@@ -2,7 +2,7 @@
 
 第1→3→4环节有界工程支撑。此候选连接已完成的`TableAssessment`与业务调用方，复用原输入准入及数值实现，不训练、不读取临床/参数、不更换现有服务。
 
-Python 内存适配与返回语义校验已由 PR28 交付。独立环回宿主通过固定人工上下文执行草案接口。Java 研究任务以已登记的人工冻结快照调用该宿主。真实来源和生产配置待验收。[后端说明](../backend/README.md#表格研究评估适配) · [OpenAPI 草案](contracts/research-table-agent.draft.openapi.json)
+独立环回宿主通过固定人工上下文执行草案接口。Java 研究任务以已登记的人工冻结快照调用该宿主。[本地启动与真实会话验收](../backend/README.md#本地研究任务联调) · [OpenAPI 草案](contracts/research-table-agent.draft.openapi.json)。真实来源和生产配置待验收。
 
 ## 接口边界
 
@@ -73,4 +73,4 @@ Java 使用独立研究快照和任务保存结构。提交接口只接受已登
 
 15项适配检查、13项统一入口检查（合计28）通过；另12项OpenAPI/Schema/语义检查通过，校验模块在`-S`下不导入NumPy/pandas/sklearn/joblib/Torch。七份公开样例含两规格完成、QC阻断和403；全部显式人工，不含真实数据/参数。
 
-独立 Python HTTP 宿主与 Java 研究任务已验证两规格完成、QC 阻断、权限和错绑拒绝、持久回读及幂等重放。真实来源完成状态、QC 和语言版本等待适用证据。
+独立 Python HTTP 宿主与 Java 研究任务已通过真实登录会话验证两规格完成、QC 阻断、越权和错绑拒绝、任务回读及幂等重放。测试库为新内存 H2，MySQL 8 重启耐久性及真实来源资格仍分别验收。

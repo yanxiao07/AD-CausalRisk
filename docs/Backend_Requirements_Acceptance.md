@@ -2,7 +2,7 @@
 
 本次是四环节研究主线的有界工程支撑：复用课程Python服务及现有Java工程，补齐业务权限、来源/质量、任务/结果持久化及管理接口；验收终点为独立的后端提交、可构建源码和对应检查。课程工程验收不替代研究模型或临床验收。
 
-基线为[课程需求V3.2](Course_SRS_V3_2.md)、[业务设计](Design_Guide.md)及[集成约定](Integration_Contract.md)。接口以[Java OpenAPI](../contracts/java-business.target.openapi.json)为准，共59个操作；Python契约和计算公式保持原样。
+基线为[课程需求 V3.2](Course_SRS_V3_2.md)、[业务设计](Design_Guide.md)及[集成约定](Integration_Contract.md)。接口以 [Java OpenAPI](../contracts/java-business.target.openapi.json) 为准，共 61 个操作：59 个课程业务操作及 2 个独立表格研究任务操作；课程 Python 契约和计算公式保持原样。
 
 ## 管理员职责
 
@@ -33,17 +33,18 @@
 
 ## 可重复检查
 
-- JDK21：`cd backend`后运行`mvnw.cmd -B -ntp verify`（Linux/macOS为`./mvnw -B -ntp verify`），303项，0失败/错误/跳过。H2 MySQL兼容模式；路由覆盖检查比较59个OpenAPI操作与实际MVC路由集合。
+- JDK 21：在 `backend` 运行 `mvnw.cmd -B -ntp verify`（Linux/macOS 为 `./mvnw -B -ntp verify`）。H2 MySQL 兼容模式；路由覆盖检查比较 61 个 OpenAPI 操作与实际 MVC 路由集合。
 - 仓库根目录：同一已安装测试依赖的Python执行`python -m unittest discover -s tests -p test_contracts_and_fixture.py -v`，5项契约/fixtures检查。此前完整课程回归733项通过；本次未变更Python计算实现。
 - 与真实Python的合成联调验证完整/BLOCKED/原始超界值、导入身份、输入不可变、审计和正常Java重启后的结果读取。客户端模拟测试与真实HTTP分别记录，不把Mock当算法或临床证据。
+- 表格研究通道另由[真实 HTTP 验收](../backend/README.md#本地研究任务联调)验证独立 Python 进程、登录会话、三个构造快照、结果和权限、幂等及患者摘要隔离。该验收使用新内存 H2，不覆盖重启耐久性。
 
 前端候选页面及32项浏览器检查属于另一组本地成果，不随本后端提交交付，也不作为接收该提交即可使用新界面的承诺。前端同学可按OpenAPI和后端README继续接入原风格的页面。
 
 ## 仍未完成
 
-1. **目标MySQL8**：V11/V12已在H2迁移验证，但真实MySQL升级、备份/恢复及部署尚未验收。不能据此宣布后端全部完成。
-2. **真实研究接入**：本地存在6个表格和9个图模型文件，但完整独立上下文、QC/首次可用时间、模型状态和训练参考仍需准入证据。FR-11/12真实模型业务推理、FR-15/16同次解释、FR-22研究实验配置包及FR-25真实双批监测业务任务/页面仍开放。聚合研究展示不等于这些计算已接通。
+1. **目标 MySQL 8**：V1–V13 已在 H2 迁移验证；[真实 MySQL 升级、备份恢复](MySQL8_Acceptance.md)及部署尚未验收。
+2. **真实研究接入**：六个表格模型的参数、状态和训练参考已通过[数值组件核验](Model_Artifact_Admission.md)，完整独立上下文、量表完成/QC、首次可用时间及执行许可仍待准入。FR-11/12 真实模型业务推理、FR-15/16 同次解释、FR-22 业务实验配置包及 FR-25 真实双批监测仍开放。
 3. **生产部署条件**：本地队列按单实例设计；多实例需任务租约/归属。现有会话契约未提供CSRF令牌流程，公网部署的认证、CSRF、审计可靠性与容量需另验。本次只提交本地课程业务，不部署。
 4. **科研/临床**：固定先验增益未确立、结构不可估、阈值SUPPRESSED及其他研究限制保持；没有新读临床记录、加载研究权重或重新训练。
 
-这份提交关闭课程业务代码补全与独立源码交付，不将以上验收依赖关闭。下一项可执行的后端验收为在专用MySQL8测试库验证迁移/回归/重启与备份恢复；需先具备明确测试库条件。前端样式与布局继续独立维护。
+下一项数据库验收为在专用 MySQL 8 测试库验证迁移、备份恢复与重启回读。前端按[接入清单](../frontend/README.md#待接入接口)独立验收。

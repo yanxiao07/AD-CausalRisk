@@ -25,4 +25,4 @@ python -m examples.research_evidence.review all --openai-model gpt-4.1-mini
 
 检查的是构造评估报告。真实来源资格、历史首次可用、科学因果结论与临床使用依赖其独立证据。示例依赖只安装到独立环境。Java 适配见[项目 README](../../README.md)和[候选研究契约](../../docs/Research_Table_Agent_Contract.md)。
 
-2026-11-13 离线 SDK 验收覆盖四个构造场景及六个回退场景。使用 `gpt-4.1-mini` 的首次对照四例均收到 API 限流响应，程序保留了确定性报告。模型草稿的准确性和成功响应耗时待实测。
+离线 SDK 已验证四个构造场景和六个回退场景。真实模型对照遇到限流时回退到规则结果；成功响应的准确性和耗时仍待实测。

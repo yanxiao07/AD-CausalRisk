@@ -2,15 +2,15 @@
 
 Java负责会话、对象授权、资料、导入、质量、持久化任务/结果、复核、随访、报告和审计。浏览器只调用Java，Java调用Python。业务操作见[OpenAPI](../contracts/java-business.target.openapi.json)，功能与研究边界见[业务状态](../docs/Business_Feature_Status.md)。
 
-本次交付仅包含后端、共享业务契约及相关检查/文档；前端候选页面不随本次提交交付。按需求逐项完成状态、验证与尚未验收条件见[后端验收](../docs/Backend_Requirements_Acceptance.md)。
+按需求逐项完成状态、验证与尚未验收条件见[后端验收](../docs/Backend_Requirements_Acceptance.md)。
 
 ## 接收与升级
 
 原同步评估POST、JSON报告资源及当前用户接口保持兼容。新调用方按OpenAPI使用异步submit/任务查询、服务端分页、输入快照和附件download入口；取消只支持PENDING任务。管理员界面按`/api/me`的menus渲染，纯ADMIN仅audit/system/users，多角色才合并对应业务入口。
 
-已有库先完整备份，再在专用测试库验证 V11–V13。应用升级后 Flyway 执行前向迁移并校验历史脚本。V12 为既有演示研究账号显式保留 ALL，新研究账号默认 ASSIGNED，通过授权接口配置对象范围。
+已有库先完整备份，再在专用测试库验证 V11–V13。应用升级后 Flyway 执行前向迁移并校验历史脚本。V12 为既有演示研究账号显式保留 ALL，新研究账号默认 ASSIGNED，通过授权接口配置对象范围。目标库验收步骤见 [MySQL 8 验收](../docs/MySQL8_Acceptance.md)。
 
-前端应从本次契约接入，不要复制本地候选页面冒充本PR交付。此PR未配置前端专用CI；独立后端验证不依赖未提交前端。
+前端接入顺序和剩余页面适配见[前端说明](../frontend/README.md#待接入接口)。
 
 ## 构建与验证
 
@@ -40,19 +40,27 @@ $env:ADCR_PYTHON_URL='http://127.0.0.1:8091'
 | 创建或重放 | `POST /api/research/table-assessment-tasks`，携带 `Idempotency-Key` 和唯一请求字段 `snapshotId`（正整数）。首次提交同步调用研究宿主，重放读取 Java 任务。 |
 | 读取 | `GET /api/research/table-assessment-tasks/{id}` 从 Java 读取持久化任务及已校验的研究结果。 |
 
-管理员或研究员须为快照登记的授权用户，同时具备当前档案原始数据权限。患者角色优先排除。快照由受控登记流程写入 `research_table_snapshot`，保存原始 UTF-8 请求、原字节 SHA-256、独立固定的请求/输入/上下文摘要、模型身份、档案及授权用户。当前只接收 `CONSTRUCTED_VALIDATION` 快照。测试使用仓库公开的七/十变量与 QC 阻断样例登记人工快照。真实来源映射、快照登记和执行资格继续依赖独立证据。字段、单位、索引时钟与 QC 责任见[研究契约](../docs/Research_Table_Agent_Contract.md)。
+管理员或研究员须为快照登记的授权用户，同时具备当前档案原始数据权限。患者角色优先排除。快照保存原始 UTF-8 请求、原字节 SHA-256、独立固定的请求/输入/上下文摘要、模型身份、档案及授权用户。当前只接收由本地测试启动器登记的 `CONSTRUCTED_VALIDATION` 样例，没有登记 API。真实来源映射、快照登记和执行资格继续依赖独立证据。字段、单位、索引时钟与 QC 责任见[研究契约](../docs/Research_Table_Agent_Contract.md)。
 
 默认研究宿主未配置，已授权且已登记的首次请求返回 503。联调时设置 `research.table.base-url`、`research.table.bearer-token` 与可选的 `research.table.read-timeout`（默认 120 秒）。Java 按草案同步 POST 到独立研究宿主。宿主接收原始快照字节并独立绑定来源、模型及预测和解释授权。HTTP 限环回地址，远程地址使用 HTTPS。
 
-在仓库根目录，用已安装 `research_runtime/requirements.lock` 的研究解释器和 JDK21 运行：
+Java 先持久化任务、快照引用和幂等键，再发一次 POST。超时、断线或无效响应保留 `OUTCOME_UNKNOWN`，原键重放和 GET 只查本地任务，同一快照换键返回 409。合法拒绝保留错误码及 `FAILED`。通过原候选 Schema、独立身份绑定、双原因 CIF 和解释重构检查后才保存结果。阻断保持预测、解释及绑定为 null，计算次数为零。审计保存任务 ID 和状态。现有患者摘要与演示风险数据沿用各自接口。
+
+## 本地研究任务联调
+
+从仓库根目录运行。需要 JDK 21 和已安装 `research_runtime/requirements.lock` 的 Python 3.11 环境。每次选一个尚不存在的输出目录：
 
 ```sh
-python -m research_runtime.examples.run_research_table_integration ./research-http-receipt
+# 启动两端，登记快照并留给前端提交。Ctrl+C 停止两端。
+python -m research_runtime.examples.run_research_table_integration runtime/research-ui --serve
+
+# 不开前端，跑真实 HTTP 验收；结束后关闭两端。CI 使用此模式。
+python -m research_runtime.examples.run_research_table_integration runtime/research-http-receipt
 ```
 
-选择尚不存在的输出目录。联调命令启动独立 Python 合成宿主，通过 Java MVC 入口与 H2 验证七变量、十变量和 QC 阻断。Python 从既有人工构造器创建模型和可信上下文，每次请求经过实际计算入口。回执包括人工快照清单、Java 测试日志及每次 Python 计算次数。用例检查授权拒绝、错绑、重复提交和历史回读。目标 MySQL 及真实研究来源待验收。
+两端绑定回环地址和临时端口。Java 用测试类路径和全新的内存 H2，只登记公开构造样例，不连接现有业务库。读取输出目录的 `handoff.json`，将本地前端代理的目标设为 `javaBaseUrl`，浏览器仍通过同源 `/api` 访问 Java。以 `researcher` / `DemoPass!2026` 登录；它是三份快照的所有者。用 `snapshots.seven`、`snapshots.ten` 和 `snapshots.blocked` 作为请求体中的 `snapshotId`；保留每次意图的 `Idempotency-Key`。两份完成返回各自 CIF 和同次解释，QC 阻断保留显式 null。同一快照换键返回 409，另起干净实例可重复演示。已有 Vite 代理默认指向 8080，联调时请用独立的本地代理配置指向新端口。
 
-Java 先持久化任务、快照引用和幂等键，再发一次 POST。超时、断线或无效响应保留 `OUTCOME_UNKNOWN`，原键重放和 GET 只查本地任务，同一快照换键返回 409。合法拒绝保留错误码及 `FAILED`。通过原候选 Schema、独立身份绑定、双原因 CIF 和解释重构检查后才保存结果。阻断保持预测、解释及绑定为 null，计算次数为零。审计保存任务 ID 和状态。现有患者摘要与演示风险数据沿用各自接口。
+验收模式实际登录研究员、管理员及患者，检查两种完成、QC 阻断、授权拒绝、同键重放、换键冲突和患者摘要隔离；Python 日志须恰好为三次执行。失败和结局未知另由 Java 的环回故障回归覆盖。回执 `verification.json` 与两端日志均在输出目录。该内存库只在当前进程有效；跨进程耐久性和真实研究来源另行验收。
 
 ## 关键行为
 

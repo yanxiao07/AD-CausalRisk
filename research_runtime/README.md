@@ -1,6 +1,6 @@
 # 离线研究计算、固定训练与图模型
 
-[独立研究请求候选](../docs/Research_Table_Agent_Contract.md)提供宿主绑定的内存请求适配及标准库返回校验，附OpenAPI草案/人工样例和Java字段映射。新模型不接受旧DTO重命名；候选尚无HTTP监听，活动契约、默认服务和数据准入门槛保持。
+[独立表格研究通道](../docs/Research_Table_Agent_Contract.md)提供宿主绑定的内存适配、标准库结果校验和环回合成 HTTP 宿主。用[联调启动器](../backend/README.md#本地研究任务联调)启动 Java 与 Python、取得人工快照 ID，或在真实登录会话下验收两规格完成和 QC 阻断。真实研究宿主仍待独立准入。
 
 [统一表格评估入口](../docs/Table_Assessment_Integration.md)将原许可预测与保存参考SHAP连接成同一输入/模型状态的内存结果，保留来源准入、独立解释权限和失败无部分数值。它是后续真实业务接入的计算步骤，不读取真实数据/参数、不新增HTTP或更换默认服务。
 
@@ -10,17 +10,17 @@
 
 ## 实验配置导出与参数核验
 
-[FR-22配置元数据导出](../docs/Research_Experiment_Config.md)新增纯标准库内存导出/回读，显式选择两规格三算法、原始24月策略、保存参考政策、seed/划分政策及5项发布级摘要；特征/单位复用原准入定义，个人内容/路径/参数/许可无导出字段。人工示例：`python -B -S -m research_runtime.examples.experiment_config_constructed`。新增17项检查加入标准库层，当前52项；历史35项记录仍保留原范围，不冒充新远端结果。
+[FR-22 配置元数据导出](../docs/Research_Experiment_Config.md)提供标准库内存导出与回读，涵盖两规格三算法、原始 24 月策略、保存参考、种子、划分与发布摘要。个人内容、路径、参数及许可不导出。人工示例：`python -B -S -m research_runtime.examples.experiment_config_constructed`。
 
-[实际参数组件核验与人工绑定](../docs/Model_Artifact_Admission.md)续轮通过：修正为逐实例基线，6参数各1读/加载、30状态变动检查通过；同进程复用模型完成6完整＋3双侧MRI缺失人工案例，69次CIF均返回，两原因端点差及重构最大误差0。首轮停止记录保持，不以续轮改写历史；未读临床或拟合、未生成真实上下文/许可，完整宿主仍NO_GO。
+[实际参数组件核验](../docs/Model_Artifact_Admission.md)覆盖六个表格模型的参数、状态与保存参考。九个人工案例验证预测与解释绑定；完整宿主资格仍为 NO_GO。
 
 [源码/锁及安装记录检查](../docs/Research_Runtime_Binding.md)补充表格数值8成员范围、两种锁字节对象和12版本/6274带哈希安装成员的一致性证据；3875无哈希成员、受阻模块导入、发行来源/缓存身份不升级为认证。未改原锁或环境，未签发可信上下文/许可。
 
 [图实验配置导出](../docs/Research_Experiment_Config.md#图模型配置)复用同一API，新增独立图schema、固定协议三臂和种子，区分单种子CIF与三种子CIF等权均值；各参数摘要按种子绑定，拒绝漏种子/重复参数/错误聚合策略。`python -B -S -m research_runtime.examples.graph_experiment_config_constructed`输出人工均值配置，`--arm self_only --single-seed 20260927`输出单模型配置。无需Torch/NumPy/参数读取；新增17检查加入标准库层，当前69项，原六表格v1字节不变。
 
-## 新增离线评价与监测
+## 离线评价与监测
 
-本次交付复用已完成实现，为第2→3环节的结构/评价与第1→3→4环节的监测提供纯内存接口。不新增文件读取器、训练器或HTTP服务，也不改变业务默认模型。
+以下纯内存接口支持结构评价和监测，独立于业务服务。
 
 | 模块 | 接口与限制 |
 | --- | --- |
@@ -48,9 +48,7 @@ python -B -S -m unittest research_runtime.tests.test_competing_event_functional 
 .venv-research-graph/Scripts/python.exe -B -m unittest research_runtime.tests.test_graph_modality_strata research_runtime.tests.test_graph_modality_evaluation research_runtime.tests.test_table_thresholds -v
 ```
 
-本次只提交计算源码、人工测试与技术说明；真实临床、权重、OOF、私有折、执行授权和机器审计不在Git中。以下既有训练/加载工具的范围保持，不能因源码交付自动执行训练或部署。
-
-原源码交付验收在Windows/Python 3.11的既有环境运行上述9个专题及原`test_graph_explanation`、`test_table_xai_study`回归，共241项通过；课程标准库/契约回归733项通过。当时有pandas `astype(copy=...)`弃用提示，未修改数值实现，也未执行Linux、Python 3.12或研究原语远端CI。下面单列新增CI检查的范围。
+受控数据、模型权重、折外预测、私有折和执行授权不在 Git 中。测试使用人工数据。
 
 ## 研究原语分层CI
 
@@ -189,19 +187,19 @@ Python API：`run_nested(frame, output, specification, families, splits=..., exi
 
 `discrete.py`保留原人月、预处理和CIF实现；`estimators.py`整理原七/十变量候选规格。仓库根目录`adni_algorithm_candidates.py`只保留原模型pickle引用的`NotEstimable`/`StrictHazards`类，类AST保持一致。这一兼容路径让现有模型无需重训或重新序列化即可加载。来源摘要与范围见[Source_Provenance.json](Source_Provenance.json)。
 
-剩余接入工作：版本化真实输入契约与字段映射、来源/QC/历史可获得性政策、受控参数交付及目标机部署、Java AgentClient/权限/任务和结果持久化的联合验收。共享契约变化先协调后实施。固定表格训练/校准、三臂图研究和图解释诊断均已阶段完成；历史队列重建、全部表格比较/解释并未整体迁移。当前CLI仍输出原始CIF，新训练产物不自动部署。严格个人因果、SHAP/LIME、跨重训/独立和临床验证继续开放，当前执行顺序取[Python需求状态](../docs/Python_Requirement_Status.md)。
+当前 CLI 输出原始 CIF。固定表格训练、校准、三臂图研究和解释诊断已有阶段交付。Java 与 Python 的人工快照联调已通过；真实接入仍需独立来源、量表完成与 QC、首次可用时间、执行许可及目标环境验收。科研进度见[Python 需求状态](../docs/Python_Requirement_Status.md)。
 
 输出为合成输入下的研究模型计算值，`clinicalUse=false`；工程一致性不能证明临床概率精度、算法优越或个体因果效应。
 
-## 本次分组归因与输入适配检查
+## 分组归因与输入适配检查
 
-在上述固定CPU图环境运行全部新增方法/适配/编排检查：
+在固定 CPU 图环境运行分组归因和输入适配检查：
 
 ```powershell
 .venv-research-graph/Scripts/python.exe -m unittest research_runtime.tests.test_group_shapley research_runtime.tests.test_group_lime research_runtime.tests.test_group_xai_admission research_runtime.tests.test_group_xai_dtypes research_runtime.tests.test_grouped_xai_study research_runtime.tests.test_table_explanation research_runtime.tests.test_table_xai_study research_runtime.tests.test_input_admission research_runtime.tests.test_input_admission_compatibility research_runtime.tests.test_inmemory_inference research_runtime.tests.test_inmemory_cif_bridge -v
 ```
 
-本次106项检查通过；在外层禁止所有风险/预处理fit、参数加载、网络和受控路径读取，实际1023次人工参数CIF、34次局部替代回归，25.282秒。局部回归与风险模型训练分开计数。完整60/1200编排矩阵使用模拟归因，不代表1200次实际回归或真实研究；原生图的人工状态由现有构造辅助函数赋值，不调用优化器。
+检查使用人工参数与构造输入。局部替代回归与风险模型训练分别计数，模拟编排不代表真实研究执行。
 
 输入一致性校验模块只用标准库。两个独立构造示例：
 

@@ -9,7 +9,6 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,7 +52,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ResearchTableAssessmentTest {
     private static final String PATH = "/api/research/table-assessment-tasks";
     private static final String TOKEN = "constructed-test-token";
-    private static final String LIVE_MANIFEST = System.getProperty("research.table.it.manifest");
     private static final AtomicInteger REQUESTS = new AtomicInteger();
     private static final AtomicReference<Exchange> EXCHANGE = new AtomicReference<>();
     private static final ExecutorService HOST_THREADS = Executors.newVirtualThreadPerTaskExecutor();
@@ -69,11 +67,9 @@ class ResearchTableAssessmentTest {
 
     @DynamicPropertySource
     static void configure(DynamicPropertyRegistry properties) {
-        properties.add("research.table.base-url", () -> "http://127.0.0.1:"
-                + (LIVE_MANIFEST == null ? SERVER.getAddress().getPort() : liveManifest().get("port").asInt()));
-        properties.add("research.table.bearer-token",
-                () -> LIVE_MANIFEST == null ? TOKEN : System.getenv("RESEARCH_TABLE_TEST_TOKEN"));
-        properties.add("research.table.read-timeout", () -> LIVE_MANIFEST == null ? "600ms" : "30s");
+        properties.add("research.table.base-url", () -> "http://127.0.0.1:" + SERVER.getAddress().getPort());
+        properties.add("research.table.bearer-token", () -> TOKEN);
+        properties.add("research.table.read-timeout", () -> "600ms");
     }
 
     @AfterAll
@@ -87,46 +83,6 @@ class ResearchTableAssessmentTest {
         jdbc.update("DELETE FROM idempotency_record WHERE operation='RESEARCH_TABLE_ASSESSMENT'");
         jdbc.update("DELETE FROM research_table_task");
         jdbc.update("DELETE FROM research_table_snapshot");
-    }
-
-    @Test
-    @EnabledIfSystemProperty(named = "research.table.it.manifest", matches = ".+")
-    void callsIndependentPythonResearchHost() throws Exception {
-        var actor = actor("admin", "ADMIN");
-        JsonNode cases = liveManifest().get("cases");
-        for (String label : List.of("seven", "ten", "blocked")) {
-            JsonNode binding = cases.get(label);
-            JsonNode request = binding.get("request");
-            long snapshot = snapshot(request, binding.get("model"), binding.get("requestSha256").textValue(),
-                    binding.get("inputSha256").textValue(), binding.get("contextSha256").textValue(), "admin");
-            JsonNode created = body(submit(snapshot, "live-" + label, actor));
-            assertThat(ContractSchemas.validateResponse(created, PATH, "post", 200)).isEmpty();
-            JsonNode task = created.get("data");
-            boolean blocked = label.equals("blocked");
-            assertThat(task.get("status").textValue()).isEqualTo(blocked ? "BLOCKED" : "COMPLETED");
-            JsonNode response = task.get("result");
-            JsonNode fixture = fixture("response-" + label);
-            for (String field : List.of("prediction", "explanation", "admission", "computation")) {
-                assertThat(response.get(field)).as("%s %s", label, field).isEqualTo(fixture.get(field));
-            }
-            long taskId = task.get("taskId").longValue();
-            assertThat(body(submit(snapshot, "live-" + label, actor)).get("data")).isEqualTo(task);
-            assertThat(body(mvc.perform(get(PATH + "/" + taskId).with(authentication(actor)))).get("data"))
-                    .isEqualTo(task);
-            mvc.perform(get(PATH + "/" + taskId).with(authentication(actor("researcher", "RESEARCHER"))))
-                    .andExpect(status().isForbidden());
-            submit(snapshot, "different-" + label, actor).andExpect(status().isConflict());
-        }
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM research_table_task", Integer.class)).isEqualTo(3);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM risk_assessment", Integer.class)).isZero();
-    }
-
-    private static JsonNode liveManifest() {
-        try {
-            return new ObjectMapper().readTree(Files.readAllBytes(Path.of(LIVE_MANIFEST)));
-        } catch (IOException failure) {
-            throw new IllegalStateException("Cannot read constructed Python host manifest", failure);
-        }
     }
 
     @ParameterizedTest
