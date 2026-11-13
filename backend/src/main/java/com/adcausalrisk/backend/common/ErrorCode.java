@@ -43,6 +43,7 @@ public enum ErrorCode {
     TASK_STATE_CONFLICT(409, HttpStatus.CONFLICT, "当前任务状态不支持此操作"),
 
     UNSUPPORTED_MEDIA_TYPE(415, HttpStatus.UNSUPPORTED_MEDIA_TYPE, "不支持的请求 Content-Type"),
+    RESEARCH_UNAVAILABLE(503, HttpStatus.SERVICE_UNAVAILABLE, "研究评估服务暂不可用"),
 
     /** Unexpected server failure. The detail stays in the log and never reaches the client. */
     INTERNAL_ERROR(500, HttpStatus.INTERNAL_SERVER_ERROR, "服务器内部错误");

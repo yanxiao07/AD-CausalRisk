@@ -6754,6 +6754,179 @@
         ]
       }
     },
+    "/api/research/table-assessment-tasks": {
+      "post": {
+        "operationId": "submitResearchTableTask",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "按已独立登记的冻结快照提交研究评估",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "snapshotId": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "format": "int64"
+                  }
+                },
+                "required": [
+                  "snapshotId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "持久化研究任务",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchTableTaskEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/table-assessment-tasks/{id}": {
+      "get": {
+        "operationId": "getResearchTableTask",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "读取 Java 持久化的研究任务",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "持久化研究任务",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchTableTaskEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/research/evidence": {
       "get": {
         "summary": "已封存研究证据与受控候选模型路径定位（不加载权重）",
@@ -7055,6 +7228,121 @@
   },
   "components": {
     "schemas": {
+      "ResearchTableTask": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "integer",
+            "minimum": 1,
+            "format": "int64"
+          },
+          "snapshotId": {
+            "type": "integer",
+            "minimum": 1,
+            "format": "int64"
+          },
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1,
+            "format": "int64"
+          },
+          "runId": {
+            "type": "string",
+            "pattern": "^run-[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+          },
+          "status": {
+            "enum": [
+              "COMPLETED",
+              "BLOCKED",
+              "FAILED",
+              "OUTCOME_UNKNOWN"
+            ]
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "已验证的 research-table-agent-v1 响应，保存双原因 CIF 和同次解释。"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "taskId",
+          "snapshotId",
+          "subjectId",
+          "runId",
+          "status",
+          "errorCode",
+          "result",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false,
+        "if": {
+          "properties": {
+            "status": {
+              "enum": [
+                "COMPLETED",
+                "BLOCKED"
+              ]
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "errorCode": {
+              "type": "null"
+            },
+            "result": {
+              "type": "object"
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "errorCode": {
+              "type": "string"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        }
+      },
+      "ResearchTableTaskEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          {
+            "properties": {
+              "code": {
+                "const": 0
+              },
+              "errorCode": {
+                "type": "null"
+              },
+              "data": {
+                "$ref": "#/components/schemas/ResearchTableTask"
+              }
+            }
+          }
+        ]
+      },
       "Envelope": {
         "type": "object",
         "properties": {

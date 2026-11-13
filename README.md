@@ -27,7 +27,7 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 ## Java 适配入口
 
-现有演示调用继续使用 `deepagent-v1`。本次交付新增七/十变量表格研究评估的 Python 内存入口、结果校验与独立 HTTP 契约草案。Java 可先用[七份人工请求与响应](docs/contracts/examples/research-table-agent)评审 DTO 和结果消费。研究 HTTP 路由处于草案阶段，双方确认后再接入独立宿主。
+现有演示调用继续使用 `deepagent-v1`。七/十变量研究评估提供 Python 内存入口、结果校验和独立合成 HTTP 宿主。Java 已实现冻结快照提交、任务和结果持久化、幂等及超时处理。[后端接口与配置](backend/README.md#表格研究评估适配)
 
 | Java 适配项 | 实现要求 |
 | --- | --- |
@@ -36,7 +36,7 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 | 结果与权限 | 校验原请求、模型和快照身份，再保存双原因 CIF 及绑定同一次评估的解释。阻断结果保留显式 null。采用独立结果版本和权限，患者摘要使用 Java 白名单。 |
 | 幂等与超时 | Java 持久化任务、请求快照、幂等键、结果和审计。研究 `runId` 仅用于关联。超时记录结局未知，保留原任务供核对，避免自动重发 POST。 |
 
-联调时先核两规格完成、QC 阻断、越权和身份错绑，再验超时、Java 幂等与历史回读。具体字段、单位、授权和存储映射见[研究契约与 Java 责任](docs/Research_Table_Agent_Contract.md)，接口形状见 [OpenAPI 草案](docs/contracts/research-table-agent.draft.openapi.json)。
+独立合成联调覆盖两规格完成、QC 阻断、越权、身份错绑、Java 幂等与历史回读。超时路径由 Java 环回故障用例覆盖。字段、单位、授权和存储见[研究契约与 Java 责任](docs/Research_Table_Agent_Contract.md)，接口形状见 [OpenAPI 草案](docs/contracts/research-table-agent.draft.openapi.json)。
 
 [Deep Agents 证据核对](examples/research_evidence/README.md)是独立 Python 研究示例。它通过只读工具检查人工评估的来源、同次结果绑定和适用范围，核验失败时保留确定性报告。Java 适配范围以研究评估契约为准。
 
@@ -61,7 +61,7 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 | 模块 | 已有实现 | 后续工作 |
 | --- | --- | --- |
 | Python | 合成四阶段服务、契约/身份校验、客户端；可选离线训练、解释、评价与联合监测计算 | 当前业务仍使用合成规则；研究模型服务、真实监控输入及临床验证单独验收 |
-| Java 后端 | 59个已记录的业务操作，含对象范围、来源、独立质量、输入快照、异步任务、用户管理、随访、报告和审计 | MySQL实际迁移及其他验收边界见[后端说明](backend/README.md)，接口实现不等于全面验收 |
+| Java 后端 | 61个已记录的业务操作，含对象范围、来源、独立质量、输入快照、异步任务、用户管理、随访、报告、审计和表格研究任务 | MySQL实际迁移及其他验收边界见[后端说明](backend/README.md) |
 | Web 前端 | 保持main中已交付的Vue 3/Vite/Element Plus工程、真实会话与四角色业务页面；本次后端交付不修改frontend | 新增API的页面接入、统一视觉及移动端验收由前端继续；本地候选页面不随本次交付发布 |
 | 全链路 | 浏览器→Java→Python合成调用链已有实现；Java负责业务保存与权限 | MySQL、全场景故障/重启和浏览器端到端验收单独完成；离线研究模块不自动接入业务 |
 
