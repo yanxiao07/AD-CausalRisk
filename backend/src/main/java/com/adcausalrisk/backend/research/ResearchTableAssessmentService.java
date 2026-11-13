@@ -9,6 +9,7 @@ import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.SubjectAccessPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -26,10 +27,12 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Optional;
 
 @Service
 class ResearchTableAssessmentService {
+    static final String TRAINED_MODEL = "trained-seven-logistic";
     private static final String OPERATION = "RESEARCH_TABLE_ASSESSMENT";
     private static final String OUTCOME_UNKNOWN = "OUTCOME_UNKNOWN";
     private static final String TASK_QUERY = """
@@ -40,6 +43,7 @@ class ResearchTableAssessmentService {
 
     record Task(long taskId, long snapshotId, long subjectId, String runId, String status,
                 String errorCode, JsonNode result, Instant createdAt, Instant updatedAt) {}
+    record SnapshotOption(long snapshotId, Long taskId) {}
 
     private record Snapshot(byte[] requestBytes, JsonNode request, JsonNode model, String requestDigest,
                             String inputDigest, String contextDigest) {}
@@ -53,6 +57,8 @@ class ResearchTableAssessmentService {
     private final ResearchTableProtocol protocol;
     private final AuditService audit;
     private final Clock clock;
+    @Value("${research.table.test-fixtures-enabled:false}")
+    private boolean testFixturesEnabled;
 
     ResearchTableAssessmentService(JdbcTemplate jdbc, PlatformTransactionManager manager,
             IdempotencyRecordRepository idempotency, SubjectAccessPolicy access,
@@ -89,6 +95,29 @@ class ResearchTableAssessmentService {
             return task;
         }
         return find(taskId, principal);
+    }
+
+    List<SnapshotOption> snapshots(long subjectId, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        if (!access.canReadRawScores(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        return jdbc.query("""
+                SELECT s.id,s.request_json,t.id AS task_id
+                FROM research_table_snapshot s LEFT JOIN research_table_task t ON t.snapshot_id=s.id
+                WHERE s.subject_id=? AND s.authorized_user_id=? AND s.data_scope='CONSTRUCTED_VALIDATION'
+                ORDER BY s.id
+                """, (row, index) -> {
+                    try {
+                        JsonNode request = protocol.parse(row.getString("request_json").getBytes(StandardCharsets.UTF_8));
+                        if (!TRAINED_MODEL.equals(request.path("modelKey").asText())) {
+                            return null;
+                        }
+                        return new SnapshotOption(row.getLong("id"), row.getObject("task_id", Long.class));
+                    } catch (IOException | IllegalArgumentException invalid) {
+                        throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "冻结研究快照配置无效");
+                    }
+                }, subjectId, principal.userId()).stream().filter(java.util.Objects::nonNull).toList();
     }
 
     private Submission reserve(long snapshotId, String key, String digest, AppUserPrincipal principal) {
@@ -151,6 +180,11 @@ class ResearchTableAssessmentService {
             JsonNode request = protocol.parse(bytes);
             JsonNode model = protocol.parse(row.getString("model_json").getBytes(StandardCharsets.UTF_8));
             protocol.validateRequest(request, model);
+            if (!testFixturesEnabled && (!TRAINED_MODEL.equals(request.path("modelKey").asText())
+                    || !"seven".equals(model.path("specification").asText())
+                    || !"logistic".equals(model.path("family").asText()))) {
+                throw new IllegalArgumentException("Expected the registered trained model");
+            }
             return new Snapshot(bytes, request, model,
                     digestColumn(row, "request_sha256"), digestColumn(row, "input_sha256"),
                     digestColumn(row, "context_sha256"));

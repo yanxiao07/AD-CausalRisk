@@ -25,7 +25,7 @@ jobs:
       - name: Install the locked research dependencies
         run: python -m pip install -r research_runtime/requirements.lock
       - name: Verify the research demo over HTTP with real Java sessions
-        run: python -B -m research_runtime.examples.run_research_table_integration runtime/research-http-ci
+        run: python -B -m research_runtime.examples.run_research_table_integration runtime/research-http-ci --contract-test
       - name: Show research HTTP diagnostics on failure
         if: failure()
         run: |

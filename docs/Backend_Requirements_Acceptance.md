@@ -2,7 +2,7 @@
 
 本次是四环节研究主线的有界工程支撑：复用课程Python服务及现有Java工程，补齐业务权限、来源/质量、任务/结果持久化及管理接口；验收终点为独立的后端提交、可构建源码和对应检查。课程工程验收不替代研究模型或临床验收。
 
-基线为[课程需求 V3.2](Course_SRS_V3_2.md)、[业务设计](Design_Guide.md)及[集成约定](Integration_Contract.md)。接口以 [Java OpenAPI](../contracts/java-business.target.openapi.json) 为准，共 61 个操作：59 个课程业务操作及 2 个独立表格研究任务操作；课程 Python 契约和计算公式保持原样。
+基线为[课程需求 V3.2](Course_SRS_V3_2.md)、[业务设计](Design_Guide.md)及[集成约定](Integration_Contract.md)。接口以 [Java OpenAPI](../contracts/java-business.target.openapi.json) 为准，共 62 个操作。表格研究任务为新评估入口，旧规则接口保留已有任务回读。
 
 ## 管理员职责
 
@@ -21,7 +21,7 @@
 | FR-DATA-03/04/05 | CSV映射、预检、错误、原文/映射绑定幂等、确认入库及版本推进 | 导入事务/权限/重放与错误附件验证；错误明细保留既有数量上限 |
 | FR-QUALITY-01/02/03 | 独立持久化检查、规则/操作者/覆盖/摘要、PASS/WARN/BLOCKED | 全缺失不能因人工批准变有效；资料质量与Python窗口资格分别记录 |
 | FR-ASSESS-01/02 | 固定输入/来源/质量绑定、持久化幂等任务、有界异步队列、排队取消、失败与中断恢复 | PENDING/RUNNING取消边界和旧快照不变；正常新进程可读原结果；单实例任务库设计 |
-| FR-GRAPH-01/FR-WARN-01/FR-EXPLAIN-01 | 校验并保存同一次Python结果、图/贡献/缺失/版本/限制，提供图比较及来源追溯 | 真实合成Java→Python调用及结构校验；不伪造阶段进度，不接入未准入研究权重 |
+| FR-GRAPH-01/FR-WARN-01/FR-EXPLAIN-01 | 校验并保存同一次Python结果、图/贡献/缺失/版本/限制，提供图比较及来源追溯 | 规则历史用例与表格模型演示分别验证。演示使用已训练权重、人工快照及同次归因 |
 | FR-WARN-02 | BLOCKED保留null分数和UNAVAILABLE等级 | 序列化、报告和真实合成调用核验；不补0 |
 | FR-EXPLAIN-02 | 患者本人摘要/随访/医生联系，后端白名单过滤 | 越权及敏感字段检查；无图权重、排序数值、内部阶段和备注 |
 | FR-FOLLOW-01/02 | 对象权限、创建/改期/完成/取消、终态保护、近期/逾期与分页 | 数据库业务回归；终态不因省略status被改写 |
@@ -33,18 +33,18 @@
 
 ## 可重复检查
 
-- JDK 21：在 `backend` 运行 `mvnw.cmd -B -ntp verify`（Linux/macOS 为 `./mvnw -B -ntp verify`）。H2 MySQL 兼容模式；路由覆盖检查比较 61 个 OpenAPI 操作与实际 MVC 路由集合。
-- 仓库根目录：同一已安装测试依赖的Python执行`python -m unittest discover -s tests -p test_contracts_and_fixture.py -v`，5项契约/fixtures检查。此前完整课程回归733项通过；本次未变更Python计算实现。
+- JDK 21：在 `backend` 运行 `mvnw.cmd -B -ntp verify`（Linux/macOS 为 `./mvnw -B -ntp verify`）。H2 MySQL 兼容模式；路由覆盖检查比较 62 个 OpenAPI 操作与实际 MVC 路由集合。
+- 仓库根目录：同一已安装测试依赖的Python执行`python -m unittest discover -s tests -p test_contracts_and_fixture.py -v`，5项契约/fixtures检查。旧规则计算用于回归检查。
 - 与真实Python的合成联调验证完整/BLOCKED/原始超界值、导入身份、输入不可变、审计和正常Java重启后的结果读取。客户端模拟测试与真实HTTP分别记录，不把Mock当算法或临床证据。
-- 表格研究通道另由[真实 HTTP 验收](../backend/README.md#本地研究任务联调)验证独立 Python 进程、登录会话、三个构造快照、结果和权限、幂等及患者摘要隔离。该验收使用新内存 H2，不覆盖重启耐久性。
+- 表格研究通道用[真实 HTTP 验收](../backend/README.md#本地研究任务联调)验证独立 Python 进程、登录会话、已训练权重、人工快照、结果回读及权限。验收使用新内存 H2。
 
-前端候选页面及32项浏览器检查属于另一组本地成果，不随本后端提交交付，也不作为接收该提交即可使用新界面的承诺。前端同学可按OpenAPI和后端README继续接入原风格的页面。
+前端同学按快照列表和研究任务接口适配本地评估页。模型文件须从受控环境提供。
 
 ## 仍未完成
 
 1. **目标 MySQL 8**：V1–V13 已在 H2 迁移验证；[真实 MySQL 升级、备份恢复](MySQL8_Acceptance.md)及部署尚未验收。
-2. **真实研究接入**：六个表格模型的参数、状态和训练参考已通过[数值组件核验](Model_Artifact_Admission.md)，完整独立上下文、量表完成/QC、首次可用时间及执行许可仍待准入。FR-11/12 真实模型业务推理、FR-15/16 同次解释、FR-22 业务实验配置包及 FR-25 真实双批监测仍开放。
+2. **真实研究接入**：六个表格模型的参数、状态和训练参考已通过[数值组件核验](Model_Artifact_Admission.md)，完整独立上下文、量表完成/QC、首次可用时间及执行许可仍待准入。真实患者推理、图模型业务评估、研究报告、FR-22 业务实验配置包及 FR-25 真实双批监测仍开放。
 3. **生产部署条件**：本地队列按单实例设计；多实例需任务租约/归属。现有会话契约未提供CSRF令牌流程，公网部署的认证、CSRF、审计可靠性与容量需另验。本次只提交本地课程业务，不部署。
-4. **科研/临床**：固定先验增益未确立、结构不可估、阈值SUPPRESSED及其他研究限制保持；没有新读临床记录、加载研究权重或重新训练。
+4. **科研/临床**：固定先验增益未确立、结构不可估、阈值SUPPRESSED及其他研究限制保持；演示仅使用人工快照及现有权重。
 
-下一项数据库验收为在专用 MySQL 8 测试库验证迁移、备份恢复与重启回读。前端按[接入清单](../frontend/README.md#待接入接口)独立验收。
+下一项数据库验收为在专用 MySQL 8 测试库验证迁移、备份恢复与重启回读。前端按[评估说明](../frontend/README.md#风险评估接入)独立验收。

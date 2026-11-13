@@ -1,8 +1,6 @@
 # Java与Python联调约定
 
-独立表格研究通道提供 Python 内存适配、语义校验和环回合成宿主。Java 的研究任务接口接收已登记的人工冻结快照，调用独立宿主并保存双原因 CIF。以下描述当前演示接口。[研究契约](Research_Table_Agent_Contract.md) · [Java 研究任务](../backend/README.md#表格研究评估适配)
-
-Python只承担合成工作流，不访问Java数据库、不管理用户会话、不写业务任务表。Java向Python传当前任务需要的合成输入，按contracts/python-agent.openapi.json校验结果后保存；前端只调用Java。
+新评估由 Vue 调用 Java 的研究任务接口。Java 从已授权的冻结快照取输入，调用 Python 表格宿主并保存双原因 CIF 和解释。课程展示使用训练权重及人工样例。旧规则契约供历史回读与回归。其行为记录如下。[表格契约](Research_Table_Agent_Contract.md) · [启动与接口](../backend/README.md#本地研究任务联调)
 
 | Python情况 | HTTP | Java应做什么 |
 | --- | --- | --- |
@@ -51,6 +49,6 @@ Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)�
 
 ## Java 业务调用
 
-新增课程任务页面应使用异步 submit 入口，Java 固定输入/质量绑定后后台调用仍为同步的 Python；仅能取消 Java 排队任务。应用重启关闭遗留任务，不自动重放算法。原同步 POST 和报告 JSON 资源保留。raw 数值参与请求；非法原始值不能经显示舍入变合法。来源、缺失、版本、授权、模板及未完成条件见[业务状态](Business_Feature_Status.md)。
+现有页面按快照提交研究任务。旧同步和异步规则 POST 拒绝新任务，可按原幂等键读取已有任务。历史任务和报告继续按原版本读取。
 
 发送后超时不得盲目重复 POST。课程通道可按原 runId 只读核对 Python 缓存；缓存未命中不证明任务未执行。研究通道的 runId 只用于关联，原幂等键与 GET 只读取 Java 已保存任务。旧版需求中的可配置重试次数不描述当前实现。

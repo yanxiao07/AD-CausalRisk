@@ -204,7 +204,12 @@ class AgentHandler(BaseHTTPRequestHandler):
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--host',default='127.0.0.1',choices=['127.0.0.1'])
-    parser.add_argument('--port',type=int,default=8091);args=parser.parse_args()
+    parser.add_argument('--port',type=int,default=8091)
+    parser.add_argument('--legacy-contract-test', action='store_true',
+                        help='Run the retired rule scorer for contract tests')
+    args=parser.parse_args()
+    if not args.legacy_contract_test:
+        parser.error('Rule scoring is retired for assessments. Use the trained-model host.')
     with AgentServer((args.host,args.port)) as server:
         print(json.dumps({'serviceMode':'COURSE_SYNTHETIC','url':f'http://{args.host}:{server.server_port}','persistentRunStore':False}),flush=True)
         try:server.serve_forever()

@@ -1,8 +1,8 @@
-# 真实研究模型接口候选与Java映射
+# 表格研究模型接口与 Java 映射
 
 第1→3→4环节有界工程支撑。此候选连接已完成的`TableAssessment`与业务调用方，复用原输入准入及数值实现，不训练、不读取临床/参数、不更换现有服务。
 
-独立环回宿主通过固定人工上下文执行草案接口。Java 研究任务以已登记的人工冻结快照调用该宿主。[本地启动与真实会话验收](../backend/README.md#本地研究任务联调) · [OpenAPI 草案](contracts/research-table-agent.draft.openapi.json)。真实来源和生产配置待验收。
+课程展示的独立环回宿主从可信清单加载七变量逻辑回归训练权重，使用固定人工快照。Java 查询获授权快照、提交任务并回读。[启动说明](../backend/README.md#本地研究任务联调) · [OpenAPI](contracts/research-table-agent.draft.openapi.json)。真实来源和生产配置待验收。
 
 ## 接口边界
 
@@ -24,7 +24,7 @@ result = agent.handle_json(java_request_bytes, authorization_granted=True,
     explanation_authorization_ref=explanation_permission_ref, max_coalitions=512)
 ```
 
-授权参数是宿主断言，不能从请求JSON读取；`data_scope`是用途声明，不证明数据真实。公开[示例](contracts/examples/research-table-agent/request-seven.json)只使用`CONSTRUCTED_VALIDATION`人工状态，不能复制成真实上下文。未知QC/完成等仍正常BLOCKED，零计算、预测/解释/binding均null；非法格式返回稳定错误，绝不返回部分数值。
+授权参数是宿主断言，不能从请求JSON读取；`data_scope`是用途声明，不证明数据真实。人工参数契约回归的[示例](contracts/examples/research-table-agent/request-seven.json)只使用`CONSTRUCTED_VALIDATION`人工状态，不能复制成真实上下文。未知QC/完成等仍正常BLOCKED，零计算、预测/解释/binding均null；非法格式返回稳定错误，绝不返回部分数值。
 
 ## 返回与消费校验
 
@@ -67,7 +67,7 @@ JSON Schema将1.0视为integer，不能据此放行APOE；适配器和语义校�
 
 Java继续做对象权限、用户会话、持久任务/幂等、原始输入快照、复核和审计。研究结果应以独立版本/JSON结构保存，不能覆盖历史agentResult或把AD CIF写入原演示排序列后丢弃另一原因。审计不记录完整输入/权限引用；患者摘要仍由后端白名单处理。
 
-Java 使用独立研究快照和任务保存结构。提交接口只接受已登记的快照 ID，Java 从存储取请求与独立预期值。研究对象授权与 Python 宿主的计算授权分别执行。人工样例供联调，真实来源登记依赖该档案的独立证据。
+Java 使用独立研究快照和任务保存结构。提交接口只接受已登记的快照 ID，Java 从存储取请求与独立预期值。研究对象授权与 Python 宿主的计算授权分别执行。人工样例供联调，真实来源登记依赖该档案的独立证据。展示模型的选择与模型文件摘要均由受控宿主和冻结快照绑定。
 
 ## 已验证与下一步
 

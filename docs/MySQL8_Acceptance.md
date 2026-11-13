@@ -13,7 +13,7 @@ CREATE DATABASE adcr_accept_upgrade CHARACTER SET utf8mb4;
 CREATE DATABASE adcr_accept_restore CHARACTER SET utf8mb4;
 ```
 
-仅为这三个库分配测试账号所需权限。按 [后端 README](../backend/README.md#启动) 设置数据库账号、口令和 JDBC 地址。每次启动使用回环地址和临时端口（`SERVER_ADDRESS=127.0.0.1`、`SERVER_PORT=0`），记录 Java 日志里实际端口。课程 Python 和独立研究宿主分别按文档配置到隔离地址。
+仅为这三个库分配测试账号所需权限。按 [后端 README](../backend/README.md#启动) 设置数据库账号、口令和 JDBC 地址。每次启动使用回环地址和临时端口（`SERVER_ADDRESS=127.0.0.1`、`SERVER_PORT=0`），记录 Java 日志里实际端口。历史规则任务的种子由对应旧版本生成，新评估使用独立的表格研究宿主。
 
 ## 2. 全新迁移与 V12 升级
 
@@ -28,7 +28,7 @@ $env:ADCR_DB_URL = 'jdbc:mysql://127.0.0.1:13306/adcr_accept_fresh?connectionTim
 .\mvnw.cmd -B -ntp spring-boot:run
 ```
 
-把地址切到 `adcr_accept_upgrade`，设置 `SPRING_FLYWAY_TARGET=12` 后启动同一版本。用公开 fixtures 导入并保存至少一个课程任务和一个已完成的结果，记下任务 ID、使用的幂等键及回读内容；正常关闭 Java。通过以下查询确认已迁移到 V12 且 V13 未应用。
+把地址切到 `adcr_accept_upgrade`，在隔离检出的 V12 版本启动应用。用公开 fixtures 保存至少一个旧规则任务和一个已完成的结果，记下任务 ID、幂等键及回读内容，再正常关闭 Java。通过以下查询确认已迁移到 V12 且 V13 未应用。新版本仅回读这些历史规则任务。
 
 ```sql
 SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;
