@@ -25,6 +25,21 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 七/十变量的[Python接入候选](docs/Research_Model_Integration_Candidate.md)补充六个表格组合、[模型身份到宿主上下文的映射](docs/Research_Model_Identity_Map.md)和[人工预测/解释绑定示例](docs/Prediction_Explanation_Binding_Candidate.md)。[宿主证据核对](docs/Research_Host_Evidence_Admission.md)保留已定位材料与剩余资格缺口，完整准入仍为NO_GO；人工示例通过不表示真实模型已接入业务。
 
+## Java 适配入口
+
+现有演示调用继续使用 `deepagent-v1`。本次交付新增七/十变量表格研究评估的 Python 内存入口、结果校验与独立 HTTP 契约草案。Java 可先用[七份人工请求与响应](docs/contracts/examples/research-table-agent)评审 DTO 和结果消费。研究 HTTP 路由处于草案阶段，双方确认后再接入独立宿主。
+
+| Java 适配项 | 实现要求 |
+| --- | --- |
+| 冻结取数 | 按对象授权冻结档案、数据版本、索引日和时间策略，记录原值、单位、测量/可用日期、来源、独立 QC、完成状态和缺失原因。复用现有 MMSE/CDR-SB 原值的来源链，补齐年龄、教育年限、CDR-global、ADAS13 和 FAQ。十变量还需整数 APOE4 计数与同一扫描的双侧海马体积 `mm3`。 |
+| 请求与信任 | 独立研究 DTO 携带固定 24 个月窗口、模型别名和冻结快照。由宿主独立绑定模型、来源和授权。旧演示 DTO、`normalized` MRI 和 JSON 自供的可信上下文不具备这一资格。 |
+| 结果与权限 | 校验原请求、模型和快照身份，再保存双原因 CIF 及绑定同一次评估的解释。阻断结果保留显式 null。采用独立结果版本和权限，患者摘要使用 Java 白名单。 |
+| 幂等与超时 | Java 持久化任务、请求快照、幂等键、结果和审计。研究 `runId` 仅用于关联。超时记录结局未知，保留原任务供核对，避免自动重发 POST。 |
+
+联调时先核两规格完成、QC 阻断、越权和身份错绑，再验超时、Java 幂等与历史回读。具体字段、单位、授权和存储映射见[研究契约与 Java 责任](docs/Research_Table_Agent_Contract.md)，接口形状见 [OpenAPI 草案](docs/contracts/research-table-agent.draft.openapi.json)。
+
+[Deep Agents 证据核对](examples/research_evidence/README.md)是独立 Python 研究示例。它通过只读工具检查人工评估的来源、同次结果绑定和适用范围，核验失败时保留确定性报告。Java 适配范围以研究评估契约为准。
+
 ## 核心能力
 
 新增离线评价与监测见[研究运行说明](research_runtime/README.md)：自然模态分层、固定结构选择稳定性、未知结局分类/DCA补全界限及同一快照的漂移/性能联合报告。它们复用调用方内存，不改变当前合成业务服务或默认模型。固定图增益阴性、结构四折不可估和真实阈值报告整表抑制均保留；真实监控与临床用途未完成。
