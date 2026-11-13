@@ -83,7 +83,7 @@ def verify_host(manifest, token):
                 f"Expected host refusal {code}")
 
 
-def verify_sessions(root, ready):
+def verify_sessions(root, ready, bindings, trained):
     base = ready["javaBaseUrl"]
 
     def session(account):
@@ -98,8 +98,19 @@ def verify_sessions(root, ready):
     before = call(patient, summary_url)["data"]
     require(before["subjectId"] == ready["subjectId"] and not before["hasAssessment"],
             "Patient must be bound to the same test subject without a course result")
+    legacy = dict(subjectId=ready["subjectId"], modelVersion="deepagent-causal-warning-v1",
+                  predictionWindowMonths=24)
+    for endpoint in ("/api/assessment-tasks", "/api/assessment-tasks/submit"):
+        require(call(owner, base + endpoint, data=legacy, headers={"Idempotency-Key": "retired"},
+                     status=503)["errorCode"] == "RESEARCH_UNAVAILABLE", "Rule scoring was not retired")
+    snapshots_url = base + TASKS + "/snapshots?subjectId=" + str(ready["subjectId"])
+    expected_snapshots = [{"snapshotId": ready["snapshots"]["seven"], "taskId": None}] if trained else []
+    require(call(owner, snapshots_url)["data"] == expected_snapshots, "Unexpected snapshot list")
+    require(call(outsider, snapshots_url)["data"] == [], "Non-owner snapshot list disclosed a snapshot")
+    call(patient, snapshots_url, status=403)
     results = {}
-    for label, (status, _, _) in EXPECTED.items():
+    for label in bindings["cases"]:
+        status = EXPECTED[label][0]
         snapshot = {"snapshotId": ready["snapshots"][label]}
         key = {"Idempotency-Key": f"demo-{label}"}
         call(outsider, base + TASKS, data=snapshot, headers=key, status=403)
@@ -107,10 +118,20 @@ def verify_sessions(root, ready):
         require(task["status"] == status and task["snapshotId"] == snapshot["snapshotId"]
                 and task["errorCode"] is None, f"{label}: wrong task state")
         result = task["result"]
-        fixture = root / "docs/contracts/examples/research-table-agent" / f"response-{label}.json"
-        expected = json.loads(fixture.read_text(encoding="utf-8"))
-        for field in ("prediction", "explanation", "admission", "computation"):
-            require(result[field] == expected[field], f"{label}: unexpected {field}")
+        if trained:
+            identity = bindings["cases"][label]["model"]
+            require(result["model"] == identity and result["dataScope"] == "CONSTRUCTED_VALIDATION"
+                    and result["modelKey"] == "trained-seven-logistic"
+                    and result["computation"]["directCifCalls"] == 1
+                    and result["computation"]["explanationCifCalls"] >= 2,
+                    "Expected a bound trained-model prediction and explanation")
+            expected_snapshots[0]["taskId"] = task["taskId"]
+            require(call(owner, snapshots_url)["data"] == expected_snapshots, "Saved task not listed")
+        else:
+            fixture = root / "docs/contracts/examples/research-table-agent" / f"response-{label}.json"
+            expected = json.loads(fixture.read_text(encoding="utf-8"))
+            for field in ("prediction", "explanation", "admission", "computation"):
+                require(result[field] == expected[field], f"{label}: unexpected {field}")
         if status == "BLOCKED":
             require(all(result[field] is None for field in ("prediction", "explanation", "binding")),
                     "Blocked result must explicitly preserve nulls")
@@ -130,7 +151,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("--serve", action="store_true", help="Leave snapshots unconsumed and serve until Ctrl+C")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--trained-manifest", type=Path)
+    mode.add_argument("--contract-test", action="store_true")
+    parser.add_argument("--trusted-manifest-sha256")
     args = parser.parse_args()
+    trained = args.trained_manifest is not None
+    if trained != bool(args.trusted_manifest_sha256):
+        parser.error("The trained model requires its trusted manifest SHA-256.")
+    if args.serve and not trained:
+        parser.error("--serve requires the trained model.")
     output = args.output.resolve()
     output.mkdir(parents=True)
     manifest = output / "manifest.json"
@@ -153,8 +183,10 @@ def main():
     with (output / "python.jsonl").open("w", encoding="utf-8") as calls, (
         output / "python.stderr"
     ).open("w", encoding="utf-8") as errors, (output / "java.log").open("w", encoding="utf-8") as java_log:
+        mode_args = ["--trained-manifest", str(args.trained_manifest.resolve()),
+                     "--trusted-manifest-sha256", args.trusted_manifest_sha256] if trained else ["--contract-test"]
         with process([sys.executable, "-B", "-m", "research_runtime.examples.research_table_http",
-                      "--manifest", str(manifest)], env=env, cwd=root, log=calls, stderr=errors) as host:
+                      "--manifest", str(manifest), *mode_args], env=env, cwd=root, log=calls, stderr=errors) as host:
             bindings = ready_file(manifest, host, errors.name)
             if not args.serve:
                 verify_host(bindings, token)
@@ -176,13 +208,20 @@ def main():
                     except KeyboardInterrupt:
                         return
                     raise RuntimeError("Demo service stopped unexpectedly")
-                results = verify_sessions(root, ready)
+                results = verify_sessions(root, ready, bindings, trained)
     rows = [json.loads(line) for line in (output / "python.jsonl").read_text(encoding="utf-8").splitlines()]
-    require(len(rows) == len(EXPECTED) and {
+    if trained:
+        require(len(rows) == 1 and rows[0]["runId"] == "run-trained-demo-seven"
+                and rows[0]["status"] == "COMPLETED" and rows[0]["directCifCalls"] == 1
+                and rows[0]["explanationCifCalls"] >= 2, "Unexpected trained-model execution count")
+    else:
+        require(len(rows) == len(EXPECTED) and {
         row["runId"]: (row["status"], row["directCifCalls"], row["explanationCifCalls"]) for row in rows
-    } == {f"run-constructed-http-{label}": expected for label, expected in EXPECTED.items()}
-        and not (output / "python.stderr").stat().st_size, "Unexpected Python executions or host errors")
-    receipt = {"tasks": results, "pythonExecutions": rows}
+        } == {f"run-constructed-http-{label}": expected for label, expected in EXPECTED.items()},
+            "Unexpected Python executions")
+    require(not (output / "python.stderr").stat().st_size, "Unexpected Python host errors")
+    receipt = {"tasks": results, "pythonExecutions": rows,
+               "mode": "trained" if trained else "contract-test"}
     (output / "verification.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(receipt, ensure_ascii=False))
 

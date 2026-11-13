@@ -1445,7 +1445,7 @@
       "post": {
         "summary": "幂等创建持久化评估任务",
         "operationId": "postApiAssessment-tasks",
-        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "x-implementation-state": "RETIRED_FOR_NEW_ASSESSMENTS",
         "responses": {
           "200": {
             "description": "成功",
@@ -1516,6 +1516,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "旧规则评分已退役，新请求请提交已登记的研究快照",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -1544,7 +1554,8 @@
           {
             "sessionCookie": []
           }
-        ]
+        ],
+        "deprecated": true
       },
       "get": {
         "summary": "任务历史（对象范围在筛选分页前应用）",
@@ -2820,7 +2831,7 @@
       "post": {
         "summary": "异步提交；先持久化输入快照和PENDING任务，Java后台运行；不虚构阶段进度",
         "operationId": "submitAssessmentTask",
-        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "x-implementation-state": "RETIRED_FOR_NEW_ASSESSMENTS",
         "responses": {
           "200": {
             "description": "成功",
@@ -2891,6 +2902,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "旧规则评分已退役，新请求请提交已登记的研究快照",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
           }
         },
         "parameters": [
@@ -2919,7 +2940,8 @@
           {
             "sessionCookie": []
           }
-        ]
+        ],
+        "deprecated": true
       }
     },
     "/api/assessment-tasks/{taskId}/cancel": {
@@ -6757,7 +6779,7 @@
     "/api/research/table-assessment-tasks": {
       "post": {
         "operationId": "submitResearchTableTask",
-        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO",
         "summary": "按已独立登记的冻结快照提交研究评估",
         "parameters": [
           {
@@ -6869,7 +6891,7 @@
     "/api/research/table-assessment-tasks/{id}": {
       "get": {
         "operationId": "getResearchTableTask",
-        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO",
         "summary": "读取 Java 持久化的研究任务",
         "parameters": [
           {
@@ -7214,6 +7236,135 @@
           },
           "403": {
             "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/table-assessment-tasks/snapshots": {
+      "get": {
+        "operationId": "listTrainedAssessmentSnapshots",
+        "summary": "查询当前用户获准评估的已登记快照及已有任务",
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "subjectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "快照编号和任务编号",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "snapshotId",
+                          "taskId"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "snapshotId": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "format": "int64"
+                          },
+                          "taskId": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "minimum": 1,
+                            "format": "int64"
+                          }
+                        }
+                      }
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "业务错误",
             "content": {
               "application/json": {
                 "schema": {

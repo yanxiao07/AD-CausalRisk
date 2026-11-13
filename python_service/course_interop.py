@@ -156,7 +156,8 @@ def owned_lab(scenario='ok'):
 @contextmanager
 def original_process(port=0):
     """Owned original server process; no existing service is stopped or reused."""
-    process = subprocess.Popen([sys.executable, '-B', '-m', 'python_service.server', '--port', str(port)],
+    process = subprocess.Popen([sys.executable, '-B', '-m', 'python_service.server',
+                                '--legacy-contract-test', '--port', str(port)],
                                cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     startup = []; ready = threading.Event()

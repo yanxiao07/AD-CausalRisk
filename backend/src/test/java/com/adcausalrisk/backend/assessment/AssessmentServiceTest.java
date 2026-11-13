@@ -105,6 +105,7 @@ class AssessmentServiceTest {
                         qualityMock(),
                         org.mockito.Mockito.mock(
                                 com.adcausalrisk.backend.audit.AuditService.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "testRuleEnabled", true);
         when(objectMapper.writeValueAsString(any(AgentRequest.class))).thenReturn("{}");
         when(jdbc.update(
                         org.mockito.ArgumentMatchers.startsWith(

@@ -9,17 +9,17 @@
 
 AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为可追溯的工作流。Python 提供可独立运行的合成数据服务；Java 承担业务 API、权限与持久化；前端面向研究人员、医生和患者提供相应视图。
 
-[独立表格研究通道](docs/Research_Table_Agent_Contract.md)已用人工快照接通 Java 和独立 Python HTTP 宿主。当前只接受构造样例，真实数据预测尚未接入；现有课程服务保持原接口。
+新评估统一走[表格研究通道](docs/Research_Table_Agent_Contract.md)。演示由 Java 将获授权的人工冻结快照交给 Python，使用受控环境提供的七变量逻辑回归训练权重。
 
 研究主线固定为**多源数据融合 → 个体化因果图谱构建 → 因果引导的预警模型建立 → 个体化可解释性分析**。后续任务按[四环节研究与推进规范](docs/Research_Core_Principles.md)对应缺口、复用已有成果并设置验收终点；该目标不表示个体因果结构、图增益或临床用途已经成立。
 
 第2→3环节[固定三臂图预测研究](docs/Graph_Research_Execution.md)已完成54真实训练/模型交付，未确立固定先验增益；第4环节[图解释诊断](docs/Graph_Explanation_Results.md)已复用45外折模型完成数值重构/实际路径与敏感性验收。贡献顺序敏感，未建立严格个人因果或稳定/临床解释。
 
-**项目正在开发中。** 当前课程服务使用明确标记的合成数据与固定加性规则，输出用于教学和工程联调。排序分数不是经临床验证的个体患病概率，图谱箭头不代表已识别的因果或治疗效应。
+旧规则评分源于 2026-10-06 的合成协作基底，现已退出新评估。历史任务和报告保留原模型与数据标签。
 
-七变量三算法及固定遗传/横断MRI的离线训练与对照已有阶段交付；新模型尚未替换当前业务服务。研究完成范围、Git交付内容及Java如何取数调用Python，见[研究交付与接入说明](docs/Research_Progress_and_Integration.md)。
+七变量三算法及固定遗传/横断MRI的离线训练与对照已有阶段交付。演示固定使用其中的七变量 LR。[研究交付与接入说明](docs/Research_Progress_and_Integration.md)
 
-可移植估计器、人月/CIF、已保存模型的离线合成验收，以及固定五外折/三内折训练与嵌套校准，见[研究模型 Python 接入准备](docs/Research_Model_Portability.md)与[运行说明](research_runtime/README.md)。该可选模块使用独立依赖。合成 HTTP 联调已通过；真实研究宿主和业务接入单独验收。
+可移植估计器、人月/CIF、模型核验及固定五外折/三内折训练与嵌套校准使用独立研究依赖。真实患者输入单独准入。[模型交付](docs/Research_Model_Portability.md) · [运行说明](research_runtime/README.md)
 
 研究运行时已包含[分组Shapley/LIME及表格编排](docs/Table_Grouped_Study_Execution.md)、[输入声明一致性校验](docs/Real_Input_Admission.md)与[单次内存CIF调用](docs/InMemory_Research_Inference.md)。方法、构造验收和真实研究结论分别报告；不加入受控数据/权重，不改变共享HTTP或默认模型。
 
@@ -27,7 +27,7 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 ## Java 适配入口
 
-现有演示调用继续使用 `deepagent-v1`。七/十变量研究评估提供 Python 内存入口、结果校验和独立合成 HTTP 宿主。Java 已实现冻结快照提交、任务和结果持久化、幂等及超时处理。[后端接口与配置](backend/README.md#表格研究评估适配)
+新评估走 `research-table-agent-v1`。Java 管理冻结快照、权限、持久化、幂等及超时处理。Python 加载七变量 LR 并返回预测与归因。[后端接口与配置](backend/README.md#表格研究评估适配)
 
 | Java 适配项 | 实现要求 |
 | --- | --- |
@@ -36,7 +36,7 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 | 结果与权限 | 校验原请求、模型和快照身份，再保存双原因 CIF 及绑定同一次评估的解释。阻断结果保留显式 null。采用独立结果版本和权限，患者摘要使用 Java 白名单。 |
 | 幂等与超时 | Java 持久化任务、请求快照、幂等键、结果和审计。研究 `runId` 仅用于关联。超时记录结局未知，保留原任务供核对，避免自动重发 POST。 |
 
-独立合成联调通过真实 Java 登录会话覆盖两规格完成、QC 阻断、越权、身份错绑、幂等与历史回读。前端可按[本地研究任务联调](backend/README.md#本地研究任务联调)启动两端并取得三个人工快照 ID。超时路径由 Java 环回故障用例覆盖。字段、单位、授权和存储见[研究契约与 Java 责任](docs/Research_Table_Agent_Contract.md)，Python 线协议见 [OpenAPI 草案](docs/contracts/research-table-agent.draft.openapi.json)。
+前端同学可用自己的本地前端接入。登录后按档案查询已登记快照、提交并回读，展示模型版本、24 个月两种痴呆结局的累积风险和同次分组归因。[本地启动](backend/README.md#本地研究任务联调) · [前端接入说明](frontend/README.md#风险评估接入)
 
 [Deep Agents 证据核对](examples/research_evidence/README.md)是独立 Python 研究示例。它通过只读工具检查人工评估的来源、同次结果绑定和适用范围，核验失败时保留确定性报告。Java 适配范围以研究评估契约为准。
 
@@ -45,8 +45,8 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 新增离线评价与监测见[研究运行说明](research_runtime/README.md)：自然模态分层、固定结构选择稳定性、未知结局分类/DCA补全界限及同一快照的漂移/性能联合报告。它们复用调用方内存，不改变当前合成业务服务或默认模型。固定图增益阴性、结构四折不可估和真实阈值报告整表抑制均保留；真实监控与临床用途未完成。
 
 - **资料与质量**：三表 CSV 预检、档案关联、日期与单位检查、缺失/重复/冲突定位，以及严重问题阻断。
-- **四阶段工作流**：`DATA_FUSION → CAUSAL_GRAPH → WARNING_MODEL → EXPLANATION`，保留原值、来源时间、版本、实际阶段与耗时。
-- **可追溯解释**：原图模板、图到评分输入的门控、逐项贡献与截断/舍入重构，以及说明文字的语义校验。
+- **模型预测**：从受控环境加载七变量逻辑回归，对已登记快照计算双原因 24 个月累积风险。
+- **同次解释**：用模型保存的训练参考计算分组归因，绑定同一输入和模型版本。
 - **联调与故障处理**：版本化 HTTP 契约、标准库客户端、易失缓存重放、故障案例、只读恢复和合成批处理。
 - **研究工程工具**：纵向特征矩阵、缺失输入敏感性、合成解释一致性和构造概率评估；各工具的适用范围见对应文档。
 
@@ -56,9 +56,9 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 | 模块 | 已有实现 | 后续工作 |
 | --- | --- | --- |
-| Python | 合成四阶段服务、契约/身份校验、客户端；可选离线训练、解释、评价与联合监测计算 | 当前业务仍使用合成规则；研究模型服务、真实监控输入及临床验证单独验收 |
-| Java 后端 | 61 个业务操作，包含表格研究任务；Flyway 迁移至 V13 | [MySQL 8 迁移、备份恢复和重启回读](docs/MySQL8_Acceptance.md)待目标库验收 |
-| Web 前端 | Vue 3、真实会话和四角色业务页面 | [异步评估、报告下载和表格研究任务](frontend/README.md#待接入接口)仍待页面接入 |
+| Python | 加载七变量训练模型并执行预测与归因；提供离线训练、解释、评价与联合监测 | 课程展示使用人工快照；真实输入及临床验证单独验收 |
+| Java 后端 | 62 个 API 操作，包含表格研究任务；Flyway 迁移至 V13 | [MySQL 8 迁移、备份恢复和重启回读](docs/MySQL8_Acceptance.md)待目标库验收 |
+| Web 前端 | Vue 3、Java 会话和四角色工作台 | 评估页由前端同学按[研究任务接口](frontend/README.md#风险评估接入)适配 |
 | 全链路 | 浏览器→Java→Python合成调用链已有实现；Java负责业务保存与权限 | MySQL、全场景故障/重启和浏览器端到端验收单独完成；离线研究模块不自动接入业务 |
 
 接口目标、数据库表或页面片段的存在不表示对应业务已完成。Python 工程测试也不替代 Java、MySQL 或浏览器端到端验收。
@@ -71,7 +71,7 @@ AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为
 
 | 模块 | 环境 |
 | --- | --- |
-| Python 服务 | Python 3.11 或 3.12；运行时仅使用标准库 |
+| Python 推理 | Python 3.11 和 `research_runtime/requirements.lock`；受控模型清单及七变量 LR 参数 |
 | Python 测试 | 同一解释器安装 `requirements-dev.lock` |
 | 可选离线研究模块 | 独立环境安装`research_runtime/requirements.lock`；原生图模块使用`requirements.graph.lock`，不与课程环境混装 |
 | Java 后端 | JDK 21、Maven Wrapper；目标数据库 MySQL 8，自动测试使用 H2 |
@@ -82,64 +82,7 @@ git clone https://github.com/yanxiao07/AD-CausalRisk.git
 cd AD-CausalRisk
 ```
 
-完整系统另需按[后端说明](backend/README.md)显式配置数据库/profile并启动Java，再在`frontend/`运行`npm ci`与`npm run dev`。默认前端5173将`/api`代理到Java8080，Java再调用Python8091；缺少数据库配置不会自动回退为已接通环境。
-
-### 启动 Python 服务
-
-Windows PowerShell：
-
-```powershell
-py -3.11 -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.txt
-.venv/Scripts/python.exe -m python_service.server --port 8091
-```
-
-如果安装的是 Python 3.12，将第一行的 `-3.11` 改为 `-3.12`。可用 `py --list` 查看本机版本。
-
-Linux / macOS（先确认 `python3 --version` 为 3.11 或 3.12）：
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m python_service.server --port 8091
-```
-
-服务监听 `http://127.0.0.1:8091`。保持终端运行，另开终端执行下面的请求。
-
-### 提交并查询一个合成案例
-
-Windows PowerShell：
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8091/api/health
-
-$request = Get-Content contracts/examples/deepagent-v1.request.example.json -Raw -Encoding UTF8
-$body = [Text.Encoding]::UTF8.GetBytes($request)
-Invoke-RestMethod http://127.0.0.1:8091/api/agent/v1/runs -Method Post -ContentType application/json -Body $body
-
-Invoke-RestMethod http://127.0.0.1:8091/api/agent/v1/runs/run-demo-001
-```
-
-Linux / macOS：
-
-```bash
-curl --fail http://127.0.0.1:8091/api/health
-curl --fail -H 'Content-Type: application/json' --data-binary @contracts/examples/deepagent-v1.request.example.json http://127.0.0.1:8091/api/agent/v1/runs
-curl --fail http://127.0.0.1:8091/api/agent/v1/runs/run-demo-001
-```
-
-示例响应的关键字段如下；完整结果还包含图、解释、版本、限制和四阶段轨迹。`durationMs` 随实际执行变化。
-
-```json
-{
-  "status": "COMPLETED",
-  "qualityStatus": "PASS",
-  "riskScore": 0.8304,
-  "riskLevel": "HIGH",
-  "dataSource": "SYNTHETIC_DEMO",
-  "reviewRequired": true
-}
-```
+课程展示按[后端启动说明](backend/README.md#本地研究任务联调)运行 Java 与模型宿主，再按[前端接入说明](frontend/README.md#风险评估接入)将本地前端代理指向 Java。模型清单和参数由运行者从受控环境提供。
 
 ### 使用演示数据
 
@@ -155,33 +98,15 @@ curl --fail http://127.0.0.1:8091/api/agent/v1/runs/run-demo-001
 
 ## 架构与契约
 
-当前合成业务调用关系如下；可选离线研究计算不在这条HTTP链路内：
-
 ```mermaid
 flowchart LR
-    Web["Vue Web 前端"] -->|业务 API| Java["Java 业务后端"]
-    Java --> DB["MySQL 8（目标）/ H2（测试）"]
-    Java -->|AgentClient| Python["Python 合成服务 :8091"]
-    Python --> Workflow["融合 → 图谱 → 排序 → 解释"]
+    Web["Vue 评估页"] --> Java["Java 会话、授权与任务"]
+    Java --> DB["持久化任务和结果"]
+    Java --> Python["Python 表格评估"]
+    Python --> Model["七变量 LR 权重及训练参考"]
 ```
 
-| 接口 | 用途 | 契约 |
-| --- | --- | --- |
-| `GET /api/health` | 服务模式与版本 | [Python OpenAPI](contracts/python-agent.openapi.json) |
-| `POST /api/agent/v1/runs` | 同步执行一个合成请求 | 同上 |
-| `GET /api/agent/v1/runs/{runId}` | 查询进程内已有结果 | 同上 |
-| Java 业务 API | 会话、档案、任务、结果与业务管理 | [目标 OpenAPI](contracts/java-business.target.openapi.json)；逐项实现状态见后端说明 |
-
-接入时须保留以下语义：
-
-- 浏览器调用 Java，Java 调用 Python；用户权限、对象范围、业务任务和历史结果由 Java 管理。
-- Python 同步返回实际阶段与耗时，运行中不提供实时阶段推送。缓存仅存在于进程内，重启后清空。
-- 请求层接受 6–60 个月整数，当前规则只支持 24 个月。其他有效窗口或严重质量问题返回 `BLOCKED`，其分数必须为 `null`、等级为 `UNAVAILABLE`。
-- Java 的业务 `Idempotency-Key` 与 Python 的 `runId` 分别管理。同一 `runId`、同一请求重放返回原结果；同 ID 不同请求返回冲突。超时后先按原 ID 查询和核对，不自动换 ID 重发。
-- 模型、数据、工作流版本及日期、单位、缺失必须保留。患者摘要由 Java 过滤原始排序数值、图权重与内部轨迹。
-- 原生解释和图说明须符合固定规则；未知阶段 `summary` 字段、附加 `limitations` 及不符合原规则的说明会被语义校验拒绝，见[输出审查](docs/Python_Output_Review.md)。
-
-详细状态、错误映射及图到评分的关系见[联调约定](docs/Integration_Contract.md)。`python-demo-logistic-v1` 是保留的接口标识，实际课程计算为固定加性规则，不应据名称推断已训练逻辑回归。
+Java 保存并校验同一输入快照、模型、双原因 CIF 和解释的绑定。超时或响应无效时保留结果待确认，按原任务回读。历史规则分数仍按原契约解释。患者摘要独立过滤内部评估详情。[Java OpenAPI](contracts/java-business.target.openapi.json) · [表格契约](docs/Research_Table_Agent_Contract.md)
 
 ## 开发与测试
 
@@ -254,7 +179,7 @@ FR-22的[实验配置限定导出](docs/Research_Experiment_Config.md)提供标�
 | 可选受控研究接入 | [运行时集成](docs/Research_Runtime_Integration.md) · [受控客户端](docs/Controlled_Research_Client.md) · [研究基底与验收](docs/Research_Backend_Acceptance.md) · [模型与任务反馈](docs/Model_And_Task_Feedback.md) |
 | 团队开发 | [贡献指南](CONTRIBUTING.md) · [AI 协作指南](docs/AI_Collaboration.md) · [助手规则](AGENTS.md) |
 
-可选研究接入依赖独立授权环境，普通克隆不会获得受限数据或研究模型；不影响上面的课程合成服务快速开始。
+可选研究接入依赖独立授权环境，普通克隆可运行公开契约测试，展示推理需从受控位置提供训练权重。
 
 ## 仓库结构
 
@@ -299,7 +224,7 @@ FR-22的[实验配置限定导出](docs/Research_Experiment_Config.md)提供标�
 - [ ] 前端接入新接口，完成浏览器验收。
 - [ ] MySQL、浏览器及跨服务故障/重启历史的端到端验收。
 
-研究算法与科学验收单独跟踪：固定训练扰动、分组归因及自然模态分层已有阶段交付，真实累计673基础/36校准；[当前需求状态](docs/Python_Requirement_Status.md)保留图增益阴性、结构四折不可估、CSF NO_GO和真实阈值整表抑制。维护主机研究页面不包含在本仓库。研究依赖与课程环境分开，图专题使用图锁环境。严格个人因果、独立/as-of/QC、研究模型业务接入和临床验证仍未完成。
+研究算法与科学验收单独跟踪：固定训练扰动、分组归因及自然模态分层已有阶段交付，真实累计673基础/36校准；[当前需求状态](docs/Python_Requirement_Status.md)保留图增益阴性、结构四折不可估、CSF NO_GO和真实阈值整表抑制。维护主机研究页面不包含在本仓库。研究依赖与课程环境分开，图专题使用图锁环境。严格个人因果、独立/as-of/QC、真实患者输入和临床验证仍未完成。
 
 ## 使用范围与许可
 

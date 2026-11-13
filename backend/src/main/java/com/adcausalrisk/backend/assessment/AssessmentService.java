@@ -156,6 +156,9 @@ public class AssessmentService {
                 subjectId, modelVersion, predictionWindowMonths, idempotencyKey, principal, true);
     }
 
+    @org.springframework.beans.factory.annotation.Value("${assessment.test-rule-enabled:false}")
+    private boolean testRuleEnabled;
+
     private Outcome create(
             Long subjectId,
             String modelVersion,
@@ -206,6 +209,9 @@ public class AssessmentService {
                         principal.userId(), OPERATION, idempotencyKey);
         if (replay.isPresent()) {
             return replay(replay.get(), digest);
+        }
+        if (!testRuleEnabled) {
+            throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "新评估请使用已登记的研究模型快照");
         }
 
         var check = quality.check(subjectId, principal);

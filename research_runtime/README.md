@@ -1,6 +1,6 @@
 # 离线研究计算、固定训练与图模型
 
-[独立表格研究通道](../docs/Research_Table_Agent_Contract.md)提供宿主绑定的内存适配、标准库结果校验和环回合成 HTTP 宿主。用[联调启动器](../backend/README.md#本地研究任务联调)启动 Java 与 Python、取得人工快照 ID，或在真实登录会话下验收两规格完成和 QC 阻断。真实研究宿主仍待独立准入。
+[表格研究通道](../docs/Research_Table_Agent_Contract.md)复用内存评估与语义校验。课程展示从受控目录核对清单和参数摘要，加载七变量 LR，再评估固定人工快照。[启动说明](../backend/README.md#本地研究任务联调)同时给出使用公开人工参数的契约回归方式。真实患者输入仍待独立准入。
 
 [统一表格评估入口](../docs/Table_Assessment_Integration.md)将原许可预测与保存参考SHAP连接成同一输入/模型状态的内存结果，保留来源准入、独立解释权限和失败无部分数值。它是后续真实业务接入的计算步骤，不读取真实数据/参数、不新增HTTP或更换默认服务。
 
@@ -160,7 +160,7 @@ Python API：`run_nested(frame, output, specification, families, splits=..., exi
   --request research_runtime/examples/seven.synthetic.json
 ```
 
-入口只向标准输出返回JSON，不保存结果或请求，也不启动HTTP服务。失败以退出码1和不含输入值的类型化错误返回。三个已有HTTP通道及Java契约保持原行为；该CLI不提供Java研究模型适配，现有AgentClient仍调用课程合成服务。
+入口只向标准输出返回JSON，不保存结果或请求，也不启动HTTP服务。失败以退出码1和不含输入值的类型化错误返回。三个已有HTTP通道及Java契约保持原行为；这个 CLI 用于离线验收。Java 通过独立的表格 HTTP 通道提交已登记快照。
 
 受控维护主机现另有同一工作台内的“模型与研究审查”页面，以独立进程调用本模块进行九模型合成计算，并展示既有聚合研究结果。它属于维护主机的本地Python演示接入，未成为Java共享API；本仓库的CLI继续保持上述离线范围。
 

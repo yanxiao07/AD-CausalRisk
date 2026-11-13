@@ -2,6 +2,7 @@
 
 import argparse
 from hmac import compare_digest
+from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
@@ -10,20 +11,25 @@ import re
 
 from python_service.course_protocol import CourseProtocolError, decode_json, identity_encoding, utf8_json_media
 from research_runtime.input_admission import POLICY, SCHEMA
-from research_runtime.research_table_agent import ResearchAgentError
+from research_runtime.research_table_agent import ResearchAgentError, ResearchTableAgent
 from research_runtime.research_table_protocol import digest
-from research_runtime.tests.test_research_table_agent import configured
 
 
 ROUTE = "/api/research-table/v1/assessments"
 
 
-def cases():
+def cases(trained_manifest=None, trusted_sha256=None):
     agents = {}
     manifest = {}
-    for label, spec in (("seven", "seven"), ("ten", "multimodal_values"), ("blocked", "seven")):
-        agent, request, _, context = configured(spec, unknown_qc=label == "blocked")
-        request["runId"] = "run-constructed-http-" + label
+    if trained_manifest is None:
+        from research_runtime.tests.test_research_table_agent import configured
+
+        prepared = [(label, *configured(spec, unknown_qc=label == "blocked"))
+                    for label, spec in (("seven", "seven"), ("ten", "multimodal_values"), ("blocked", "seven"))]
+    else:
+        prepared = [("seven", *trained_case(trained_manifest, trusted_sha256))]
+    for label, agent, request, _, context in prepared:
+        request["runId"] = ("run-trained-demo-" if trained_manifest else "run-constructed-http-") + label
         model = context["model"]
         core = dict(schemaVersion=SCHEMA, purpose="OFFLINE_RESEARCH_ADMISSION",
                     dataVersion=request["dataVersion"], indexDate=request["indexDate"],
@@ -33,6 +39,37 @@ def cases():
                                inputSha256=digest(core), contextSha256=digest(context))
         agents[request["runId"]] = agent
     return agents, manifest
+
+
+def trained_case(manifest, trusted_sha256):
+    from research_runtime.examples.input_admission_constructed import constructed_pair
+    from research_runtime.inference import load_final_model
+    from research_runtime.research_table_protocol import CONTRACT
+    from research_runtime.table_assessment import TableAssessment
+
+    bundle, verified = load_final_model(manifest, trusted_sha256, "seven", "logistic")
+    fixture, context = constructed_pair("seven", "logistic")
+    runtime = Path(__file__).resolve().parents[1]
+    sources = ("inference.py", "discrete.py", "input_admission.py", "inmemory_inference.py",
+               "table_assessment.py", "table_explanation.py", "group_shapley.py",
+               "research_table_agent.py", "research_table_protocol.py", "examples/research_table_http.py",
+               "examples/input_admission_constructed.py")
+    identity = context["model"]
+    identity.update({name: verified[name] for name in ("manifestSha256", "artifactSha256", "trainingPlanSha256")})
+    identity.update(runtimeSourceSha256=digest({name: sha256((runtime / name).read_bytes()).hexdigest()
+                                                for name in sources}),
+                    softwareLockSha256=sha256((runtime / "requirements.lock").read_bytes()).hexdigest())
+    record = fixture["records"][0]
+    request = dict(contractVersion=CONTRACT, runId="run-trained-demo-seven",
+                   modelKey="trained-seven-logistic", subjectCode=record["subjectCode"],
+                   dataVersion=fixture["dataVersion"], indexDate=fixture["indexDate"],
+                   availabilityPolicy=fixture["availabilityPolicy"], predictionWindowMonths=24,
+                   features=record["features"])
+    assessment = TableAssessment(bundle["model"], verified_identity=identity)
+    agent = ResearchTableAgent(model_key=request["modelKey"], subject_code=record["subjectCode"],
+                               assessment=assessment, trusted_context=context,
+                               data_scope="CONSTRUCTED_VALIDATION")
+    return agent, request, assessment, context
 
 
 def handler(agents, token):
@@ -101,11 +138,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--manifest", type=Path, required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--trained-manifest", type=Path)
+    mode.add_argument("--contract-test", action="store_true")
+    parser.add_argument("--trusted-manifest-sha256")
     args = parser.parse_args()
+    if bool(args.trained_manifest) != bool(args.trusted_manifest_sha256):
+        parser.error("The trained model requires its trusted manifest SHA-256.")
     token = os.environ.get("RESEARCH_TABLE_TEST_TOKEN", "")
     if not re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", token):
         parser.error("Set RESEARCH_TABLE_TEST_TOKEN to a valid bearer token")
-    agents, manifest = cases()
+    try:
+        agents, manifest = cases(args.trained_manifest, args.trusted_manifest_sha256)
+    except (ValueError, OSError, KeyError, TypeError):
+        parser.exit(1, "Research model or assessment configuration unavailable.\n")
     with HTTPServer(("127.0.0.1", args.port), handler(agents, ("Bearer " + token).encode())) as server:
         with args.manifest.open("x", encoding="utf-8") as stream:
             json.dump(dict(port=server.server_port, cases=manifest), stream, ensure_ascii=False)

@@ -21,3 +21,10 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+
+assessment:
+  test-rule-enabled: true
+
+research:
+  table:
+    test-fixtures-enabled: true

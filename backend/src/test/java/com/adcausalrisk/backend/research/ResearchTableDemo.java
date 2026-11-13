@@ -38,6 +38,9 @@ public final class ResearchTableDemo {
         var json = new ObjectMapper();
         JsonNode manifest = json.readTree(Files.readAllBytes(Path.of(args[0])));
         int pythonPort = manifest.path("port").asInt();
+        JsonNode cases = manifest.path("cases");
+        boolean trained = cases.size() == 1 && ResearchTableAssessmentService.TRAINED_MODEL
+                .equals(cases.path("seven").path("request").path("modelKey").asText());
         String token = System.getenv("RESEARCH_TABLE_TEST_TOKEN");
         if (pythonPort < 1 || pythonPort > 65535 || token == null || token.isBlank()) {
             throw new IllegalArgumentException("Expected the local constructed Python host");
@@ -54,13 +57,15 @@ public final class ResearchTableDemo {
                 "--spring.datasource.username=sa", "--spring.datasource.password=",
                 "--server.address=127.0.0.1", "--server.port=0",
                 "--research.table.base-url=http://127.0.0.1:" + pythonPort,
-                "--research.table.read-timeout=30s");
+                "--research.table.read-timeout=30s",
+                "--research.table.test-fixtures-enabled=" + !trained,
+                "--assessment.test-rule-enabled=false");
         try {
             var jdbc = context.getBean(JdbcTemplate.class);
             var protocol = context.getBean(ResearchTableProtocol.class);
             var transaction = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
-            var handoff = transaction.execute(status -> register(jdbc, protocol, manifest.path("cases"),
-                    context.getWebServer().getPort()));
+            var handoff = transaction.execute(status -> register(jdbc, protocol, cases,
+                    context.getWebServer().getPort(), trained));
             Files.write(Path.of(args[1]), json.writerWithDefaultPrettyPrinter().writeValueAsBytes(handoff), CREATE_NEW);
         } catch (Exception error) {
             context.close();
@@ -69,9 +74,10 @@ public final class ResearchTableDemo {
     }
 
     private static Map<String, Object> register(JdbcTemplate jdbc, ResearchTableProtocol protocol,
-                                                 JsonNode cases, int port) {
-        if (cases.size() != 3) {
-            throw new IllegalArgumentException("Expected three constructed examples");
+                                                 JsonNode cases, int port, boolean trained) {
+        List<String> labels = trained ? List.of("seven") : List.of("seven", "ten", "blocked");
+        if (cases.size() != labels.size()) {
+            throw new IllegalArgumentException("Unexpected assessment examples");
         }
         jdbc.update("""
                 INSERT INTO subject(subject_code,alias,status,data_version,created_at)
@@ -86,13 +92,14 @@ public final class ResearchTableDemo {
                 subject, user(jdbc, "patient"));
 
         var snapshots = new TreeMap<String, Long>();
-        for (String label : List.of("seven", "ten", "blocked")) {
+        for (String label : labels) {
             JsonNode entry = cases.path(label);
             JsonNode request = entry.path("request");
             JsonNode model = entry.path("model");
             protocol.validateRequest(request, model);
             if (!"CONSTRUCTED-001".equals(request.path("subjectCode").asText())
-                    || !("run-constructed-http-" + label).equals(request.path("runId").asText())) {
+                    || !((trained ? "run-trained-demo-" : "run-constructed-http-") + label)
+                            .equals(request.path("runId").asText())) {
                 throw new IllegalArgumentException("Unexpected constructed example");
             }
             var keys = new GeneratedKeyHolder();
