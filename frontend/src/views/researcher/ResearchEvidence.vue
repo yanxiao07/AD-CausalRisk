@@ -3,7 +3,7 @@
     <PageHeader
       back
       title="研究证据"
-      subtitle="证据目录只读；研究表格评估先按受试者加载已登记的冻结快照，再提交或回读任务。"
+      subtitle="证据目录只读；研究表格评估按受试者加载冻结快照，支持多选后批量提交并查看进度。"
     >
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
@@ -103,15 +103,11 @@
             </p>
           </DataCard>
 
-          <ResearchAssessmentPanel
-            v-if="validSubjectId"
-            :subject-id="tableSubjectId"
-            @completed="onTableCompleted"
-          />
+          <ResearchBatchAssessment v-if="validSubjectId" :subject-id="tableSubjectId" />
           <EmptyState
             v-else
             title="先输入受试者 ID"
-            description="输入后会自动加载该受试者下当前账号获准评估的冻结快照。"
+            description="输入后会加载该受试者下当前账号获准评估的冻结快照，可多选后批量评估。"
           />
         </div>
       </el-tab-pane>
@@ -144,7 +140,7 @@ import { Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import ResearchAssessmentPanel from '@/components/assessment/ResearchAssessmentPanel.vue'
+import ResearchBatchAssessment from '@/components/assessment/ResearchBatchAssessment.vue'
 import { getResearchEvidence, getResearchReport } from '@/api/research.js'
 import { renderMarkdown } from '@/utils/markdown.js'
 import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
@@ -166,10 +162,6 @@ const validSubjectId = computed(() => {
   const value = Number(tableSubjectId.value)
   return Number.isInteger(value) && value > 0
 })
-
-function onTableCompleted(task) {
-  ElMessage.success(`研究任务 #${task?.taskId ?? ''} 已完成`)
-}
 
 /** Markdown → 安全 HTML（工具已做转义，链接仅 http(s)） */
 const renderedMarkdown = computed(() =>
