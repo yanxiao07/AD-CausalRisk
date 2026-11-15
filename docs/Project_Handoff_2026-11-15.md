@@ -3,9 +3,10 @@
 - 日期：2026-11-15
 - 适用仓库：`C:\Users\34079\Desktop\AD-CausalRisk`
 - 当前分支：`feat/backend-integration`
-- 当前 HEAD：`f8d3839 Merge branch 'feat/w1-dynamic-host' into feat/backend-integration`
+- 当前 HEAD：`cd54b11 feat(research): complete snapshot auto-sync and batch execution loop`
 - 文档定位：项目级交接、问题清单、工作流拆分、验收口径、子 Agent 协作规则
 - 配套任务板：`docs/Subagent_Task_Board.md`
+- P1 验收报告：`docs/P1_Acceptance_Report.md`
 
 ---
 
@@ -37,9 +38,9 @@
 ### 1.1 代码状态
 
 - 分支：`feat/backend-integration`
-- HEAD：`933a4cd docs: add project handoff and subagent task board`
-- 相对 `upstream/main`：**领先 29 个提交，0 behind**
-- `origin/feat/backend-integration` 已指向 `933a4cd`
+- HEAD：`cd54b11 feat(research): complete snapshot auto-sync and batch execution loop`
+- 相对 `upstream/main`：领先提交数、是否已推送，以 `git rev-list --left-right --count upstream/main...HEAD` 与 `git status -sb` 为准
+- `origin/feat/backend-integration` 最近一次推送为 `5fcc7ea`；P1 后续提交（`0298352`、`cd54b11`）尚未推送
 - `main` 仍停在 `35055da`，**没有研究证据/研究表格评估页面**
 - 演示与联调必须使用 `feat/backend-integration`，不能用 `main`
 
@@ -48,6 +49,10 @@ W0 已完成并推送：
 ```text
 6af5595 feat(research): add controlled snapshot registration
 933a4cd docs: add project handoff and subagent task board
+59b5844 feat(research): add dynamic host launcher
+5fcc7ea docs: switch to single-workspace serial collaboration
+0298352 feat(research): auto-sync snapshot bundle to dynamic host and enforce sync status
+cd54b11 feat(research): complete snapshot auto-sync and batch execution loop
 ```
 
 受控快照登记内容：
@@ -59,10 +64,11 @@ W0 已完成并推送：
 
 验证状态：
 
-- `.\mvnw.cmd -B -ntp clean verify`：**323 tests，0 failures，BUILD SUCCESS**
-- `npm run build`：**2388 modules，11.25s，成功**
+- `.\mvnw.cmd -B -ntp clean verify`：**324 tests，0 failures，BUILD SUCCESS**
+- `npm run build`：**2388 modules，成功**
 - Python 契约测试：**5/5 OK**
-- `git status`：干净
+- Python 动态宿主测试：**6/6 OK**
+- `git status`：P1 代码提交后干净
 
 ### 1.2 运行状态
 
@@ -70,9 +76,9 @@ W0 已完成并推送：
 |---|---|---|
 | Java 后端 | `http://127.0.0.1:8080` | 运行中，连接本机 MySQL |
 | 前端 Vite | `http://127.0.0.1:5173` | 运行中 |
-| MySQL | `127.0.0.1:3306/ad_causalrisk` | 运行中，Flyway V14 |
-| Python 课程 Agent | 8091 | 未作为当前主链路 |
-| 研究宿主 | 16300 | 已停止 |
+| MySQL | `127.0.0.1:3306/ad_causalrisk` | 运行中，Flyway V16 |
+| Python 课程 Agent | 8091 | 已退役，不参与当前主链路 |
+| 动态研究宿主 | `http://127.0.0.1:16301` | 运行中，`mode=dynamic` |
 | 真实模型文件 | `C:\controlled-model\` | 已交付并核验 |
 
 本机 MySQL 当前账号（仅本地演示，不要写入仓库）：
@@ -112,21 +118,26 @@ W0 已完成并推送：
 
 注意：
 
-- `.venv-trained` 已在收尾时删除；再次启动宿主前需按附录重建。
-- Python demo 宿主只接受预注册 `runId`（`run-trained-demo-seven`），手动登记的 `run-manual-*` 会 `RUN_ID_INVALID`。
-- 这是当前“执行闭环”的**唯一 P0 阻塞**。
+- `.venv-trained` 已在收尾时删除；主仓库 `.venv` 已安装 joblib/scikit-learn/numpy 等研究依赖。
+- 当前运行的是**动态宿主**：登记快照后 Java 自动调用 `POST /api/research-table/v1/snapshots` 注册 bundle，宿主落盘到 `runtime/dynamic-snapshots/` 并热加载。
+- 旧的“只接受预注册 runId”限制已解除；同步状态由 `research_table_snapshot.host_sync_status` 持久化。
+- `PENDING`/`FAILED` 快照不能提交，前端可点击“重试”调用 `POST /api/research/table-assessment-tasks/snapshots/{id}/sync`。
+- P1 完整验收见 `docs/P1_Acceptance_Report.md`。
 
 ### 1.4 数据库样例
 
-当前 MySQL 保留一条手工登记样例：
+当前 MySQL 保留三条已同步的人工登记样例：
 
-- `snapshotId=2`
-- `subjectId=203`
-- `subjectCode=DEMO-SMOKE-252019`
+- `subjectId=203`，`subjectCode=DEMO-SMOKE-252019`
 - `data_scope=CONSTRUCTED_VALIDATION`
 - `modelKey=trained-seven-logistic`
-- `manifestSha256=46ad...`
-- `research_table_task` 当前 0 行
+- `manifestSha256=46ad244f...83a511`
+- `artifactSha256=66cfc253...0a1fd5`
+- `snapshotId=7 / taskId=5`：AD 19.34% / 其他 0.08%
+- `snapshotId=8 / taskId=6`：AD 63.99% / 其他 36.01%
+- `snapshotId=5 / taskId=4`：与 #7 同输入，已通过重试同步
+- 三条 `host_sync_status` 均为 `SYNCED`
+- 详细数字与哈希见 `docs/P1_Acceptance_Report.md`
 
 ---
 
@@ -134,7 +145,7 @@ W0 已完成并推送：
 
 一句话：
 
-> **前端 P0/P1 已落地，后端已能把受控快照写进 MySQL，真实模型能在 H2 demo 跑；但“新登记的快照”还不能真正执行，患者档案也还不是患者。**
+> **前端 P0/P1 已落地；受控快照可登记、自动同步到动态宿主并真实执行；患者档案仍不是患者。**
 
 三个闭环，分开看：
 
@@ -146,9 +157,10 @@ W0 已完成并推送：
 
 - 登记：已通
 - MySQL：已通
-- H2 demo：已通
-- 新快照执行：**未通**（宿主静态 runId）
-- 界面：批量抽屉已具备，但只能显示 503/失败
+- 动态宿主同步：已通（`SYNCED`）
+- 新快照执行：**已通**（快照 #7 / #8 均 `COMPLETED`）
+- 界面：批量抽屉可展示同步状态、阻止未同步快照、失败可重试
+- 验收报告：`docs/P1_Acceptance_Report.md`
 
 ### L2 患者业务闭环
 
@@ -179,11 +191,11 @@ W0 已完成并推送：
 
 | 模块 | 已完成 | 主要缺口 |
 |---|---|---|
-| 前端 | 登录/四角色路由、档案/访视/特征/观测、导入、质控、任务、报告、图谱、复核随访、审计、系统控制台、开户向导、批量抽屉 | 患者主索引、批量任务历史、真实执行反馈、部分角色引导、P3 打磨 |
-| 后端 | 69 个 OpenAPI 操作、V14、系统控制台、受控登记、审计、323 测试 | 动态研究宿主注册、患者主索引、batch 端点、部署配置 |
-| Python | 真实七变量 LR、H2 研究宿主、课程合成 Agent | 动态 runId/context、常驻服务、真实数据接入、监控 |
-| 数据 | MySQL 本地库、快照 #2 | 203 缺七变量、真实数据少、患者分组缺失 |
-| 交付 | 本地可运行、构建/测试通过 | 10 文件未提交、27 提交未推送、main 落后、无部署 |
+| 前端 | 登录/四角色路由、档案/访视/特征/观测、导入、质控、任务、报告、图谱、复核随访、审计、系统控制台、开户向导、批量抽屉、宿主同步状态/重试 | 患者主索引、批量任务历史、部分角色引导、P3 打磨 |
+| 后端 | 70 个 OpenAPI 操作、V16、系统控制台、受控登记、自动同步、重试、审计、324 测试 | 患者主索引、batch 端点、部署配置 |
+| Python | 真实七变量 LR、动态宿主、快照注册、课程合成 Agent | 常驻服务、真实数据接入、监控 |
+| 数据 | MySQL 本地库、快照 #5/#7/#8（均 SYNCED） | 203 缺真实七变量、患者分组缺失 |
+| 交付 | 本地可运行、构建/测试通过、P1 代码已提交 | P1 提交未推送、无部署 |
 
 ---
 
@@ -191,9 +203,9 @@ W0 已完成并推送：
 
 | ID | 优先级 | 问题 | 影响 | 归属 |
 |---|---|---|---|---|
-| P0-1 | P0 | Python 宿主只认预注册 runId | 手工快照无法执行，L1 不闭合 | W1 |
-| P0-2 | P0 | 受控登记 10 文件未提交 | 继续开发会漂移，无法共享 | W0 |
-| P0-3 | P0 | 分支领先 27 个提交未推送 | CI/协作/回滚都不可用 | W0 |
+| P0-1 | P0 | ~~Python 宿主只认预注册 runId~~ **已解决（P1）** | 动态宿主 + 自动同步 + 重试；手工快照可执行 | W1 |
+| P0-2 | P0 | ~~受控登记 10 文件未提交~~ **已解决** | P1 代码已提交（`0298352`/`cd54b11`） | W0 |
+| P0-3 | P0 | 分支仍有未推送提交 | CI/协作/回滚以远端为准 | W0 |
 | P1-1 | P1 | `subject` 没有 `patient_id` | 患者跨时段合并无法实现 | W3 |
 | P1-2 | P1 | 203 缺七变量真实数据 | 真实模型无法在 203 上验收 | W2 |
 | P1-3 | P1 | 批量任务只存在前端内存 | 刷新丢失，无法追踪历史 | W5 |
