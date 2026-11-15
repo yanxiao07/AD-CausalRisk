@@ -7946,6 +7946,131 @@
           }
         }
       }
+    },
+    "/api/research/table-assessment-tasks/snapshots/register": {
+      "post": {
+        "operationId": "registerTrainedAssessmentSnapshot",
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO",
+        "summary": "受控登记一份人工冻结的研究表格快照",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchSnapshotRegistration"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登记后的快照编号",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "snapshotId"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "snapshotId": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "format": "int64"
+                        }
+                      }
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10927,6 +11052,96 @@
           "updatedBy"
         ],
         "additionalProperties": false
+      },
+      "ResearchSnapshotRegistration": {
+        "type": "object",
+        "required": [
+          "subjectId"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1,
+            "format": "int64"
+          },
+          "indexDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "dataVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "runId": {
+            "type": "string",
+            "pattern": "^run-[A-Za-z0-9][A-Za-z0-9-]{0,63}$"
+          },
+          "features": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "age_years",
+              "education_years",
+              "mmse",
+              "cdr_sb",
+              "cdr_global",
+              "adas__total13",
+              "faq__faqtotal"
+            ],
+            "properties": {
+              "age_years": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "education_years": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "mmse": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "cdr_sb": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "cdr_global": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "adas__total13": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "faq__faqtotal": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          },
+          "request": {
+            "type": "object"
+          },
+          "model": {
+            "type": "object"
+          }
+        }
       }
     },
     "securitySchemes": {

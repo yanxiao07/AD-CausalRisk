@@ -6,6 +6,7 @@
       subtitle="证据目录只读；研究表格评估按受试者加载冻结快照，支持多选后批量提交并查看进度。"
     >
       <template #extra>
+        <el-button v-if="canRegister" :icon="Plus" @click="openRegister">手动登记快照</el-button>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>
     </PageHeader>
@@ -103,7 +104,7 @@
             </p>
           </DataCard>
 
-          <ResearchBatchAssessment v-if="validSubjectId" :subject-id="tableSubjectId" />
+          <ResearchBatchAssessment v-if="validSubjectId" ref="batchRef" :subject-id="tableSubjectId" />
           <EmptyState
             v-else
             title="先输入受试者 ID"
@@ -129,19 +130,80 @@
         <div class="markdown-body" v-html="renderedMarkdown"></div>
       </template>
     </el-drawer>
+
+    <el-dialog
+      v-model="registerOpen"
+      title="手动登记研究快照"
+      width="760px"
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <el-form label-width="110px" @submit.prevent>
+        <el-form-item label="受试者 ID" required>
+          <el-input-number
+            v-model="registerSubjectId"
+            class="field"
+            :min="1"
+            :controls="false"
+            placeholder="输入受试者 ID"
+          />
+        </el-form-item>
+        <el-form-item label="索引日期" required>
+          <el-date-picker
+            v-model="registerIndexDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="YYYY-MM-DD"
+            class="field"
+          />
+        </el-form-item>
+        <el-form-item label="七变量数据" required>
+          <div class="feature-grid">
+            <div v-for="field in featureFields" :key="field.key" class="feature-field">
+              <span class="feature-field__label">{{ field.label }}</span>
+              <el-input-number
+                v-model="registerFeatures[field.key]"
+                class="feature-field__input"
+                :min="field.min"
+                :max="field.max"
+                :step="field.step"
+                :precision="field.precision"
+                :controls="false"
+              />
+              <span class="feature-field__unit">{{ field.unit }}</span>
+            </div>
+          </div>
+        </el-form-item>
+        <el-alert type="info" :closable="false" show-icon class="register-note">
+          登记会按 research-table-agent 契约生成请求，并使用当前已交付的七变量逻辑回归模型身份写入
+          research_table_snapshot。数据范围标记为 CONSTRUCTED_VALIDATION；当前 Python 宿主只接受预注册
+          runId，登记后的快照可被列表检索，真正执行仍依赖宿主支持对应 runId。
+        </el-alert>
+        <p v-if="registerError" class="register-error">{{ registerError }}</p>
+      </el-form>
+      <template #footer>
+        <el-button @click="registerOpen = false">取消</el-button>
+        <el-button type="primary" :loading="registering" @click="submitRegister">登记</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Refresh, WarningFilled } from '@element-plus/icons-vue'
+import { Plus, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ResearchBatchAssessment from '@/components/assessment/ResearchBatchAssessment.vue'
-import { getResearchEvidence, getResearchReport } from '@/api/research.js'
+import {
+  getResearchEvidence,
+  getResearchReport,
+  registerResearchSnapshot
+} from '@/api/research.js'
+import { useUserStore } from '@/stores/user.js'
 import { renderMarkdown } from '@/utils/markdown.js'
 import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
 
@@ -157,11 +219,82 @@ const activeReport = ref(null)
 const route = useRoute()
 const activeTab = ref('catalog')
 const tableSubjectId = ref(null)
+const batchRef = ref(null)
+
+const userStore = useUserStore()
+const canRegister = computed(() => userStore.hasRole(['ADMIN', 'RESEARCHER']))
+
+const registerOpen = ref(false)
+const registerSubjectId = ref(null)
+const registerIndexDate = ref(new Date().toISOString().slice(0, 10))
+const registerError = ref('')
+const registering = ref(false)
+
+const featureFields = [
+  { key: 'age_years', label: '年龄', unit: '岁', min: 18, max: 120, step: 1, precision: 0 },
+  { key: 'education_years', label: '受教育年限', unit: '年', min: 0, max: 30, step: 1, precision: 0 },
+  { key: 'mmse', label: 'MMSE', unit: '分', min: 0, max: 30, step: 1, precision: 0 },
+  { key: 'cdr_sb', label: 'CDR-SB', unit: '分', min: 0, max: 18, step: 0.5, precision: 1 },
+  { key: 'cdr_global', label: 'CDR 全局', unit: '分', min: 0, max: 3, step: 0.5, precision: 1 },
+  { key: 'adas__total13', label: 'ADAS-Cog13', unit: '分', min: 0, max: 85, step: 1, precision: 0 },
+  { key: 'faq__faqtotal', label: 'FAQ 总分', unit: '分', min: 0, max: 30, step: 1, precision: 0 }
+]
+
+const registerFeatures = reactive(Object.fromEntries(featureFields.map((field) => [field.key, null])))
 
 const validSubjectId = computed(() => {
   const value = Number(tableSubjectId.value)
   return Number.isInteger(value) && value > 0
 })
+
+function openRegister() {
+  registerError.value = ''
+  registerOpen.value = true
+  registerSubjectId.value = validSubjectId.value ? Number(tableSubjectId.value) : null
+  if (!registerIndexDate.value) {
+    registerIndexDate.value = new Date().toISOString().slice(0, 10)
+  }
+}
+
+async function submitRegister() {
+  registerError.value = ''
+  if (!registerSubjectId.value) {
+    registerError.value = '请填写受试者 ID'
+    return
+  }
+  if (!registerIndexDate.value) {
+    registerError.value = '请选择索引日期'
+    return
+  }
+  const missing = featureFields.filter((field) => registerFeatures[field.key] === null
+    || registerFeatures[field.key] === undefined || Number.isNaN(registerFeatures[field.key]))
+  if (missing.length) {
+    registerError.value = `请填写完整七变量：${missing.map((field) => field.label).join('、')}`
+    return
+  }
+  registering.value = true
+  try {
+    const result = await registerResearchSnapshot({
+      subjectId: registerSubjectId.value,
+      indexDate: registerIndexDate.value,
+      features: Object.fromEntries(featureFields.map((field) => [field.key, registerFeatures[field.key]]))
+    })
+    ElMessage.success(`已登记研究快照 #${result.snapshotId}`)
+    registerOpen.value = false
+    if (Number(tableSubjectId.value) === Number(registerSubjectId.value)) {
+      batchRef.value?.reload()
+    } else {
+      tableSubjectId.value = Number(registerSubjectId.value)
+    }
+  } catch (error) {
+    registerError.value =
+      error?.httpStatus === 503
+        ? '当前未配置研究宿主，请切换为课程合成演示模式或联系管理员。'
+        : error?.message || '登记失败'
+  } finally {
+    registering.value = false
+  }
+}
 
 /** Markdown → 安全 HTML（工具已做转义，链接仅 http(s)） */
 const renderedMarkdown = computed(() =>
@@ -406,5 +539,50 @@ onMounted(() => {
 .markdown-body :deep(a) {
   color: var(--brand-600);
   text-decoration: underline;
+}
+
+.mono :deep(textarea) {
+  font-family: var(--font-mono, 'Cascadia Code', Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.register-note {
+  margin-top: 4px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px 18px;
+  width: 100%;
+}
+
+.feature-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feature-field__label {
+  width: 86px;
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.feature-field__input {
+  flex: 1 1 auto;
+}
+
+.feature-field__unit {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.register-error {
+  margin: 10px 0 0 110px;
+  color: var(--danger, #c0392b);
+  font-size: 12px;
 }
 </style>

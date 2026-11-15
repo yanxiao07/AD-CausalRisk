@@ -8,6 +8,9 @@ import com.adcausalrisk.backend.importjob.entity.IdempotencyRecord;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.SubjectAccessPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,15 +29,20 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 class ResearchTableAssessmentService {
     static final String TRAINED_MODEL = "trained-seven-logistic";
     private static final String OPERATION = "RESEARCH_TABLE_ASSESSMENT";
     private static final String OUTCOME_UNKNOWN = "OUTCOME_UNKNOWN";
+    private static final List<String> MANUAL_FEATURES = List.of(
+            "age_years", "education_years", "mmse", "cdr_sb", "cdr_global", "adas__total13", "faq__faqtotal");
     private static final String TASK_QUERY = """
             SELECT t.id,t.snapshot_id,t.run_id,t.status,t.error_code,t.result_json,t.created_at,t.updated_at,
                    s.subject_id,s.authorized_user_id
@@ -95,6 +103,149 @@ class ResearchTableAssessmentService {
             return task;
         }
         return find(taskId, principal);
+    }
+
+    long register(long subjectId, JsonNode request, JsonNode model, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        if (!access.canReadRawScores(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        String subjectCode = jdbc.query("SELECT subject_code FROM subject WHERE id=?", (row, index) -> row.getString(1),
+                subjectId).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+        if (!subjectCode.equals(request.path("subjectCode").asText())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请求 subjectCode 必须与所选受试者一致");
+        }
+        if (!TRAINED_MODEL.equals(request.path("modelKey").asText())
+                || !"seven".equals(model.path("specification").asText())
+                || !"logistic".equals(model.path("family").asText())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "受控登记只接受已训练的七变量逻辑回归身份");
+        }
+        try {
+            protocol.validateRequest(request, model);
+        } catch (IllegalArgumentException invalid) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "研究请求或模型身份不符合契约");
+        }
+        byte[] requestBytes = protocol.canonicalBytes(request);
+        String requestDigest = protocol.digest(request);
+        String inputDigest = protocol.digest(protocol.admissionCore(request, model));
+        String contextDigest = protocol.digest(protocol.registrationContext(request, model));
+        var keys = new GeneratedKeyHolder();
+        jdbc.update(connection -> {
+            var statement = connection.prepareStatement("""
+                    INSERT INTO research_table_snapshot(subject_id,authorized_user_id,request_json,wire_sha256,
+                        request_sha256,model_json,data_scope,input_sha256,context_sha256)
+                    VALUES(?,?,?,?,?,?,?,?,?)
+                    """, Statement.RETURN_GENERATED_KEYS);
+            statement.setLong(1, subjectId);
+            statement.setLong(2, principal.userId());
+            statement.setString(3, new String(requestBytes, StandardCharsets.UTF_8));
+            statement.setString(4, sha256(requestBytes));
+            statement.setString(5, requestDigest);
+            statement.setString(6, model.toString());
+            statement.setString(7, "CONSTRUCTED_VALIDATION");
+            statement.setString(8, inputDigest);
+            statement.setString(9, contextDigest);
+            return statement;
+        }, keys);
+        long id = keys.getKey().longValue();
+        audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_REGISTERED",
+                "snapshotId=" + id + " subjectId=" + subjectId);
+        return id;
+    }
+
+    long registerManual(long subjectId, JsonNode features, String indexDate, String dataVersion,
+            String runId, JsonNode model, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        if (!access.canReadRawScores(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        String subjectCode = jdbc.query("SELECT subject_code FROM subject WHERE id=?", (row, index) -> row.getString(1),
+                subjectId).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+        String date = indexDate == null || indexDate.isBlank() ? LocalDate.now(clock).toString() : indexDate;
+        try {
+            LocalDate.parse(date);
+        } catch (DateTimeParseException invalid) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "indexDate 须为 YYYY-MM-DD");
+        }
+        String version = dataVersion == null || dataVersion.isBlank()
+                ? "manual-snapshot-" + date
+                : dataVersion;
+        String run = runId == null || runId.isBlank()
+                ? "run-manual-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16)
+                : runId;
+        if (!run.matches("^run-[A-Za-z0-9][A-Za-z0-9-]{0,63}$")) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "runId 须匹配 run-* 格式");
+        }
+        ObjectNode request = manualRequest(subjectCode, features, date, version, run);
+        return register(subjectId, request, model == null ? defaultModelIdentity() : model, principal);
+    }
+
+    private ObjectNode manualRequest(String subjectCode, JsonNode features, String date,
+            String dataVersion, String runId) {
+        ObjectNode request = JsonNodeFactory.instance.objectNode();
+        request.put("contractVersion", "research-table-agent-v1");
+        request.put("runId", runId);
+        request.put("modelKey", TRAINED_MODEL);
+        request.put("subjectCode", subjectCode);
+        request.put("dataVersion", dataVersion);
+        request.put("indexDate", date);
+        request.put("availabilityPolicy", "RETROSPECTIVE_SNAPSHOT");
+        request.put("predictionWindowMonths", 24);
+        ObjectNode observations = JsonNodeFactory.instance.objectNode();
+        for (String feature : MANUAL_FEATURES) {
+            JsonNode value = features.path(feature);
+            if (!value.isNull() && !value.isNumber()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, feature + " 须为数字或 null");
+            }
+            observations.set(feature, manualObservation(feature, value, date));
+        }
+        request.set("features", observations);
+        return request;
+    }
+
+    private ObjectNode manualObservation(String feature, JsonNode value, String date) {
+        ObjectNode observation = JsonNodeFactory.instance.objectNode();
+        boolean missing = value.isNull() || value.isMissingNode();
+        if (missing) {
+            observation.putNull("value");
+            observation.put("qc", "UNKNOWN");
+            observation.put("completion", "INCOMPLETE");
+            observation.put("missingReason", "NOT_COLLECTED");
+        } else {
+            observation.set("value", value);
+            observation.put("qc", "PASS");
+            observation.put("completion", "COMPLETE");
+            observation.putNull("missingReason");
+        }
+        observation.put("unit", feature.endsWith("_years") ? "years" : "score");
+        observation.put("measuredDate", date);
+        observation.put("availableDate", date);
+        observation.put("dateBasis", "MEASUREMENT_DATE");
+        observation.put("sourceRef", "MANUAL-ENTRY");
+        observation.putNull("scanId");
+        observation.put("evidenceRef", "MANUAL-" + feature);
+        return observation;
+    }
+
+    private ObjectNode defaultModelIdentity() {
+        // Identity of the delivered final__logistic.joblib model bundle. A caller may
+        // override it with an explicit model object when a different controlled
+        // artifact is registered.
+        ObjectNode model = JsonNodeFactory.instance.objectNode();
+        model.put("family", "logistic");
+        model.put("specification", "seven");
+        model.put("role", "FULL_COHORT_SEVEN_VARIABLE_RESEARCH_MODEL");
+        ArrayNode features = model.putArray("features");
+        MANUAL_FEATURES.forEach(features::add);
+        model.put("predictionPolicy", "raw_uncalibrated_24month_CIF");
+        model.putNull("graphProtocolSha256");
+        model.put("manifestSha256", "46ad244fe612306cc95a2a457c44ac234361db5ab70184c2ee2226527883a511");
+        model.put("artifactSha256", "66cfc25386ef9d90c9a6572ac13f673269426fce277d6604e7d1a355ff0a1fd5");
+        model.put("trainingPlanSha256", "47ae229df74070f56165ece9b828a1aebcbf1b316b2005439e3f76fa89b0d54e");
+        model.put("runtimeSourceSha256", "f69db2e64f0810d6abb18516e3e845067f69cad9c8422c4c09be5e4329b1450e");
+        model.put("softwareLockSha256", "df6ed05f512953046fda442f5d553deee8c314db1496eb18ae43f455f5c77f68");
+        model.put("sourceMappingSha256", "2be25c0e3176806765a4350185191640144a2370d6951d62c66a4fdcdfac488f");
+        return model;
     }
 
     List<SnapshotOption> snapshots(long subjectId, AppUserPrincipal principal) {

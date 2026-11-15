@@ -39,8 +39,9 @@ Java 默认端口为 8080。无数据库配置时启动失败。Flyway在启动�
 | 可用快照 | `GET /api/research/table-assessment-tasks/snapshots?subjectId={id}`，返回该用户获准的快照及已保存任务编号。 |
 | 创建或重放 | `POST /api/research/table-assessment-tasks`，携带 `Idempotency-Key` 和唯一请求字段 `snapshotId`（正整数）。首次提交同步调用研究宿主，重放读取 Java 任务。 |
 | 读取 | `GET /api/research/table-assessment-tasks/{id}` 从 Java 读取持久化任务及已校验的研究结果。 |
+| 受控登记 | `POST /api/research/table-assessment-tasks/snapshots/register`，请求体 `{subjectId, indexDate?, features?}`（也可传完整的 `{subjectId, request, model}`）；仅 ADMIN/RESEARCHER 且具备该档案原始数据权限，写入冻结快照并返回 `{snapshotId}`。 |
 
-管理员或研究员须为快照登记的授权用户，同时具备当前档案原始数据权限。患者角色优先排除。快照保存原始 UTF-8 请求、原字节 SHA-256、独立固定的请求/输入/上下文摘要、模型身份、档案及授权用户。业务评估接收已登记的 `CONSTRUCTED_VALIDATION` 样例，模型固定为 `trained-seven-logistic`。人工快照由隔离启动器登记。真实来源映射、快照登记和执行资格继续依赖独立证据。字段、单位、索引时钟与 QC 责任见[研究契约](../docs/Research_Table_Agent_Contract.md)。
+管理员或研究员须为快照登记的授权用户，同时具备当前档案原始数据权限。患者角色优先排除。快照保存原始 UTF-8 请求、原字节 SHA-256、独立固定的请求/输入/上下文摘要、模型身份、档案及授权用户。业务评估接收已登记的 `CONSTRUCTED_VALIDATION` 样例，模型固定为 `trained-seven-logistic`。人工快照可由隔离启动器或受控登记接口登记。真实来源映射、快照登记和执行资格继续依赖独立证据。字段、单位、索引时钟与 QC 责任见[研究契约](../docs/Research_Table_Agent_Contract.md)。
 
 默认研究宿主未配置，已授权且已登记的首次请求返回 503。联调时设置 `research.table.base-url`、`research.table.bearer-token` 与可选的 `research.table.read-timeout`（默认 120 秒）。Java 按草案同步 POST 到独立研究宿主。宿主接收原始快照字节并独立绑定来源、模型及预测和解释授权。HTTP 限环回地址，远程地址使用 HTTPS。
 

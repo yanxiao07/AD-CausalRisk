@@ -85,6 +85,12 @@ class ResearchTableAssessmentTest {
         jdbc.update("DELETE FROM research_table_snapshot");
     }
 
+    @Test
+    void canonicalDigestMatchesThePythonRuntimeFixture() throws Exception {
+        assertThat(protocol.digest(fixture("request-seven")))
+                .isEqualTo(fixture("response-seven").get("requestSha256").asText());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"seven", "ten", "blocked"})
     void persistsValidatedResultsAndReplaysWithoutCallingPython(String sample) throws Exception {
@@ -108,6 +114,100 @@ class ResearchTableAssessmentTest {
         assertThat(REQUESTS.get() - before).isEqualTo(1);
         assertThat(exchange.problem().get()).isNull();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM risk_assessment", Integer.class)).isZero();
+    }
+
+    @Test
+    void registersAControlledSnapshotForTheCurrentResearcher() throws Exception {
+        String code = "DEMO-REG-" + UUID.randomUUID();
+        long subjectId = subject(code);
+        var request = uniqueRequest().put("subjectCode", code).put("modelKey", "trained-seven-logistic");
+        var model = fixture("response-seven").get("model").deepCopy();
+
+        var payload = json.createObjectNode();
+        payload.put("subjectId", subjectId);
+        payload.set("request", request);
+        payload.set("model", model);
+
+        var actor = actor("admin", "ADMIN");
+        JsonNode created = json.readTree(mvc.perform(post(PATH + "/snapshots/register")
+                        .with(authentication(actor))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload.toString()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray());
+        assertThat(ContractSchemas.validateResponse(
+                created, PATH + "/snapshots/register", "post", 200)).isEmpty();
+        long snapshotId = created.get("data").get("snapshotId").longValue();
+
+        var row = jdbc.queryForMap("SELECT * FROM research_table_snapshot WHERE id=?", snapshotId);
+        assertThat(((Number) row.get("authorized_user_id")).longValue()).isEqualTo(userId("admin"));
+        assertThat(row.get("data_scope")).isEqualTo("CONSTRUCTED_VALIDATION");
+        assertThat(row.get("request_sha256")).isEqualTo(protocol.digest(request));
+        assertThat(row.get("input_sha256")).isEqualTo(
+                protocol.digest(protocol.admissionCore(request, model)));
+        assertThat(row.get("context_sha256")).isEqualTo(
+                protocol.digest(protocol.registrationContext(request, model)));
+        assertThat(row.get("wire_sha256")).isEqualTo(
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                        .digest(protocol.canonicalBytes(request))));
+
+        JsonNode listed = body(mvc.perform(get(PATH + "/snapshots?subjectId=" + subjectId)
+                .with(authentication(actor))));
+        assertThat(listed.get("data").get(0).get("snapshotId").longValue()).isEqualTo(snapshotId);
+    }
+
+    @Test
+    void registersManualSevenVariableFeatures() throws Exception {
+        String code = "DEMO-MANUAL-" + UUID.randomUUID();
+        long subjectId = subject(code);
+
+        var payload = json.createObjectNode();
+        payload.put("subjectId", subjectId);
+        payload.put("indexDate", "2026-11-15");
+        var features = payload.putObject("features");
+        features.put("age_years", 72);
+        features.put("education_years", 14);
+        features.put("mmse", 26);
+        features.put("cdr_sb", 1.5);
+        features.put("cdr_global", 0.5);
+        features.put("adas__total13", 18);
+        features.put("faq__faqtotal", 4);
+
+        var actor = actor("admin", "ADMIN");
+        JsonNode created = json.readTree(mvc.perform(post(PATH + "/snapshots/register")
+                        .with(authentication(actor))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload.toString()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray());
+        long snapshotId = created.get("data").get("snapshotId").longValue();
+
+        var row = jdbc.queryForMap("SELECT * FROM research_table_snapshot WHERE id=?", snapshotId);
+        JsonNode request = json.readTree((String) row.get("request_json"));
+        assertThat(request.get("subjectCode").asText()).isEqualTo(code);
+        assertThat(request.get("features").get("mmse").get("value").asInt()).isEqualTo(26);
+        assertThat(request.get("features").get("cdr_sb").get("unit").asText()).isEqualTo("score");
+        JsonNode model = json.readTree((String) row.get("model_json"));
+        assertThat(model.get("manifestSha256").asText())
+                .isEqualTo("46ad244fe612306cc95a2a457c44ac234361db5ab70184c2ee2226527883a511");
+        assertThat(row.get("data_scope")).isEqualTo("CONSTRUCTED_VALIDATION");
+    }
+
+    @Test
+    void rejectsRegistrationWhoseSubjectCodeDoesNotMatchTheSubject() throws Exception {
+        String code = "DEMO-REG-" + UUID.randomUUID();
+        long subjectId = subject(code);
+        var request = uniqueRequest().put("subjectCode", "DEMO-OTHER");
+        var payload = json.createObjectNode();
+        payload.put("subjectId", subjectId);
+        payload.set("request", request);
+        payload.set("model", fixture("response-seven").get("model"));
+
+        mvc.perform(post(PATH + "/snapshots/register")
+                        .with(authentication(actor("admin", "ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload.toString()))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -257,6 +357,12 @@ class ResearchTableAssessmentTest {
                 requestDigest, model.toString(),
                 "CONSTRUCTED_VALIDATION", input, context);
         return jdbc.queryForObject("SELECT id FROM research_table_snapshot WHERE subject_id=?", Long.class, subject);
+    }
+
+    private long subject(String code) {
+        jdbc.update("INSERT INTO subject(subject_code,alias,status,data_version,created_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)",
+                code, "登记测试档案", "ACTIVE", "demo-rt");
+        return jdbc.queryForObject("SELECT id FROM subject WHERE subject_code=?", Long.class, code);
     }
 
     private long userId(String name) {

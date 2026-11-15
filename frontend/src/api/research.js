@@ -42,6 +42,16 @@ export function listResearchSnapshots(subjectId) {
   })
 }
 
+export function registerResearchSnapshot({ subjectId, indexDate, features, model }) {
+  const body = {
+    subjectId: Number(subjectId),
+    indexDate,
+    features
+  }
+  if (model) body.model = model
+  return request.post('/research/table-assessment-tasks/snapshots/register', body, { silent: true })
+}
+
 export function submitResearchTableTask({ snapshotId, idempotencyKey }) {
   return request.post(
     '/research/table-assessment-tasks',

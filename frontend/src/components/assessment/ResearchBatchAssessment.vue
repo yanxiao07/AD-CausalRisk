@@ -341,6 +341,8 @@ watch(
   () => loadSnapshots(),
   { immediate: true }
 )
+
+defineExpose({ reload: loadSnapshots })
 </script>
 
 <style scoped>
