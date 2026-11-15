@@ -225,7 +225,7 @@ class PatientSummaryApiTest {
                         .get("data");
 
         assertThat(data.get("pendingReview").asBoolean()).isFalse();
-        assertThat(data.get("summary").asText()).contains("演示排序较高").contains("不能判断您的真实患病风险");
+        assertThat(data.get("summary").asText()).contains("验证排序较高").contains("不能判断您的真实患病风险");
         assertThat(data.get("summary").asText()).doesNotContain("0.91");
     }
 

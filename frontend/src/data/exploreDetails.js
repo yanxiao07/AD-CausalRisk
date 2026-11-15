@@ -78,8 +78,8 @@ export const exploreDetails = {
     index: '03',
     title: '风险预测',
     en: 'Risk Prediction',
-    desc: '调用 DeepAgent 合成规则，结合个体特征与图谱证据，输出可解释的风险分层与预警等级（演示用途）。',
-    capability: '在合成演示数据上跑通四阶段流程，给出可复核的风险分层，而不是一个临床可用的概率。',
+    desc: '调用 DeepAgent 规则引擎，结合个体特征与图谱证据，输出可解释的风险分层与预警等级（模型验证用途）。',
+    capability: '在受控验证数据上跑通四阶段流程，给出可复核的风险分层；结果不构成临床可用的概率。',
     highlights: [
       {
         icon: 'bolt',
@@ -97,13 +97,13 @@ export const exploreDetails = {
         desc: '结果携带 modelVersion / workflowVersion / runId，可回溯到具体运行。'
       }
     ],
-    tags: ['DeepAgent', '合成演示', '风险分层', '预警等级'],
+    tags: ['DeepAgent', '模型验证', '风险分层', '预警等级'],
     metrics: [
       { label: '模型版本', value: 'v1', unit: '', note: 'deepagent-causal-warning-v1' },
-      { label: '出分窗口', value: '24', unit: '个月', note: '合成规则只对该窗口出分' },
+      { label: '出分窗口', value: '24', unit: '个月', note: '规则引擎只对该窗口出分' },
       { label: '风险分层', value: '3+1', unit: '档', note: '低 / 中 / 高 + BLOCKED' }
     ],
-    note: '接口接受 6–60 个月的请求，但当前合成规则只对 24 个月给出评分；分数是演示用途的合成值，不是校准后的临床概率。'
+    note: '接口接受 6–60 个月的请求，但当前规则引擎只对 24 个月给出评分；分数为验证环境输出，不是校准后的临床概率。'
   },
   explain: {
     index: '04',
@@ -134,6 +134,6 @@ export const exploreDetails = {
       { label: '解释字段', value: '结构化', unit: '', note: '特征 / 方向 / 解释文本' },
       { label: '使用边界', value: '辅助', unit: '', note: '不构成诊断，需医生复核' }
     ],
-    note: '解释来自合成演示模型的预测性归因，不代表真实群体归因，也不能作为诊断依据。'
+    note: '解释来自验证模型的预测性归因，不代表真实群体归因，也不能作为诊断依据。'
   }
 }

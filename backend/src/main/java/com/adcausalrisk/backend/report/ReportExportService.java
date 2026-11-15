@@ -40,7 +40,7 @@ public class ReportExportService {
         report.put("taskId", outcome.task().getId());
         report.put("generatedAt", java.time.Instant.now().toString());
         report.put("dataSource", "SYNTHETIC_DEMO");
-        report.put("notice", "合成课程演示；排序不是经外部验证的个人风险概率，不构成诊断或治疗建议。");
+        report.put("notice", "模型验证环境输出；排序不是经外部验证的个人风险概率，不构成诊断或治疗建议。");
         report.put("reviewStatus", outcome.assessment().getReviewStatus().name());
         report.put(
                 "reviews",

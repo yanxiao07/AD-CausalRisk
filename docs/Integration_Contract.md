@@ -1,6 +1,6 @@
 # Java与Python联调约定
 
-新评估由 Vue 调用 Java 的研究任务接口。Java 从已授权的冻结快照取输入，调用 Python 表格宿主并保存双原因 CIF 和解释。课程展示使用训练权重及人工样例。旧规则契约供历史回读与回归。其行为记录如下。[表格契约](Research_Table_Agent_Contract.md) · [启动与接口](../backend/README.md#本地研究任务联调)
+新评估由 Vue 调用 Java 的研究任务接口。Java 从已授权的冻结快照取输入，调用 Python 表格宿主并保存双原因 CIF 和解释。研究展示使用训练权重及人工样例。旧规则契约供历史回读与回归。其行为记录如下。[表格契约](Research_Table_Agent_Contract.md) · [启动与接口](../backend/README.md#本地研究任务联调)
 
 | Python情况 | HTTP | Java应做什么 |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ python_service/deepagent_contract.py负责输入校验和四阶段编排，demo_
 
 ### 业务日期边界
 
-课程请求及三表CSV中的“不能晚于今天”统一使用现代上海业务日（UTC+08:00），与后端`ClockConfig`的当前`Asia/Shanghai`日期一致，不随Python宿主机时区变化。Python使用标准库固定偏移，无需Windows额外安装IANA时区数据；该时钟只确定当前校验边界，不把历史观测日期转换成时间戳或推定其时区/可获得日。
+验证请求及三表CSV中的“不能晚于今天”统一使用现代上海业务日（UTC+08:00），与后端`ClockConfig`的当前`Asia/Shanghai`日期一致，不随Python宿主机时区变化。Python使用标准库固定偏移，无需Windows额外安装IANA时区数据；该时钟只确定当前校验边界，不把历史观测日期转换成时间戳或推定其时区/可获得日。
 
 每次请求校验、每次CSV行校验在开始时固定一个业务日，避免逐字段遇到午夜后产生混合边界。例如`2026-10-23T16:30:00Z`已是上海10月24日，日期`2026-10-24`合法、`2026-10-25`仍拒绝。此处有意修正旧宿主日期的接受范围：UTC机器在16:00Z后不再误拒上海当天，日期已领先上海的宿主也不能放行上海明天。原严格日期格式、真实日历、错误码、版本/字段、公式、窗口及BLOCKED保持。协议错误/审计时间戳继续使用UTC。
 
@@ -43,12 +43,12 @@ python_service/deepagent_contract.py负责输入校验和四阶段编排，demo_
 
 联调时从同一提交取得服务源码、契约和示例，避免混用不同版本。
 
-Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)：课程业务 59 个操作，另有 2 个独立表格研究任务操作。完整边界见[后端验收](Backend_Requirements_Acceptance.md)。患者结果必须选 PatientAssessmentSummary 并在后端过滤；仅隐藏前端按钮不足以防止接口泄露。成功 Envelope 和 Python AgentResult 格式不同，不能把 data.data 错当原 Agent 对象。
+Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)：研究业务 59 个操作，另有 2 个独立表格研究任务操作。完整边界见[后端验收](Backend_Requirements_Acceptance.md)。患者结果必须选 PatientAssessmentSummary 并在后端过滤；仅隐藏前端按钮不足以防止接口泄露。成功 Envelope 和 Python AgentResult 格式不同，不能把 data.data 错当原 Agent 对象。
 
-报告导出支持HTML/PDF/JSON是课程要求，当前保留JSON资源并新增download附件入口，媒体类型与下载参数已记录于同份OpenAPI。后续变更媒体类型、下载头、错误DTO或状态时继续同步契约、调用方和测试。
+报告导出支持HTML/PDF/JSON是研究要求，当前保留JSON资源并新增download附件入口，媒体类型与下载参数已记录于同份OpenAPI。后续变更媒体类型、下载头、错误DTO或状态时继续同步契约、调用方和测试。
 
 ## Java 业务调用
 
 现有页面按快照提交研究任务。旧同步和异步规则 POST 拒绝新任务，可按原幂等键读取已有任务。历史任务和报告继续按原版本读取。
 
-发送后超时不得盲目重复 POST。课程通道可按原 runId 只读核对 Python 缓存；缓存未命中不证明任务未执行。研究通道的 runId 只用于关联，原幂等键与 GET 只读取 Java 已保存任务。旧版需求中的可配置重试次数不描述当前实现。
+发送后超时不得盲目重复 POST。验证通道可按原 runId 只读核对 Python 缓存；缓存未命中不证明任务未执行。研究通道的 runId 只用于关联，原幂等键与 GET 只读取 Java 已保存任务。旧版需求中的可配置重试次数不描述当前实现。

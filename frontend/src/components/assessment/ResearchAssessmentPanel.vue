@@ -16,7 +16,7 @@
       type="warning"
       :closable="false"
       show-icon
-      title="当前未配置研究宿主，请切换为课程合成演示模式或联系管理员。"
+      title="当前未配置研究宿主，请联系管理员配置研究宿主。"
     >
       <template #default>
         <p class="ra-alert-text">研究表格任务需要 Java 侧配置可用的研究宿主地址；配置前提交会返回 503。</p>
@@ -235,7 +235,7 @@ import {
 } from '@/api/research.js'
 import { newIdempotencyKey } from '@/api/assessments.js'
 
-const HOST_UNAVAILABLE = '当前未配置研究宿主，请切换为课程合成演示模式或联系管理员。'
+const HOST_UNAVAILABLE = '当前未配置研究宿主，请联系管理员配置研究宿主。'
 
 const props = defineProps({
   subjectId: { type: [Number, String], default: null }

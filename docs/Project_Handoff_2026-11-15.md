@@ -64,7 +64,7 @@ cd54b11 feat(research): complete snapshot auto-sync and batch execution loop
 
 验证状态：
 
-- `.\mvnw.cmd -B -ntp clean verify`：**324 tests，0 failures，BUILD SUCCESS**
+- `.\mvnw.cmd -B -ntp clean verify`：**326 tests，0 failures，BUILD SUCCESS**
 - `npm run build`：**2388 modules，成功**
 - Python 契约测试：**5/5 OK**
 - Python 动态宿主测试：**6/6 OK**
@@ -77,7 +77,7 @@ cd54b11 feat(research): complete snapshot auto-sync and batch execution loop
 | Java 后端 | `http://127.0.0.1:8080` | 运行中，连接本机 MySQL |
 | 前端 Vite | `http://127.0.0.1:5173` | 运行中 |
 | MySQL | `127.0.0.1:3306/ad_causalrisk` | 运行中，Flyway V16 |
-| Python 课程 Agent | 8091 | 已退役，不参与当前主链路 |
+| Python 研究 Agent | 8091 | 已退役，不参与当前主链路 |
 | 动态研究宿主 | `http://127.0.0.1:16301` | 运行中，`mode=dynamic` |
 | 真实模型文件 | `C:\controlled-model\` | 已交付并核验 |
 
@@ -183,7 +183,7 @@ cd54b11 feat(research): complete snapshot auto-sync and batch execution loop
 - 系统控制台：已完成 P1
 - 真实数据治理：未做
 - 部署/监控/备份：未做
-- 课程文档/课程命名：仍在
+- 历史文档/历史命名：已清理（P5）
 
 ---
 
@@ -192,10 +192,10 @@ cd54b11 feat(research): complete snapshot auto-sync and batch execution loop
 | 模块 | 已完成 | 主要缺口 |
 |---|---|---|
 | 前端 | 登录/四角色路由、档案/访视/特征/观测、导入、质控、任务、报告、图谱、复核随访、审计、系统控制台、开户向导、批量抽屉、宿主同步状态/重试 | 患者主索引、批量任务历史、部分角色引导、P3 打磨 |
-| 后端 | 70 个 OpenAPI 操作、V16、系统控制台、受控登记、自动同步、重试、审计、324 测试 | 患者主索引、batch 端点、部署配置 |
-| Python | 真实七变量 LR、动态宿主、快照注册、课程合成 Agent | 常驻服务、真实数据接入、监控 |
-| 数据 | MySQL 本地库、快照 #5/#7/#8（均 SYNCED） | 203 缺真实七变量、患者分组缺失 |
-| 交付 | 本地可运行、构建/测试通过、P1 代码已提交 | P1 提交未推送、无部署 |
+| 后端 | 72 个 OpenAPI 操作、V16、系统控制台、受控登记、自动同步、重试、任务历史、审计、326 测试 | 患者主索引、batch 端点、部署配置 |
+| Python | 真实七变量 LR、动态宿主、快照注册、合成验证 Agent | 常驻服务、真实数据接入、监控 |
+| 数据 | MySQL 本地库、快照 #5/#7/#8/#9（均 SYNCED） | 203 缺真实七变量、患者分组缺失 |
+| 交付 | 本地可运行、构建/测试通过、P1/P3 代码已提交 | 提交未推送、无部署 |
 
 ---
 
@@ -208,8 +208,8 @@ cd54b11 feat(research): complete snapshot auto-sync and batch execution loop
 | P0-3 | P0 | 分支仍有未推送提交 | CI/协作/回滚以远端为准 | W0 |
 | P1-1 | P1 | `subject` 没有 `patient_id` | 患者跨时段合并无法实现 | W3 |
 | P1-2 | P1 | 203 缺七变量真实数据 | 真实模型无法在 203 上验收 | W2 |
-| P1-3 | P1 | 批量任务只存在前端内存 | 刷新丢失，无法追踪历史 | W5 |
-| P1-4 | P1 | 课程文档/课程命名仍大量存在 | 产品化叙事不成立 | W6 |
+| P1-3 | P1 | ~~批量任务只存在前端内存~~ **已解决（P3）** | 任务历史持久化、失败重试 | W5 |
+| P1-4 | P1 | ~~历史文档/历史命名仍大量存在~~ **已解决（P5）** | 文档与 UI 已完成产品化表述 | W6 |
 | P1-5 | P1 | 无正式部署/密钥/备份 | 不能交给他人稳定运行 | W7 |
 | P1-6 | P1 | 医生端看到“没有研究评估权限”但无引导 | 角色体验困惑 | W5 |
 | P2-1 | P2 | 系统控制台仍缺安全策略/演示重置/宿主测试连接 | “控制”不完整 | W4 |
@@ -251,7 +251,7 @@ cd54b11 feat(research): complete snapshot auto-sync and batch execution loop
 1. 全新环境可按文档启动。
 2. 密钥不进仓库。
 3. MySQL 可备份/恢复。
-4. 课程文档/课程命名已按管理员决策处理。
+4. 历史文档/历史命名已清理（P5，2026-11-15）。
 5. CI 覆盖 Java、Python、前端构建/关键 E2E。
 6. 演示脚本可重复执行。
 
@@ -407,23 +407,23 @@ subject.patient_id BIGINT NULL
 - 每个失败态都有可执行下一步。
 - 无 pageerror。
 
-### W6 去课程化（P2，需管理员决策）
+### W6 产品化文案（P5，已完成）
 
-目标：让文档和用户文案匹配“真实产品”。
+目标：让文档和用户文案匹配“医疗科研协作平台”。
 
-任务：
+已完成：
 
-- 盘点课程文档：`docs/Course_SRS_V3_2.md`、`docs/AI_Collaboration.md`、`docs/Frontend_Feature_Guide.md`、`docs/Python_Course_Reports*`。
-- 决定删除/归档/保留。
-- 清理 README/AGENTS/CONTRIBUTING/V1 注释中的课程引用。
-- 清理用户可见的“课程演示/合成课程”文案。
-- 保留 `SYNTHETIC_DEMO` 等数据标签，但不要把它们说成课程作业。
+- 重写根 `README.md` 为产品化 Quick Start。
+- 全量扫描 Markdown 与前端 UI 文案，清理历史项目表述与演示口径。
+- 保留历史文档文件名以兼容既有链接；`Course_SRS_V3_2.md` 仅作为历史需求基线保留。
+- 保留 `SYNTHETIC_DEMO`、`CONSTRUCTED_VALIDATION` 等数据标签，不改代码标识符、表名和模型协议字段。
+- 新增 `docs/Release_Notes_v1.0.md` 作为交付基线。
 
 验收：
 
-- 文档导航无课程基线。
-- 用户页面无“课程演示”措辞。
-- 历史实验记录仍可追溯。
+- 文档导航不再出现历史项目叙事。
+- 用户页面无历史演示措辞。
+- 历史实验记录仍可追溯，数据边界标记完整。
 
 ### W7 运维与部署（P2）
 
@@ -576,7 +576,7 @@ subject.patient_id BIGINT NULL
 | 动态宿主方案 A/B | 动态 agent 还是宿主注册接口 | 负责人 + Python |
 | 真实数据来源 | 203 的七变量从哪来、是否允许人工录入 | 负责人/数据保管方 |
 | 患者主索引迁移 | 是否现在做、如何回填 | 负责人（已同意远期） |
-| 课程文档处置 | 删除/归档/保留 | 管理员 |
+| 历史文档处置 | 已完成：保留历史文件名，清理历史叙事（P5） | 已执行 |
 | 部署目标 | 本机/内网/云 | 负责人 |
 | 分支策略 | `feat/backend-integration` 是否作为发布分支 | 负责人 |
 | 模型结果表述 | 研究模型/非临床/非因果 | 负责人/研究 |
@@ -660,7 +660,7 @@ $env:TMP=$env:TEMP
 
 准确状态：
 
-> **单档案业务可用；真实模型可在 H2 demo 跑；受控快照可写 MySQL；但新快照不能执行，患者维度不存在，部署/课程去痕未完成。**
+> **单档案业务可用；真实模型可在 H2 demo 跑；受控快照可写 MySQL；但新快照不能执行，患者维度不存在，部署/研究去痕未完成。**
 
 下一步只有两条主线：
 

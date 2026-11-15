@@ -174,9 +174,9 @@ public class PatientSummaryService {
             return "医生已确认本次评估：由于数据不足，暂未给出风险结论。";
         }
         return switch (level == null ? "" : level) {
-            case "LOW" -> "医生已复核课程演示结果：演示排序较低。它不能判断您的真实患病风险，请按医嘱随访。";
-            case "MEDIUM" -> "医生已复核课程演示结果：演示排序居中。它不能判断您的真实患病风险，请按医嘱随访。";
-            case "HIGH" -> "医生已复核课程演示结果：演示排序较高。它不能判断您的真实患病风险，请按医嘱随访。";
+            case "LOW" -> "医生已复核模型验证结果：验证排序较低。它不能判断您的真实患病风险，请按医嘱随访。";
+            case "MEDIUM" -> "医生已复核模型验证结果：验证排序居中。它不能判断您的真实患病风险，请按医嘱随访。";
+            case "HIGH" -> "医生已复核模型验证结果：验证排序较高。它不能判断您的真实患病风险，请按医嘱随访。";
             default -> "医生已确认本次评估，具体结论请以门诊沟通为准。";
         };
     }
@@ -206,7 +206,7 @@ public class PatientSummaryService {
     private List<String> buildLimitations(AgentResult result) {
         List<String> limitations = new ArrayList<>();
         limitations.add("本摘要为面向患者的通俗说明，不构成诊断，具体诊疗请遵医嘱。");
-        limitations.add("当前为合成课程演示，排序不代表经临床验证的个人风险概率。");
+        limitations.add("当前为模型验证环境输出，排序不代表经临床验证的个人风险概率。");
         if (result == null || result.limitations() == null) {
             return limitations;
         }

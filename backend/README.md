@@ -58,7 +58,7 @@ $manifestSha256 = '<由模型保管方提供的 SHA-256>'
 python -m research_runtime.examples.run_research_table_integration runtime/trained-ui --serve --trained-manifest $manifestPath --trusted-manifest-sha256 $manifestSha256
 ```
 
-用尚不存在的输出目录。启动器运行 Java 和 Python，使用新的内存 H2 登记一个人工快照。在同学自己的前端开发代理中，把同源 `/api` 的目标设为 `handoff.json` 的 `javaBaseUrl`。以 `researcher` / `DemoPass!2026` 登录，使用 `subjectId` 查获授权的快照。省略 `--serve` 可先运行 Java 会话验收。CI 使用 `--contract-test` 核对公开人工参数的契约。
+用尚不存在的输出目录。启动器运行 Java 和 Python，使用新的内存 H2 登记一个人工快照。在开发人员自己的前端开发代理中，把同源 `/api` 的目标设为 `handoff.json` 的 `javaBaseUrl`。以 `researcher` / `DemoPass!2026` 登录，使用 `subjectId` 查获授权的快照。省略 `--serve` 可先运行 Java 会话验收。CI 使用 `--contract-test` 核对公开人工参数的契约。
 
 ## 关键行为
 

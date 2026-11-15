@@ -37,9 +37,9 @@
 | T5.2 | 错误态/角色引导 | P2 | T0.1 | F | UI |
 | T5.3 | 患者中心 UI | P2 | T3.4 | F | 页面 |
 | T5.4 | 前端 E2E | P2 | T5.1 | F | 脚本 |
-| T6.1 | 课程文档审计 | P2 | 管理员决策 | G | 清单 |
-| T6.2 | 归档/清理引用 | P2 | T6.1 | G | 文档 |
-| T6.3 | 用户文案/标签 | P2 | T6.1 | G | 文案 |
+| T6.1 | 历史文档审计 | 已完成（P5） | 管理员决策 | G | 清单/清理 |
+| T6.2 | 归档/清理引用 | 已完成（P5） | T6.1 | G | 文档 |
+| T6.3 | 用户文案/标签 | 已完成（P5） | T6.1 | G | 文案 |
 | T7.1 | Compose/部署 | P2 | T0.1 | H | 部署文件 |
 | T7.2 | 密钥/备份 | P2 | T7.1 | H | 脚本/文档 |
 | T7.3 | CI/E2E | P2 | T0.1 | H | workflow |
@@ -103,7 +103,7 @@
 ### 会话 4：W4/W6/W7（串行排队）
 
 - W4：系统控制台二期
-- W6：课程文档审计（先出清单，等管理员决策）
+- W6：历史文档审计（先出清单，等管理员决策）
 - W7：部署/CI
 - 按任务队列顺序逐个执行；当前任务 commit 后再启动下一个。
 
@@ -356,23 +356,17 @@
 验收：刷新后任务仍在；失败态有下一步；无 pageerror。
 ```
 
-### W6 课程文档
+### W6 产品化文案（已完成）
 
 ```text
-你是 AD-CausalRisk 的 W6 子 agent，负责 T6.1-T6.3。
+P5 已完成：
+- 重写 README 为产品化 Quick Start。
+- 清理 docs/ 与前端 UI 的历史项目表述。
+- 保留 Course_SRS_V3_2.md 文件名作为历史需求基线。
+- 新增 docs/Release_Notes_v1.0.md。
+- 不删除历史实验记录；保留 SYNTHETIC_DEMO / CONSTRUCTED_VALIDATION 数据标签。
 
-第一步只做审计清单，不删文件：
-- docs/Course_SRS_V3_2.md
-- docs/AI_Collaboration.md
-- docs/Frontend_Feature_Guide.md
-- docs/Python_Course_Reports*
-- README/AGENTS/CONTRIBUTING/V1 SQL 注释
-- 用户可见“课程演示”文案
-
-输出：文件、引用位置、建议（保留/归档/删除）、风险。
-等管理员决策后再执行清理。
-
-约束：不 commit/push；不删历史实验记录。
+验收：文档导航无历史项目叙事；用户页面无历史演示措辞；发布说明已归档。
 ```
 
 ### W7 部署与 CI

@@ -290,7 +290,7 @@ async function submitRegister() {
   } catch (error) {
     registerError.value =
       error?.httpStatus === 503
-        ? '当前未配置研究宿主，请切换为课程合成演示模式或联系管理员。'
+        ? '当前未配置研究宿主，请联系管理员配置研究宿主。'
         : error?.message || '登记失败'
   } finally {
     registering.value = false

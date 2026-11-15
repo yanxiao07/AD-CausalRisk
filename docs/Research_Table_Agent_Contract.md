@@ -2,7 +2,7 @@
 
 第1→3→4环节有界工程支撑。此候选连接已完成的`TableAssessment`与业务调用方，复用原输入准入及数值实现，不训练、不读取临床/参数、不更换现有服务。
 
-课程展示的独立环回宿主从可信清单加载七变量逻辑回归训练权重，使用固定人工快照。Java 查询获授权快照、提交任务并回读。[启动说明](../backend/README.md#本地研究任务联调) · [OpenAPI](contracts/research-table-agent.draft.openapi.json)。真实来源和生产配置待验收。
+研究展示的独立环回宿主从可信清单加载七变量逻辑回归训练权重，使用固定人工快照。Java 查询获授权快照、提交任务并回读。[启动说明](../backend/README.md#本地研究任务联调) · [OpenAPI](contracts/research-table-agent.draft.openapi.json)。真实来源和生产配置待验收。
 
 ## 接口边界
 

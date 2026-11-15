@@ -2,9 +2,9 @@
 
 ## Read before implementing
 
-Read README.md, docs/Course_SRS_V3_2.md, docs/Integration_Contract.md,
-docs/Research_Core_Principles.md, the applicable contracts/*.openapi.json and
-the README in the assigned module.
+Read README.md, docs/Integration_Contract.md, docs/Research_Core_Principles.md,
+the applicable contracts/*.openapi.json and the README in the assigned module.
+Historical context is in docs/Course_SRS_V3_2.md; it is not the current product baseline.
 Use docs/Design_Guide.md for role, persistence and page requirements.
 Inspect the current branch and existing code before creating or replacing files.
 

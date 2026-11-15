@@ -1,6 +1,6 @@
-# Python课程接口调用与阶段验收
+# Python研究接口调用与阶段验收
 
-本阶段完成课程需求FR-AGENT-01/02的Python支持，并核对FR-QUALITY、FR-WARN-02和FR-ASSESS-02中的阻断及真实阶段语义。交付包含原HTTP边界修复、标准库客户端、固定契约/语义校验和可重复的实际HTTP验收。Java的AgentClient、权限、持久化、业务幂等与前端接入仍由对应成员完成。
+本阶段完成历史需求FR-AGENT-01/02的Python支持，并核对FR-QUALITY、FR-WARN-02和FR-ASSESS-02中的阻断及真实阶段语义。交付包含原HTTP边界修复、标准库客户端、固定契约/语义校验和可重复的实际HTTP验收。Java的AgentClient、权限、持久化、业务幂等与前端接入仍由对应成员完成。
 
 | Python验收项 | 已实现 |
 | --- | --- |
@@ -14,9 +14,9 @@
 
 ## 沿用接口与范围
 
-原端口8091、GET `/api/health`、POST `/api/agent/v1/runs`、GET `/api/agent/v1/runs/{runId}`，请求/结果/错误字段、模型与工作流标识、评分公式均不变。原 `contracts/python-agent.openapi.json` 的SHA-256为 `90384cccce76dd35c8d31dbcc182d8c2f0ff32031948dc694ca7520cdf13eb6c`，没有重写共同契约或同学Java/前端。
+原端口8091、GET `/api/health`、POST `/api/agent/v1/runs`、GET `/api/agent/v1/runs/{runId}`，请求/结果/错误字段、模型与工作流标识、评分公式均不变。原 `contracts/python-agent.openapi.json` 的SHA-256为 `90384cccce76dd35c8d31dbcc182d8c2f0ff32031948dc694ca7520cdf13eb6c`，没有重写共同契约或开发人员Java/前端。
 
-课程仍只接收DEMO-*、demo-*及SYNTHETIC_DEMO结果，使用原加性合成规则；不从研究服务取结果来冒充课程成功，也不把课程验收当临床精度提高。课程的数值范围、空值和JSON整数请求约定继续沿用，不悄悄替换为另一个研究评分门槛。
+研究仍只接收DEMO-*、demo-*及SYNTHETIC_DEMO结果，使用原加性规则引擎；不从研究服务取结果来冒充研究成功，也不把验证验收当临床精度提高。研究的数值范围、空值和JSON整数请求约定继续沿用，不悄悄替换为另一个研究评分门槛。
 
 修复的是异常/歧义路径：多个Content-Length、Transfer-Encoding或多重Content-Type明确拒绝；与声明长度不符的短请求体不进入任务。未预期计算ValueError与JSON解析错误分别处理，前者返回已声明的500/ASSESSMENT_FAILED，不能误报输入400；错误不带内部异常细节。合法请求的路径、字段和算法不变。
 
@@ -58,7 +58,7 @@ Schema之外还检查来源激活、索引时间、图依赖、阶段顺序、BL
 
 ## 可重复验收
 
-跨语言固定案例、独立本机故障工具、只读runId核对和实际进程重启验收见[故障与恢复说明](Python_Interop_Recovery.md)。这些工具不增加原课程操作，也不替代Java持久化/授权验收。
+跨语言固定案例、独立本机故障工具、只读runId核对和实际进程重启验收见[故障与恢复说明](Python_Interop_Recovery.md)。这些工具不增加原研究操作，也不替代Java持久化/授权验收。
 
 ```powershell
 python -B -m unittest discover -s tests -v
@@ -67,8 +67,8 @@ python -B -m python_service.course_acceptance --self-test
 
 self-test在临时本机端口启动原AgentServer，复用100份既有合成档案。核对请求/响应、与原直接工作流非耗时内容相同、100份GET缓存结果、幂等重放、409冲突、四类BLOCKED、未来特征排除及错误DTO。32次提前拒绝收到完整JSON且不执行任务，500/503和真实408只在自有临时服务验收；结束后关闭服务，不启动另一套页面。
 
-对已运行的课程服务可显式使用 `--url http://127.0.0.1:8091`。它会创建105个独立新runId的合成记录，不清理旧任务；不修改现有服务容量或注入执行故障，因此少于self-test的全部22项。这是主动验收命令，不是健康检查，需由维护者明确执行。
+对已运行的合成验证服务可显式使用 `--url http://127.0.0.1:8091`。它会创建105个独立新runId的合成记录，不清理旧任务；不修改现有服务容量或注入执行故障，因此少于self-test的全部22项。这是主动验收命令，不是健康检查，需由维护者明确执行。
 
-维护方原8084演示可选显示只读验收记录：源码匹配且22项/100档案/32拒绝及独立Schema证据齐全才为VERIFIED；源码改变为STALE，缺失/无效记录为NOT_RUN/INVALID。`重新读取记录`只读取，不启动8091、不跑测试、不声称Java接入或临床有效。宿主新增元数据GET `/api/system/course-contract-check`，原课程操作不变。
+维护方原8084演示可选显示只读验收记录：源码匹配且22项/100档案/32拒绝及独立Schema证据齐全才为VERIFIED；源码改变为STALE，缺失/无效记录为NOT_RUN/INVALID。`重新读取记录`只读取，不启动8091、不跑测试、不声称Java接入或临床有效。宿主新增元数据GET `/api/system/course-contract-check`，原研究操作不变。
 
 用同一原工作流/评分器比较HTTP和直接结果只证明传输与契约一致性，不是独立算法或临床验证。共同契约变更仍需协调调用方；每个完成阶段验收后提交本地Git，不自动推送。
