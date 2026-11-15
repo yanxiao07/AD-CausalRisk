@@ -74,3 +74,21 @@ export function submitResearchTableTask({ snapshotId, idempotencyKey }) {
 export function getResearchTableTask(taskId) {
   return request.get(`/research/table-assessment-tasks/${taskId}`, { silent: true })
 }
+
+/**
+ * GET /api/research/table-assessment-tasks/history?subjectId={id}
+ * 最近 50 条研究任务（持久化）；刷新页面后仍可重建历史。
+ */
+export function listResearchTaskHistory(subjectId) {
+  return request.get('/research/table-assessment-tasks/history', {
+    params: { subjectId: Number(subjectId) },
+    silent: true
+  })
+}
+
+/** POST /api/research/table-assessment-tasks/{id}/retry —— 仅 FAILED / OUTCOME_UNKNOWN。 */
+export function retryResearchTableTask(taskId) {
+  return request.post(`/research/table-assessment-tasks/${Number(taskId)}/retry`, null, {
+    silent: true
+  })
+}

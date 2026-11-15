@@ -495,19 +495,52 @@ class ResearchTableAssessmentService {
 
     Task find(long id, AppUserPrincipal principal) {
         requireResearchRole(principal);
-        return jdbc.query(TASK_QUERY + " WHERE t.id=?", (row, index) -> {
-            long subjectId = row.getLong("subject_id");
-            authorize(principal, subjectId, row.getLong("authorized_user_id"));
-            String result = row.getString("result_json");
-            try {
-                return new Task(id, row.getLong("snapshot_id"), subjectId, row.getString("run_id"),
-                        row.getString("status"), row.getString("error_code"),
-                        result == null ? null : protocol.parse(result.getBytes(StandardCharsets.UTF_8)),
-                        row.getTimestamp("created_at").toInstant(), row.getTimestamp("updated_at").toInstant());
-            } catch (IOException invalid) {
-                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "研究任务结果不可读取");
-            }
-        }, id).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+        return jdbc.query(TASK_QUERY + " WHERE t.id=?", (row, index) -> mapTask(row, principal),
+                id).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+    }
+
+    List<Task> history(long subjectId, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        if (!access.canReadRawScores(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        return jdbc.query(TASK_QUERY + """
+                 WHERE s.subject_id=? AND s.authorized_user_id=?
+                 ORDER BY t.created_at DESC,t.id DESC LIMIT 50
+                """, (row, index) -> mapTask(row, principal), subjectId, principal.userId());
+    }
+
+    Task retry(long taskId, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        Task task = find(taskId, principal);
+        if (!"FAILED".equals(task.status()) && !OUTCOME_UNKNOWN.equals(task.status())) {
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "仅失败或结果未知的研究任务可重试");
+        }
+        Snapshot snapshot = jdbc.query("SELECT * FROM research_table_snapshot WHERE id=?",
+                (row, index) -> readSnapshot(row, principal), task.snapshotId()).stream().findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+        jdbc.update("""
+                UPDATE research_table_task SET status=?,error_code=NULL,result_json=NULL,updated_at=? WHERE id=?
+                """, OUTCOME_UNKNOWN, Timestamp.from(clock.instant()), taskId);
+        audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_RETRY", "taskId=" + taskId);
+        execute(taskId, snapshot);
+        audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_RESULT",
+                "taskId=" + taskId + " status=" + find(taskId, principal).status());
+        return find(taskId, principal);
+    }
+
+    private Task mapTask(java.sql.ResultSet row, AppUserPrincipal principal) throws java.sql.SQLException {
+        long subjectId = row.getLong("subject_id");
+        authorize(principal, subjectId, row.getLong("authorized_user_id"));
+        String result = row.getString("result_json");
+        try {
+            return new Task(row.getLong("id"), row.getLong("snapshot_id"), subjectId, row.getString("run_id"),
+                    row.getString("status"), row.getString("error_code"),
+                    result == null ? null : protocol.parse(result.getBytes(StandardCharsets.UTF_8)),
+                    row.getTimestamp("created_at").toInstant(), row.getTimestamp("updated_at").toInstant());
+        } catch (IOException invalid) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "研究任务结果不可读取");
+        }
     }
 
     private void authorize(AppUserPrincipal principal, long subjectId, long owner) {

@@ -40,9 +40,20 @@
       />
 
       <template v-else>
+        <div class="ba-filter">
+          <span class="ba-muted">同步状态</span>
+          <el-radio-group v-model="syncFilter" size="small">
+            <el-radio-button value="ALL">全部</el-radio-button>
+            <el-radio-button value="SYNCED">已同步</el-radio-button>
+            <el-radio-button value="PENDING">待同步</el-radio-button>
+            <el-radio-button value="FAILED">同步失败</el-radio-button>
+          </el-radio-group>
+        </div>
+
         <el-table
+          v-if="filteredSnapshots.length"
           ref="tableRef"
-          :data="snapshots"
+          :data="filteredSnapshots"
           row-key="snapshotId"
           class="ba-table"
           @selection-change="onSelectionChange"
@@ -81,10 +92,11 @@
             </template>
           </el-table-column>
         </el-table>
+        <el-empty v-else description="当前同步状态下没有快照。" :image-size="72" />
 
         <div class="ba-actions">
           <span class="ba-count">
-            已选 <strong>{{ selected.length }}</strong> / {{ snapshots.length }} 个快照
+            已选 <strong>{{ selected.length }}</strong> / {{ filteredSnapshots.length }} 个快照
           </span>
           <el-button
             type="primary"
@@ -96,6 +108,54 @@
         </div>
       </template>
     </template>
+
+    <div v-if="validSubject" class="ba-history">
+      <div class="ba-history__head">
+        <div>
+          <h4 class="ba-history__title">研究任务历史</h4>
+          <p class="ba-history__hint">最近 50 条，来自后端持久化记录；刷新页面不会丢失。</p>
+        </div>
+        <el-button text :loading="historyLoading" @click="loadHistory()">刷新任务</el-button>
+      </div>
+      <el-alert
+        v-if="historyError"
+        type="error"
+        :closable="false"
+        show-icon
+        :title="historyError"
+      />
+      <el-table
+        v-else
+        :data="historyRows"
+        row-key="taskId"
+        class="ba-table"
+        empty-text="该受试者还没有研究任务。"
+      >
+        <el-table-column label="任务" width="100">
+          <template #default="{ row }">#{{ row.taskId }}</template>
+        </el-table-column>
+        <el-table-column label="快照" width="100">
+          <template #default="{ row }">#{{ row.snapshotId }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="130">
+          <template #default="{ row }">
+            <StatusTag v-if="isKnownStatus(row.status)" :type="row.status" />
+            <el-tag v-else size="small" type="info">{{ row.status }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="AD 24 个月" width="120" align="right">
+          <template #default="{ row }">{{ formatCif(row.result?.prediction?.adCif24m) }}</template>
+        </el-table-column>
+        <el-table-column label="其他痴呆 24 个月" width="150" align="right">
+          <template #default="{ row }">
+            {{ formatCif(row.result?.prediction?.otherDementiaCif24m) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="创建时间" min-width="170">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
+      </el-table>
+    </div>
 
     <el-drawer
       v-model="drawerOpen"
@@ -145,9 +205,24 @@
             {{ formatCif(row.result?.prediction?.otherDementiaCif24m) }}
           </template>
         </el-table-column>
-        <el-table-column label="说明" min-width="280">
+        <el-table-column label="说明" min-width="260">
           <template #default="{ row }">
             <span :class="{ 'ba-danger': row.status === 'ERROR' }">{{ row.message || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="90">
+          <template #default="{ row }">
+            <el-button
+              v-if="canRetryTask(row)"
+              link
+              type="primary"
+              size="small"
+              :loading="retryingTaskId === row.taskId"
+              @click.stop="retryTask(row)"
+            >
+              重试
+            </el-button>
+            <span v-else class="ba-muted">—</span>
           </template>
         </el-table-column>
       </el-table>
@@ -168,7 +243,9 @@ import { newIdempotencyKey } from '@/api/assessments.js'
 import {
   getResearchTableTask,
   listResearchSnapshots,
+  listResearchTaskHistory,
   retryResearchSnapshotSync,
+  retryResearchTableTask,
   submitResearchTableTask
 } from '@/api/research.js'
 
@@ -193,8 +270,24 @@ const batchRows = ref([])
 const batchRunning = ref(false)
 const retryingId = ref(null)
 
+const syncFilter = ref('ALL')
+const historyRows = ref([])
+const historyLoading = ref(false)
+const historyError = ref('')
+const retryingTaskId = ref(null)
+
 /** snapshotId -> idempotency key，重试同一快照时复用 */
 const intentKeys = new Map()
+
+const validSubject = computed(() => {
+  const subjectId = Number(props.subjectId)
+  return Number.isInteger(subjectId) && subjectId > 0
+})
+
+const filteredSnapshots = computed(() => {
+  if (syncFilter.value === 'ALL') return snapshots.value
+  return snapshots.value.filter(row => (row.hostSyncStatus || 'PENDING') === syncFilter.value)
+})
 
 const doneCount = computed(
   () => batchRows.value.filter(row => TERMINAL.has(row.status)).length
@@ -263,6 +356,61 @@ async function retrySync(row) {
     ElMessage.error(describeProblem(problem))
   } finally {
     retryingId.value = null
+  }
+}
+
+function formatTime(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? String(value)
+    : date.toLocaleString('zh-CN', { hour12: false })
+}
+
+function canRetryTask(row) {
+  return Boolean(
+    row.taskId &&
+    (row.status === 'FAILED' || row.status === 'OUTCOME_UNKNOWN')
+  )
+}
+
+async function retryTask(row) {
+  if (!canRetryTask(row) || retryingTaskId.value) return
+  retryingTaskId.value = row.taskId
+  try {
+    const task = await retryResearchTableTask(row.taskId)
+    applyTask(row, task)
+    ElMessage.success(`研究任务 #${row.taskId} 已重新执行`)
+    await loadHistory()
+    await loadSnapshots()
+  } catch (problem) {
+    ElMessage.error(describeProblem(problem))
+  } finally {
+    retryingTaskId.value = null
+  }
+}
+
+function historyProblem(problem) {
+  if (problem?.errorCode === 'NETWORK_ERROR') return '无法连接服务器，请确认后端已启动。'
+  if (problem?.httpStatus === 403) return '当前账号无权查看该受试者的研究任务。'
+  return problem?.message || '研究任务历史加载失败，请稍后重试。'
+}
+
+async function loadHistory() {
+  historyError.value = ''
+  if (!validSubject.value) {
+    historyRows.value = []
+    return
+  }
+  historyLoading.value = true
+  try {
+    const data = await listResearchTaskHistory(Number(props.subjectId))
+    historyRows.value = Array.isArray(data) ? data : []
+  } catch (problem) {
+    historyRows.value = []
+    historyError.value = historyProblem(problem)
+  } finally {
+    historyLoading.value = false
   }
 }
 
@@ -391,15 +539,30 @@ async function openBatch() {
   }))
   drawerOpen.value = true
   await executeRows(batchRows.value)
+  await loadHistory()
+  await loadSnapshots()
 }
 
 watch(
   () => props.subjectId,
-  () => loadSnapshots(),
+  () => {
+    loadSnapshots()
+    loadHistory()
+  },
   { immediate: true }
 )
 
-defineExpose({ reload: loadSnapshots })
+watch(syncFilter, () => {
+  selected.value = []
+  if (tableRef.value) tableRef.value.clearSelection()
+})
+
+defineExpose({
+  reload: () => {
+    loadSnapshots()
+    loadHistory()
+  }
+})
 </script>
 
 <style scoped>
@@ -441,8 +604,43 @@ defineExpose({ reload: loadSnapshots })
   color: var(--muted);
 }
 
+.ba-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
 .ba-table {
   width: 100%;
+}
+
+.ba-history {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--line);
+}
+
+.ba-history__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.ba-history__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ba-history__hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .ba-link {

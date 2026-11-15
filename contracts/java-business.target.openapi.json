@@ -8225,6 +8225,138 @@
           }
         ]
       }
+    },
+    "/api/research/table-assessment-tasks/history": {
+      "get": {
+        "operationId": "listResearchTableTaskHistory",
+        "summary": "读取当前用户在某受试者下的研究任务历史",
+        "parameters": [
+          {
+            "name": "subjectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "研究任务历史（最近 50 条）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchTableTaskListEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+      }
+    },
+    "/api/research/table-assessment-tasks/{id}/retry": {
+      "post": {
+        "operationId": "retryResearchTableTask",
+        "summary": "重试失败或结果未知的研究任务",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "重试后的研究任务",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchTableTaskEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+      }
     }
   },
   "components": {
@@ -11293,6 +11425,29 @@
             "type": "object"
           }
         }
+      },
+      "ResearchTableTaskListEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          {
+            "properties": {
+              "code": {
+                "const": 0
+              },
+              "errorCode": {
+                "type": "null"
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ResearchTableTask"
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "securitySchemes": {

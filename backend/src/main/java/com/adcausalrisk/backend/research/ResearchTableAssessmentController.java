@@ -100,6 +100,22 @@ public class ResearchTableAssessmentController {
         return Envelope.success(service.snapshots(subjectId, (AppUserPrincipal) auth.getPrincipal()));
     }
 
+    @GetMapping("/history")
+    public Envelope<?> history(@RequestParam long subjectId, Authentication auth) {
+        if (subjectId <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        return Envelope.success(service.history(subjectId, (AppUserPrincipal) auth.getPrincipal()));
+    }
+
+    @PostMapping("/{id}/retry")
+    public Envelope<?> retry(@PathVariable long id, Authentication auth) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        return Envelope.success(service.retry(id, (AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @GetMapping("/{id}")
     public Envelope<?> task(@PathVariable long id, Authentication auth) {
         if (id <= 0) {

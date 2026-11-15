@@ -324,6 +324,40 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void exposesPersistedTaskHistoryForTheOwnedSubject() throws Exception {
+        var request = fixture("request-seven");
+        long snapshot = snapshot(request, fixture("response-seven"), "admin");
+        reply(request, fixture("response-seven"), 200, false);
+        var actor = actor("admin", "ADMIN");
+        JsonNode task = body(submit(snapshot, "history", actor)).get("data");
+        long subjectId = task.get("subjectId").asLong();
+        JsonNode history = body(mvc.perform(get(PATH + "/history").param("subjectId", Long.toString(subjectId))
+                .with(authentication(actor)))).get("data");
+        assertThat(history.isArray()).isTrue();
+        assertThat(history.size()).isEqualTo(1);
+        assertThat(history.get(0).get("taskId")).isEqualTo(task.get("taskId"));
+        assertThat(history.get(0).get("status").asText()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void retriesUnknownTaskAndRefusesCompletedTask() throws Exception {
+        var request = fixture("request-seven");
+        long snapshot = snapshot(request, fixture("response-seven"), "admin");
+        var actor = actor("admin", "ADMIN");
+        reply(request, fixture("response-seven"), 200, true);
+        JsonNode failed = body(submit(snapshot, "retry", actor)).get("data");
+        assertThat(failed.get("status").asText()).isEqualTo("OUTCOME_UNKNOWN");
+        long taskId = failed.get("taskId").asLong();
+        reply(request, fixture("response-seven"), 200, false);
+        JsonNode retried = body(mvc.perform(post(PATH + "/" + taskId + "/retry")
+                .with(authentication(actor)))).get("data");
+        assertThat(retried.get("taskId").asLong()).isEqualTo(taskId);
+        assertThat(retried.get("status").asText()).isEqualTo("COMPLETED");
+        mvc.perform(post(PATH + "/" + taskId + "/retry").with(authentication(actor)))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void reservesConcurrentReplayBeforeCallingTheHost() throws Exception {
         var request = uniqueRequest();
         long snapshot = snapshot(request, fixture("response-seven"), "admin");
