@@ -20,7 +20,7 @@
         <header class="panel__head">
           <div>
             <h2 class="panel__title">系统健康</h2>
-            <p class="panel__hint">Java 安全链、Python 算法服务与契约版本；探测失败不影响已有报告。</p>
+            <p class="panel__hint">Java 安全链、研究宿主与接口契约；旧规则算法服务不再参与新评估。</p>
           </div>
           <el-button text :icon="Refresh" :loading="probing" @click="probeBackend">重新探测</el-button>
         </header>
@@ -35,18 +35,16 @@
               {{ probe.latencyMs === null ? '—' : `${probe.latencyMs} ms` }} ·
               {{ info?.appVersion || '—' }} · Java {{ info?.javaVersion || '—' }}
             </span>
-            <span class="health-tile__meta mono">{{ info?.gitCommit || 'commit 未知' }}</span>
+            <span class="health-tile__meta mono">{{ info?.gitCommit && info.gitCommit !== 'UNKNOWN' ? info.gitCommit : '构建提交未提供' }}</span>
           </div>
 
           <div class="health-tile">
-            <span class="health-tile__label">Python 算法服务</span>
-            <strong class="health-tile__value" :class="pythonOnline ? 'is-ok' : 'is-bad'">
-              {{ pythonOnline ? '在线' : python?.message || '不可用' }}
+            <span class="health-tile__label">研究宿主</span>
+            <strong class="health-tile__value" :class="hostState.ok ? 'is-ok' : 'is-bad'">
+              {{ hostState.label }}
             </strong>
-            <span class="health-tile__meta">
-              {{ pythonOnline ? `${python?.latencyMs ?? '—'} ms · ${pythonDetail}` : '评估会返回明确失败，不会补分' }}
-            </span>
-            <span class="health-tile__meta mono">{{ modelVersion }}</span>
+            <span class="health-tile__meta">{{ host?.baseUrl || '尚未配置服务地址' }}</span>
+            <span class="health-tile__meta">动态快照 · 读取超时 {{ host?.readTimeoutSeconds ?? 120 }} 秒</span>
           </div>
 
           <div class="health-tile">
@@ -103,7 +101,7 @@
           <div class="channel-row__text">
             <strong>旧规则评估通道</strong>
             <span>
-              {{ policyDraft ? '开启：仅用于兼容历史演示，不再进入新评估主流程' : '关闭：与 PR #31 的退役策略一致' }}
+              {{ policyDraft ? '开启：仅用于兼容历史演示，不再进入新评估主流程' : '关闭：旧规则评分不再进入新评估' }}
             </span>
             <span v-if="policy?.updatedAt" class="meta">上次变更 {{ formatTime(policy.updatedAt) }}</span>
           </div>
@@ -250,7 +248,6 @@ const buildTime = typeof __BUILD_TIME__ === 'string' ? formatTime(__BUILD_TIME__
 const contractVersion = typeof __CONTRACT_VERSION__ === 'string' ? __CONTRACT_VERSION__ : '—'
 const contractOps = typeof __CONTRACT_OPS__ === 'number' ? __CONTRACT_OPS__ : '—'
 const contractPaths = typeof __CONTRACT_PATHS__ === 'number' ? __CONTRACT_PATHS__ : '—'
-const modelVersion = typeof __MODEL_VERSION__ === 'string' ? __MODEL_VERSION__ : '—'
 
 const loading = ref(false)
 const probing = ref(false)
@@ -262,21 +259,17 @@ const infoError = ref('')
 const models = computed(() => (Array.isArray(info.value?.models) ? info.value.models : []))
 const togglingVersion = ref('')
 
-const python = computed(() => info.value?.python || null)
-const pythonOnline = computed(() => Boolean(python.value?.available))
-const pythonDetail = computed(() => {
-  const health = python.value?.health
-  if (!health) return '健康信息缺失'
-  if (typeof health === 'string') return health
-  return health.status || health.modelVersion || health.workflowVersion || '已连接'
-})
-
 const policy = ref(null)
 const policyDraft = ref(false)
 const policySaving = ref(false)
 
 const host = ref(null)
 const hostSaving = ref(false)
+const hostState = computed(() => {
+  if (!host.value) return { ok: false, label: '未配置' }
+  if (!host.value.enabled) return { ok: false, label: '已停用' }
+  return host.value.configured ? { ok: true, label: '已配置' } : { ok: false, label: '待补全' }
+})
 const hostForm = reactive({
   baseUrl: '',
   bearerToken: '',

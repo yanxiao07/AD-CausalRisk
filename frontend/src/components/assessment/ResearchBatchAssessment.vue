@@ -3,11 +3,8 @@
     <div class="ba-head">
       <div>
         <h3 class="ba-title">批量研究评估</h3>
-        <p class="ba-subtitle">冻结快照 · 已训练的七变量逻辑回归 · 24 个月 · 人工样例</p>
+        <p class="ba-subtitle">冻结快照 · 已训练的七变量逻辑回归 · 24 个月 · 研究验证数据</p>
       </div>
-      <el-button text :loading="loading" :disabled="batchRunning" @click="loadSnapshots()">
-        刷新快照
-      </el-button>
     </div>
 
     <el-alert
@@ -115,7 +112,6 @@
           <h4 class="ba-history__title">研究任务历史</h4>
           <p class="ba-history__hint">最近 50 条，来自后端持久化记录；刷新页面不会丢失。</p>
         </div>
-        <el-button text :loading="historyLoading" @click="loadHistory()">刷新任务</el-button>
       </div>
       <el-alert
         v-if="historyError"

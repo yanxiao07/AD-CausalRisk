@@ -7,7 +7,7 @@
     >
       <template #extra>
         <el-button v-if="canRegister" :icon="Plus" @click="openRegister">手动登记快照</el-button>
-        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
+        <el-button :icon="Refresh" :loading="loading || refreshingBatch" @click="refreshAll">刷新全部</el-button>
       </template>
     </PageHeader>
 
@@ -89,14 +89,29 @@
             subtitle="快照按受试者授权查询；先选受试者，再选该受试者下已登记的冻结快照。"
           >
             <el-form label-width="110px" @submit.prevent>
-              <el-form-item label="受试者 ID" required>
-                <el-input-number
+              <el-form-item label="受试者" required>
+                <el-select
                   v-model="tableSubjectId"
-                  class="field"
-                  :min="1"
-                  :controls="false"
-                  placeholder="输入受试者 ID（正整数）"
-                />
+                  class="field subject-select"
+                  filterable
+                  remote
+                  clearable
+                  reserve-keyword
+                  :remote-method="searchSubjects"
+                  :loading="subjectLoading"
+                  placeholder="输入档案编号或别名搜索"
+                  no-data-text="没有匹配的受试者"
+                >
+                  <el-option
+                    v-for="subject in subjectOptions"
+                    :key="subject.id"
+                    :label="subject.subjectCode"
+                    :value="subject.id"
+                  >
+                    <span class="subject-option__code">{{ subject.subjectCode }}</span>
+                    <span class="subject-option__alias">{{ subject.alias || '未命名' }}</span>
+                  </el-option>
+                </el-select>
               </el-form-item>
             </el-form>
             <p class="table-hint">
@@ -107,8 +122,8 @@
           <ResearchBatchAssessment v-if="validSubjectId" ref="batchRef" :subject-id="tableSubjectId" />
           <EmptyState
             v-else
-            title="先输入受试者 ID"
-            description="输入后会加载该受试者下当前账号获准评估的冻结快照，可多选后批量评估。"
+            title="先选择受试者"
+            description="可按档案编号或别名搜索；选中后会加载该受试者下当前账号获准评估的冻结快照，可多选后批量评估。"
           />
         </div>
       </el-tab-pane>
@@ -204,6 +219,7 @@ import {
   getResearchReport,
   registerResearchSnapshot
 } from '@/api/research.js'
+import { getSubjectDetail, listSubjects } from '@/api/subjects.js'
 import { useUserStore } from '@/stores/user.js'
 import { renderMarkdown } from '@/utils/markdown.js'
 import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
@@ -220,7 +236,11 @@ const activeReport = ref(null)
 const route = useRoute()
 const activeTab = ref('catalog')
 const tableSubjectId = ref(null)
+const subjectOptions = ref([])
+const subjectLoading = ref(false)
+const refreshingBatch = ref(false)
 const batchRef = ref(null)
+let subjectSearchTimer = null
 
 const userStore = useUserStore()
 const canRegister = computed(() => userStore.hasRole(['ADMIN', 'RESEARCHER']))
@@ -247,6 +267,48 @@ const validSubjectId = computed(() => {
   const value = Number(tableSubjectId.value)
   return Number.isInteger(value) && value > 0
 })
+
+let subjectSearchSeq = 0
+
+function addSubjectOption(subject) {
+  if (!subject?.id) return
+  if (subjectOptions.value.some((item) => item.id === subject.id)) return
+  subjectOptions.value = [subject, ...subjectOptions.value].slice(0, 30)
+}
+
+async function runSubjectSearch(query) {
+  const seq = ++subjectSearchSeq
+  subjectLoading.value = true
+  try {
+    const page = await listSubjects({ page: 1, pageSize: 20, keyword: String(query || '').trim() })
+    if (seq !== subjectSearchSeq) return
+    subjectOptions.value = Array.isArray(page?.items) ? page.items : []
+  } catch {
+    if (seq === subjectSearchSeq) subjectOptions.value = []
+  } finally {
+    if (seq === subjectSearchSeq) subjectLoading.value = false
+  }
+}
+
+function searchSubjects(query) {
+  clearTimeout(subjectSearchTimer)
+  subjectSearchTimer = setTimeout(() => runSubjectSearch(query), 250)
+}
+
+async function loadSubjectOption(subjectId) {
+  try {
+    const subject = await getSubjectDetail(subjectId)
+    addSubjectOption(subject)
+  } catch {
+    // Keep the raw id; the batch panel will report authorization problems.
+  }
+}
+
+async function refreshAll() {
+  refreshingBatch.value = true
+  await Promise.allSettled([load(), batchRef.value?.reload()])
+  refreshingBatch.value = false
+}
 
 function openRegister() {
   registerError.value = ''
@@ -344,10 +406,12 @@ useEscapeToClose(drawerOpen, () => {
 
 onMounted(() => {
   load()
+  searchSubjects('')
   const subjectId = Number(route.query.subjectId)
   if (Number.isInteger(subjectId) && subjectId > 0) {
     tableSubjectId.value = subjectId
     activeTab.value = 'table'
+    loadSubjectOption(subjectId)
   } else if (route.query.tab === 'table') {
     activeTab.value = 'table'
   }
@@ -373,6 +437,20 @@ onMounted(() => {
 
 .field {
   max-width: 520px;
+}
+
+.subject-select {
+  width: 100%;
+}
+
+.subject-option__code {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.subject-option__alias {
+  color: var(--muted);
 }
 
 .table-hint {

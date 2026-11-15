@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AD-CausalRisk Java business API (synthetic course service)",
-    "version": "course-srs-v3.2-business-20261108",
+    "version": "business-v1.0-20261115",
     "description": "Java owns sessions, object permissions, data, tasks, results and audit. Browser calls Java only. Research weights and clinical validation are not supplied by these business endpoints."
   },
   "servers": [

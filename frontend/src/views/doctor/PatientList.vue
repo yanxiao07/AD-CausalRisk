@@ -72,14 +72,14 @@
             @row-click="openDrawer"
             @keydown.enter="onRowKeydown"
           >
-            <el-table-column prop="subjectCode" label="档案编号" min-width="160" />
-            <el-table-column prop="alias" label="别名" min-width="140" />
+            <el-table-column prop="subjectCode" label="档案编号" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="alias" label="别名" min-width="140" show-overflow-tooltip />
             <el-table-column label="状态" width="120">
               <template #default="{ row }">
                 <StatusTag :type="row.status" />
               </template>
             </el-table-column>
-            <el-table-column prop="dataVersion" label="数据版本" min-width="140" />
+            <el-table-column prop="dataVersion" label="数据版本" min-width="140" show-overflow-tooltip />
             <el-table-column label="建档时间" width="180">
               <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
             </el-table-column>

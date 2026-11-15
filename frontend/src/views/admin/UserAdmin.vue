@@ -66,7 +66,7 @@
           >
             <el-table-column prop="username" label="用户名" min-width="140" />
             <el-table-column label="显示名" min-width="120">
-              <template #default="{ row }">{{ row.displayName || '—' }}</template>
+              <template #default="{ row }">{{ row.displayName || '未设置' }}</template>
             </el-table-column>
             <el-table-column label="角色" min-width="200">
               <template #default="{ row }">
@@ -89,7 +89,7 @@
             </el-table-column>
             <el-table-column label="数据范围" width="110">
               <template #default="{ row }">
-                {{ row.dataScope === 'ALL' ? '全部' : '授权范围' }}
+                {{ row.roles?.includes('PATIENT') ? '仅本人摘要' : row.dataScope === 'ALL' ? '全部' : '授权范围' }}
               </template>
             </el-table-column>
             <el-table-column label="创建时间" width="170">

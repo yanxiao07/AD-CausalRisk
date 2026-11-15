@@ -47,7 +47,7 @@ public class SystemService {
         result.put("appVersion", "0.1.0");
         result.put("gitCommit", commit);
         result.put("javaVersion", System.getProperty("java.version"));
-        result.put("contractVersion", "course-srs-v3.2-business-20261108");
+        result.put("contractVersion", "business-v1.0-20261115");
         try {
             long start = System.nanoTime();
             result.put(
