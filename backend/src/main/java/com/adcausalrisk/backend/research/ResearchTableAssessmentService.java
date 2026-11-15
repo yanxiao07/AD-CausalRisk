@@ -102,13 +102,6 @@ class ResearchTableAssessmentService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "幂等键须为1至100个字符");
         }
         String digest = snapshotKey(snapshotId);
-        String syncStatus = jdbc.query("SELECT host_sync_status FROM research_table_snapshot WHERE id=?",
-                (row, index) -> row.getString(1), snapshotId).stream().findFirst()
-                .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
-        if (!"SYNCED".equals(syncStatus)) {
-            throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE,
-                    "该快照尚未同步到研究宿主，请等待登记完成或联系管理员");
-        }
         Submission submission;
         try {
             submission = transaction.execute(status -> reserve(snapshotId, key, digest, principal));
@@ -509,6 +502,12 @@ class ResearchTableAssessmentService {
         if (existing.isPresent()) {
             return new Submission(existing.get(), null);
         }
+        String syncStatus = jdbc.queryForObject(
+                "SELECT host_sync_status FROM research_table_snapshot WHERE id=?", String.class, snapshotId);
+        if (!"SYNCED".equals(syncStatus)) {
+            throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE,
+                    "该快照尚未同步到研究宿主，请等待登记完成或联系管理员");
+        }
         if (!jdbc.queryForList("SELECT id FROM research_table_task WHERE snapshot_id=?", Long.class,
                 snapshotId).isEmpty()) {
             throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "该冻结快照已有关联任务");
@@ -609,10 +608,16 @@ class ResearchTableAssessmentService {
         if (!access.canReadRawScores(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
+        if (principal.roleCodes().contains("DOCTOR")) {
+            return jdbc.query(TASK_QUERY + """
+                     WHERE s.subject_id=?
+                     ORDER BY t.created_at DESC,t.id DESC LIMIT 50
+                    """, (row, index) -> mapTask(row, principal), subjectId);
+        }
         return jdbc.query(TASK_QUERY + """
-                 WHERE s.subject_id=?
+                 WHERE s.subject_id=? AND s.authorized_user_id=?
                  ORDER BY t.created_at DESC,t.id DESC LIMIT 50
-                """, (row, index) -> mapTask(row, principal), subjectId);
+                """, (row, index) -> mapTask(row, principal), subjectId, principal.userId());
     }
 
     List<Task> history(long subjectId, AppUserPrincipal principal) {
@@ -647,7 +652,11 @@ class ResearchTableAssessmentService {
 
     private Task mapTask(java.sql.ResultSet row, AppUserPrincipal principal) throws java.sql.SQLException {
         long subjectId = row.getLong("subject_id");
-        if (!access.canReadRawScores(principal, subjectId)) {
+        long ownerId = row.getLong("authorized_user_id");
+        boolean owner = principal.userId() == ownerId;
+        boolean treatingDoctor = principal.roleCodes().contains("DOCTOR")
+                && access.canReadRawScores(principal, subjectId);
+        if (!owner && !treatingDoctor) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
         String result = row.getString("result_json");
