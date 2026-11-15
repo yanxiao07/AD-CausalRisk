@@ -103,6 +103,7 @@ const router = useRouter()
 const loading = ref(true)
 const loadError = ref('')
 const pendingReview = ref(null)
+const pendingFirstId = ref(null)
 const followups = ref([])
 const todayTotal = ref(0)
 const overdueTotal = ref(0)
@@ -175,7 +176,11 @@ async function load() {
     loadError.value = '部分数据读取失败，已展示可用的内容。'
   }
 
-  if (pending.status === 'fulfilled') pendingReview.value = Number(pending.value?.total ?? 0)
+  if (pending.status === 'fulfilled') {
+    pendingReview.value = Number(pending.value?.total ?? 0)
+    const first = pending.value?.items?.[0]
+    pendingFirstId.value = first?.assessmentId ?? first?.id ?? null
+  }
   if (high.status === 'fulfilled') highRisk.value = Number(high.value?.total ?? 0)
   if (subjects.status === 'fulfilled') subjectTotal.value = Number(subjects.value?.total ?? 0)
   if (today.status === 'fulfilled') {
@@ -187,7 +192,9 @@ async function load() {
 }
 
 function goReviews() {
-  router.push('/reviews')
+  const query = { status: 'PENDING' }
+  if (pendingFirstId.value) query.assessmentId = String(pendingFirstId.value)
+  router.push({ path: '/reviews', query })
 }
 
 function goFollowUps() {

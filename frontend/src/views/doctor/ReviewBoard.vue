@@ -364,6 +364,10 @@ async function submitReview(decision) {
 }
 
 onMounted(async () => {
+  const statusFromQuery = String(route.query.status || '').toUpperCase()
+  if (['PENDING', 'ACKNOWLEDGED'].includes(statusFromQuery)) {
+    filter.value = statusFromQuery
+  }
   await loadPage(1)
   // 深链：从任务页/档案抽屉带过来的评估 ID，直接打开该条复核（不依赖列表所在页）
   const fromQuery = Number(route.query.assessmentId)
