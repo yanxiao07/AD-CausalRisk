@@ -7298,7 +7298,8 @@
                         "type": "object",
                         "required": [
                           "snapshotId",
-                          "taskId"
+                          "taskId",
+                          "hostSyncStatus"
                         ],
                         "additionalProperties": false,
                         "properties": {
@@ -7314,6 +7315,14 @@
                             ],
                             "minimum": 1,
                             "format": "int64"
+                          },
+                          "hostSyncStatus": {
+                            "enum": [
+                              "PENDING",
+                              "SYNCED",
+                              "FAILED"
+                            ],
+                            "type": "string"
                           }
                         }
                       }
@@ -7993,7 +8002,8 @@
                     "data": {
                       "type": "object",
                       "required": [
-                        "snapshotId"
+                        "snapshotId",
+                        "hostSyncStatus"
                       ],
                       "additionalProperties": false,
                       "properties": {
@@ -8001,6 +8011,14 @@
                           "type": "integer",
                           "minimum": 1,
                           "format": "int64"
+                        },
+                        "hostSyncStatus": {
+                          "enum": [
+                            "PENDING",
+                            "SYNCED",
+                            "FAILED"
+                          ],
+                          "type": "string"
                         }
                       }
                     },

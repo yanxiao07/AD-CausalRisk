@@ -16,12 +16,14 @@ import re
 
 from python_service.course_protocol import CourseProtocolError, decode_json, identity_encoding, utf8_json_media
 from python_service.deepagent_contract import RUN_ID_RE
+from research_runtime.dynamic_snapshot import DynamicSnapshotError, MAXIMUM_BUNDLE_BYTES
 from research_runtime.input_admission import POLICY, SCHEMA
 from research_runtime.research_table_agent import ResearchAgentError, ResearchTableAgent
 from research_runtime.research_table_protocol import digest
 
 
 ROUTE = "/api/research-table/v1/assessments"
+SNAPSHOT_ROUTE = "/api/research-table/v1/snapshots"
 
 
 def cases(trained_manifest=None, trusted_sha256=None):
@@ -86,7 +88,7 @@ def static_resolver(agents):
     return resolve
 
 
-def handler(resolve, token):
+def handler(resolve, token, register=None):
     class ResearchHandler(BaseHTTPRequestHandler):
         def setup(self):
             super().setup()
@@ -95,23 +97,69 @@ def handler(resolve, token):
         def log_message(self, *_):
             pass
 
+        def authorized(self):
+            supplied = self.headers.get_all("Authorization", [])
+            return (len(supplied) == 1
+                    and compare_digest(supplied[0].encode(), token))
+
         def do_POST(self):
-            if self.path != ROUTE:
-                self.send_error(404)
+            if self.path == ROUTE:
+                try:
+                    try:
+                        result = self.assess()
+                    except ResearchAgentError as error:
+                        self.respond(error.http_status, error.response())
+                    else:
+                        self.respond(200, result)
+                except (TimeoutError, ConnectionError):
+                    self.close_connection = True
+                return
+            if self.path == SNAPSHOT_ROUTE and register is not None:
+                try:
+                    self.register_snapshot(register)
+                except (TimeoutError, ConnectionError):
+                    self.close_connection = True
+                return
+            self.send_error(404)
+
+        def register_snapshot(self, register):
+            if not self.authorized():
+                self.respond(401, dict(errorCode="INDEPENDENT_EXECUTION_PERMISSION_REQUIRED",
+                                       message="Bearer token required"))
+                return
+            lengths = self.headers.get_all("Content-Length", [])
+            if (self.headers.get("Transfer-Encoding") is not None or len(lengths) != 1
+                    or not re.fullmatch(r"[0-9]{1,10}", lengths[0])
+                    or not utf8_json_media(self.headers) or not identity_encoding(self.headers)):
+                self.respond(400, dict(errorCode="REQUEST_JSON_INVALID",
+                                       message="Expected one UTF-8 JSON body"))
+                return
+            length = int(lengths[0])
+            if length > MAXIMUM_BUNDLE_BYTES:
+                self.respond(413, dict(errorCode="BUNDLE_TOO_LARGE",
+                                       message="Snapshot bundle exceeds the limit"))
+                return
+            raw = self.rfile.read(length)
+            try:
+                if len(raw) != length:
+                    raise ValueError
+                body = decode_json(raw)
+            except (CourseProtocolError, ValueError, RecursionError, UnicodeError):
+                self.respond(400, dict(errorCode="BUNDLE_JSON_INVALID",
+                                       message="Snapshot bundle is not valid JSON"))
                 return
             try:
-                try:
-                    result = self.assess()
-                except ResearchAgentError as error:
-                    self.respond(error.http_status, error.response())
-                else:
-                    self.respond(200, result)
-            except (TimeoutError, ConnectionError):
-                self.close_connection = True
+                result = register(body)
+            except DynamicSnapshotError as error:
+                code = str(error).split(": ")[-1]
+                status = 409 if "RUN_ID_CONFLICT" in code else 400
+                self.respond(status, dict(errorCode=code,
+                                          message="Snapshot bundle rejected"))
+                return
+            self.respond(200, result)
 
         def assess(self):
-            supplied = self.headers.get_all("Authorization", [])
-            if len(supplied) != 1 or not compare_digest(supplied[0].encode(), token):
+            if not self.authorized():
                 raise ResearchAgentError("INDEPENDENT_EXECUTION_PERMISSION_REQUIRED")
             lengths = self.headers.get_all("Content-Length", [])
             if (self.headers.get("Transfer-Encoding") is not None or len(lengths) != 1
@@ -176,14 +224,16 @@ def main():
             host = DynamicResearchHost(args.trained_manifest, args.trusted_manifest_sha256,
                                        args.snapshot_dir)
             resolve = host.resolve
+            register = host.register
             manifest = dict(mode="dynamic", cases={}, snapshots=host.describe())
         else:
             agents, manifest = cases(args.trained_manifest, args.trusted_manifest_sha256)
             resolve = static_resolver(agents)
+            register = None
             manifest = dict(mode="trained" if args.trained_manifest else "contract-test", cases=manifest)
     except (ValueError, OSError, KeyError, TypeError):
         parser.exit(1, "Research model or assessment configuration unavailable.\n")
-    with HTTPServer(("127.0.0.1", args.port), handler(resolve, ("Bearer " + token).encode())) as server:
+    with HTTPServer(("127.0.0.1", args.port), handler(resolve, ("Bearer " + token).encode(), register)) as server:
         with args.manifest.open("x", encoding="utf-8") as stream:
             json.dump(dict(port=server.server_port, **manifest), stream, ensure_ascii=False)
         server.serve_forever()

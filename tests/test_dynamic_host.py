@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest import TestCase, mock
 
 from research_runtime.dynamic_host import DynamicResearchHost
-from research_runtime.dynamic_snapshot import bundle_from_parts, write_bundle
+from research_runtime.dynamic_snapshot import DynamicSnapshotError, bundle_from_parts, write_bundle
 from research_runtime.examples.input_admission_constructed import constructed_pair
 from research_runtime.research_table_protocol import CONTRACT, ResearchAgentError
 
@@ -93,6 +93,27 @@ class DynamicHostTests(TestCase):
         with self.assertRaises(ResearchAgentError) as caught:
             self.host().resolve(RUN_ID, self.request)
         self.assertEqual(caught.exception.code, "HOST_BINDING_INVALID")
+
+    def test_register_is_idempotent_for_the_same_bundle(self):
+        host = self.host()
+        first = host.register(self.bundle)
+        second = host.register(self.bundle)
+        self.assertEqual(first["status"], "SYNCED")
+        self.assertFalse(first["idempotent"])
+        self.assertEqual(second["status"], "SYNCED")
+        self.assertTrue(second["idempotent"])
+        self.assertIn(RUN_ID, [item["runId"] for item in host.describe()])
+
+    def test_register_rejects_a_changed_bundle_for_the_same_run(self):
+        host = self.host()
+        host.register(self.bundle)
+        changed = dict(self.request, indexDate="2020-01-04")
+        context = dict(self.context, indexDate="2020-01-04")
+        conflicting = bundle_from_parts(run_id=RUN_ID, request=changed, model=self.model,
+                                       context=context)
+        with self.assertRaises(DynamicSnapshotError) as caught:
+            host.register(conflicting)
+        self.assertEqual(str(caught.exception), "RUN_ID_CONFLICT")
 
 
 if __name__ == "__main__":

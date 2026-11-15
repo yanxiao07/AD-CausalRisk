@@ -15,7 +15,8 @@ from http.server import HTTPServer
 from pathlib import Path
 
 from .dynamic_snapshot import (DATA_SCOPES, SnapshotDirectory,
-                               DynamicSnapshotError, verify_bundle)
+                               DynamicSnapshotError, load_bundle, verify_bundle,
+                               write_bundle)
 from .inference import load_final_model
 from .research_table_agent import ResearchAgentError, ResearchTableAgent
 from .research_table_protocol import digest
@@ -70,6 +71,28 @@ class DynamicResearchHost:
                                          verified_identity=snapshot.model)
             self._assessments[key] = assessment
         return assessment
+
+    def register(self, bundle):
+        """Validate and persist one host-owned bundle; idempotent by runId."""
+        verified = verify_bundle(bundle)
+        try:
+            self._verify_model(verified.model)
+        except ValueError as error:
+            raise DynamicSnapshotError(str(error)) from None
+        target = self._snapshots.directory / f"{verified.run_id}.json"
+        if target.exists():
+            existing = load_bundle(target)
+            if (existing.request_sha256, existing.input_sha256,
+                    existing.context_sha256) == (verified.request_sha256,
+                                                 verified.input_sha256,
+                                                 verified.context_sha256):
+                return dict(runId=verified.run_id, snapshotId=verified.snapshot_id,
+                            status="SYNCED", idempotent=True)
+            raise DynamicSnapshotError("RUN_ID_CONFLICT")
+        write_bundle(target, bundle)
+        self._snapshots.reload()
+        return dict(runId=verified.run_id, snapshotId=verified.snapshot_id,
+                    status="SYNCED", idempotent=False)
 
     def resolve(self, run_id, body):
         """Return a freshly bound agent, or raise a stable protocol error."""
@@ -139,7 +162,7 @@ def main():
         parser.exit(1, f"research host configuration unavailable: {error}\n")
 
     from research_runtime.examples.research_table_http import handler
-    server = HTTPServer((args.host, args.port), handler(host.resolve, ("Bearer " + token).encode()))
+    server = HTTPServer((args.host, args.port), handler(host.resolve, ("Bearer " + token).encode(), host.register))
     handshake = snapshot_dir.parent / "dynamic-host-handshake.json"
     if handshake.exists():
         handshake.unlink()

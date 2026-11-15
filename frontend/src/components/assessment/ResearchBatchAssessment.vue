@@ -57,6 +57,13 @@
               <span v-else class="ba-muted">—</span>
             </template>
           </el-table-column>
+          <el-table-column label="宿主同步" width="120">
+            <template #default="{ row }">
+              <el-tag :type="syncTag(row.hostSyncStatus)" size="small" effect="light">
+                {{ syncLabel(row.hostSyncStatus) }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="说明" min-width="280">
             <template #default="{ row }">
               {{ row.taskId ? '已有研究任务，批量评估时直接回读结果。' : '尚未提交，批量评估时创建研究任务。' }}
@@ -144,6 +151,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import StatusTag from '@/components/common/StatusTag.vue'
 import { newIdempotencyKey } from '@/api/assessments.js'
 import {
@@ -208,6 +216,18 @@ function isKnownStatus(value) {
 function formatCif(value) {
   const number = Number(value)
   return Number.isFinite(number) ? `${(number * 100).toFixed(2)}%` : '—'
+}
+
+function syncLabel(status) {
+  if (status === 'SYNCED') return '已同步'
+  if (status === 'FAILED') return '同步失败'
+  return '待同步'
+}
+
+function syncTag(status) {
+  if (status === 'SYNCED') return 'success'
+  if (status === 'FAILED') return 'danger'
+  return 'warning'
 }
 
 function onSelectionChange(rows) {
@@ -324,6 +344,11 @@ async function executeRows(rows) {
 
 async function openBatch() {
   if (!selected.value.length) return
+  const pending = selected.value.filter(item => item.hostSyncStatus !== 'SYNCED')
+  if (pending.length) {
+    ElMessage.warning('所选快照尚未同步到研究宿主，请稍后刷新或重新登记。')
+    return
+  }
   batchRows.value = selected.value.map(item => ({
     snapshotId: item.snapshotId,
     existingTaskId: item.taskId || null,

@@ -239,12 +239,11 @@ class ResearchTableAssessmentTest {
                 """, StandardCharsets.UTF_8);
 
         Path repo = Path.of(System.getProperty("user.dir")).toAbsolutePath().getParent();
-        Path w1 = repo.resolveSibling("AD-CausalRisk-w1");
-        Path python = w1.resolve(".venv-research").resolve("Scripts").resolve("python.exe");
-        Assumptions.assumeTrue(Files.isRegularFile(python), "W1 Python environment is not available");
+        Path python = repo.resolve(".venv").resolve("Scripts").resolve("python.exe");
+        Assumptions.assumeTrue(Files.isRegularFile(python), "Python environment is not available");
 
         Process process = new ProcessBuilder(python.toString(), temp.resolve("verify.py").toString(),
-                w1.toString(), temp.toString(), Long.toString(snapshotId), Long.toString(subjectId))
+                repo.toString(), temp.toString(), Long.toString(snapshotId), Long.toString(subjectId))
                 .redirectErrorStream(true)
                 .start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
@@ -409,7 +408,8 @@ class ResearchTableAssessmentTest {
         byte[] wire = bytes(request);
         jdbc.update("""
                 INSERT INTO research_table_snapshot(subject_id,authorized_user_id,request_json,wire_sha256,
-                    request_sha256,model_json,data_scope,input_sha256,context_sha256) VALUES(?,?,?,?,?,?,?,?,?)
+                    request_sha256,model_json,data_scope,input_sha256,context_sha256,host_sync_status)
+                VALUES(?,?,?,?,?,?,?,?,?,'SYNCED')
                 """, subject, userId(owner), request.toString(),
                 HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(wire)),
                 requestDigest, model.toString(),

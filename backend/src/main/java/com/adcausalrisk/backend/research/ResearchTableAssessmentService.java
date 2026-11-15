@@ -51,7 +51,8 @@ class ResearchTableAssessmentService {
 
     record Task(long taskId, long snapshotId, long subjectId, String runId, String status,
                 String errorCode, JsonNode result, Instant createdAt, Instant updatedAt) {}
-    record SnapshotOption(long snapshotId, Long taskId) {}
+    record SnapshotOption(long snapshotId, Long taskId, String hostSyncStatus) {}
+    record Registration(long snapshotId, String hostSyncStatus) {}
 
     private record Snapshot(byte[] requestBytes, JsonNode request, JsonNode model, String requestDigest,
                             String inputDigest, String contextDigest) {}
@@ -90,6 +91,13 @@ class ResearchTableAssessmentService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "幂等键须为1至100个字符");
         }
         String digest = snapshotKey(snapshotId);
+        String syncStatus = jdbc.query("SELECT host_sync_status FROM research_table_snapshot WHERE id=?",
+                (row, index) -> row.getString(1), snapshotId).stream().findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+        if (!"SYNCED".equals(syncStatus)) {
+            throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE,
+                    "该快照尚未同步到研究宿主，请等待登记完成或联系管理员");
+        }
         Submission submission;
         try {
             submission = transaction.execute(status -> reserve(snapshotId, key, digest, principal));
@@ -153,6 +161,86 @@ class ResearchTableAssessmentService {
         audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_REGISTERED",
                 "snapshotId=" + id + " subjectId=" + subjectId);
         return id;
+    }
+
+    Registration registerAndSync(long subjectId, JsonNode request, AppUserPrincipal principal) {
+        long id = register(subjectId, request, principal);
+        return new Registration(id, syncToHost(id, principal));
+    }
+
+    Registration registerManualAndSync(long subjectId, JsonNode features, String indexDate, String dataVersion,
+            String runId, AppUserPrincipal principal) {
+        long id = registerManual(subjectId, features, indexDate, dataVersion, runId, principal);
+        return new Registration(id, syncToHost(id, principal));
+    }
+
+    String syncToHost(long snapshotId, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        var row = jdbc.query("""
+                SELECT subject_id,authorized_user_id,request_json,model_json,context_json,bundle_json
+                FROM research_table_snapshot WHERE id=?
+                """, (result, index) -> new Object[] {result.getLong(1), result.getLong(2),
+                result.getString(3), result.getString(4), result.getString(5), result.getString(6)},
+                snapshotId).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+        long subjectId = (long) row[0];
+        if ((long) row[1] != principal.userId() || !access.canReadRawScores(principal, subjectId)
+                || row[4] == null) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        try {
+            JsonNode request = protocol.parse(((String) row[2]).getBytes(StandardCharsets.UTF_8));
+            JsonNode model = protocol.parse(((String) row[3]).getBytes(StandardCharsets.UTF_8));
+            JsonNode context = protocol.parse(((String) row[4]).getBytes(StandardCharsets.UTF_8));
+            ObjectNode bundle = JsonNodeFactory.instance.objectNode();
+            bundle.put("schemaVersion", "research-dynamic-snapshot-v1");
+            bundle.put("runId", request.path("runId").asText());
+            bundle.set("request", request);
+            bundle.set("model", model);
+            bundle.set("context", context);
+            bundle.put("requestSha256", protocol.digest(request));
+            bundle.put("inputSha256", protocol.digest(protocol.admissionCore(request, model)));
+            bundle.put("contextSha256", protocol.digest(context));
+            bundle.put("dataScope", "CONSTRUCTED_VALIDATION");
+            bundle.put("snapshotId", snapshotId);
+            bundle.put("subjectId", subjectId);
+            byte[] bundleBytes = protocol.canonicalBytes(bundle);
+            jdbc.update("UPDATE research_table_snapshot SET bundle_json=? WHERE id=?",
+                    new String(bundleBytes, StandardCharsets.UTF_8), snapshotId);
+            ResearchTableClient.Reply reply;
+            try {
+                reply = client.registerSnapshot(bundleBytes);
+            } catch (BusinessException unavailable) {
+                if (unavailable.errorCode() == ErrorCode.RESEARCH_UNAVAILABLE) {
+                    updateSync(snapshotId, "PENDING");
+                    return "PENDING";
+                }
+                throw unavailable;
+            } catch (RuntimeException invalid) {
+                updateSync(snapshotId, "FAILED");
+                audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_SYNC_FAILED",
+                        "snapshotId=" + snapshotId + " error=host-protocol");
+                return "FAILED";
+            }
+            if (reply == null || reply.httpStatus() != 200
+                    || !"SYNCED".equals(reply.body().path("status").asText())) {
+                updateSync(snapshotId, "FAILED");
+                audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_SYNC_FAILED",
+                        "snapshotId=" + snapshotId + " status=" + (reply == null ? "unavailable" : reply.httpStatus()));
+                return "FAILED";
+            }
+            updateSync(snapshotId, "SYNCED");
+            audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_SYNCED",
+                    "snapshotId=" + snapshotId + " subjectId=" + subjectId);
+            return "SYNCED";
+        } catch (IOException invalid) {
+            updateSync(snapshotId, "FAILED");
+            return "FAILED";
+        }
+    }
+
+    private void updateSync(long snapshotId, String status) {
+        jdbc.update("UPDATE research_table_snapshot SET host_sync_status=?,host_synced_at=? WHERE id=?",
+                status, "SYNCED".equals(status) ? Timestamp.from(clock.instant()) : null, snapshotId);
     }
 
     /**
@@ -289,7 +377,7 @@ class ResearchTableAssessmentService {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
         return jdbc.query("""
-                SELECT s.id,s.request_json,t.id AS task_id
+                SELECT s.id,s.request_json,s.host_sync_status,t.id AS task_id
                 FROM research_table_snapshot s LEFT JOIN research_table_task t ON t.snapshot_id=s.id
                 WHERE s.subject_id=? AND s.authorized_user_id=? AND s.data_scope='CONSTRUCTED_VALIDATION'
                 ORDER BY s.id
@@ -299,7 +387,8 @@ class ResearchTableAssessmentService {
                         if (!TRAINED_MODEL.equals(request.path("modelKey").asText())) {
                             return null;
                         }
-                        return new SnapshotOption(row.getLong("id"), row.getObject("task_id", Long.class));
+                        return new SnapshotOption(row.getLong("id"), row.getObject("task_id", Long.class),
+                                row.getString("host_sync_status"));
                     } catch (IOException | IllegalArgumentException invalid) {
                         throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "冻结研究快照配置无效");
                     }

@@ -41,7 +41,7 @@ public class ResearchTableAssessmentController {
         return Envelope.success(service.submit(id.longValue(), key, (AppUserPrincipal) auth.getPrincipal()));
     }
 
-    record SnapshotRegistration(long snapshotId) {}
+    record SnapshotRegistration(long snapshotId, String hostSyncStatus) {}
 
     @PostMapping(value = "/snapshots/register", consumes = MediaType.APPLICATION_JSON_VALUE)
     public Envelope<?> register(@RequestBody byte[] body, Authentication auth) {
@@ -61,18 +61,21 @@ public class ResearchTableAssessmentController {
         AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
         JsonNode request = payload.path("request");
         if (request.isObject()) {
+            var registration = service.registerAndSync(subject.longValue(), request, principal);
             return Envelope.success(new SnapshotRegistration(
-                    service.register(subject.longValue(), request, principal)));
+                    registration.snapshotId(), registration.hostSyncStatus()));
         }
         JsonNode features = payload.path("features");
         if (!features.isObject()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                     "请提供 features 七变量数据");
         }
-        return Envelope.success(new SnapshotRegistration(service.registerManual(
+        var registration = service.registerManualAndSync(
                 subject.longValue(), features,
                 text(payload, "indexDate"), text(payload, "dataVersion"), text(payload, "runId"),
-                principal)));
+                principal);
+        return Envelope.success(new SnapshotRegistration(
+                registration.snapshotId(), registration.hostSyncStatus()));
     }
 
     private static String text(JsonNode payload, String field) {

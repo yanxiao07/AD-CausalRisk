@@ -85,6 +85,47 @@ public final class ResearchTableClient {
         }
     }
 
+    Reply registerSnapshot(byte[] bundle) {
+        Runtime current = runtime();
+        if (current == null) {
+            throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE);
+        }
+        try {
+            return current
+                    .client()
+                    .post()
+                    .uri("/api/research-table/v1/snapshots")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .contentLength(bundle.length)
+                    .headers(headers -> headers.setBearerAuth(current.token()))
+                    .body(bundle)
+                    .exchange(
+                            (sent, received) -> {
+                                int status = received.getStatusCode().value();
+                                MediaType type = received.getHeaders().getContentType();
+                                if (type == null || !MediaType.APPLICATION_JSON.includes(type)) {
+                                    throw new IllegalArgumentException("RESEARCH_PROTOCOL_INVALID");
+                                }
+                                byte[] payload =
+                                        received.getBody()
+                                                .readNBytes(ResearchTableProtocol.MAX_BYTES + 1);
+                                try {
+                                    return new Reply(status, protocol.parse(payload));
+                                } catch (IOException invalid) {
+                                    throw new IllegalArgumentException("RESEARCH_PROTOCOL_INVALID");
+                                }
+                            });
+        } catch (ResourceAccessException unavailable) {
+            return null;
+        } catch (RestClientException invalid) {
+            if (invalid.contains(IOException.class)) {
+                return null;
+            }
+            throw new IllegalArgumentException("RESEARCH_PROTOCOL_INVALID");
+        }
+    }
+
     Reply assess(byte[] request) {
         Runtime current = runtime();
         if (current == null) {
