@@ -37,29 +37,20 @@
 ### 1.1 代码状态
 
 - 分支：`feat/backend-integration`
-- HEAD：`154af1a`
-- 相对 `upstream/main`：**领先 27 个提交，0 behind**
-- `origin` 与 `upstream` 均未包含当前完整分支
+- HEAD：`933a4cd docs: add project handoff and subagent task board`
+- 相对 `upstream/main`：**领先 29 个提交，0 behind**
+- `origin/feat/backend-integration` 已指向 `933a4cd`
 - `main` 仍停在 `35055da`，**没有研究证据/研究表格评估页面**
 - 演示与联调必须使用 `feat/backend-integration`，不能用 `main`
 
-当前未提交改动（10 个源码文件 + 截图目录）：
+W0 已完成并推送：
 
 ```text
-M backend/README.md
-M backend/src/main/java/com/adcausalrisk/backend/research/ResearchTableAssessmentController.java
-M backend/src/main/java/com/adcausalrisk/backend/research/ResearchTableAssessmentService.java
-M backend/src/main/java/com/adcausalrisk/backend/research/ResearchTableProtocol.java
-M backend/src/test/java/com/adcausalrisk/backend/research/ResearchTableAssessmentTest.java
-M contracts/java-business.target.openapi.json
-M frontend/src/api/research.js
-M frontend/src/components/assessment/ResearchBatchAssessment.vue
-M frontend/src/views/researcher/ResearchEvidence.vue
-M tests/test_contracts_and_fixture.py
-?? .tmp/evidence/
+6af5595 feat(research): add controlled snapshot registration
+933a4cd docs: add project handoff and subagent task board
 ```
 
-这些改动就是「受控快照登记」：
+受控快照登记内容：
 
 - 后端 `POST /api/research/table-assessment-tasks/snapshots/register`
 - 七变量手工登记
@@ -69,9 +60,9 @@ M tests/test_contracts_and_fixture.py
 验证状态：
 
 - `.\mvnw.cmd -B -ntp clean verify`：**323 tests，0 failures，BUILD SUCCESS**
-- `npm run build`：**2388 modules，12.04s，成功**
+- `npm run build`：**2388 modules，11.25s，成功**
 - Python 契约测试：**5/5 OK**
-- `git diff --check`：干净
+- `git status`：干净
 
 ### 1.2 运行状态
 
