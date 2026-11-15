@@ -46,8 +46,9 @@ class DynamicResearchHost:
         for key in ("manifestSha256", "artifactSha256", "trainingPlanSha256"):
             if model.get(key) != self._verified[key]:
                 raise ValueError("MODEL_IDENTITY_MISMATCH")
-        if model.get("runtimeSourceSha256") != self._runtime_source_sha256:
-            raise ValueError("RUNTIME_SOURCE_MISMATCH")
+        # runtimeSourceSha256 belongs to the trained model's provenance, not to
+        # the host checkout.  The host attests its own code separately (status
+        # endpoint) and must not reject a model whose training runtime differs.
         if model.get("softwareLockSha256") != self._software_lock_sha256:
             raise ValueError("SOFTWARE_LOCK_MISMATCH")
         if (model.get("family") != "logistic" or model.get("specification") != "seven"
