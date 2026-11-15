@@ -22,6 +22,8 @@
     </el-alert>
 
     <template v-else>
+      <el-tabs v-model="activeTab" class="ba-tabs">
+        <el-tab-pane label="快照与批量评估" name="snapshots">
       <el-skeleton v-if="loading && !snapshots.length" :rows="2" animated />
       <el-alert
         v-else-if="error"
@@ -104,54 +106,57 @@
           </el-button>
         </div>
       </template>
+        </el-tab-pane>
+        <el-tab-pane label="任务历史" name="history">
+          <div class="ba-history">
+            <div class="ba-history__head">
+              <div>
+                <h4 class="ba-history__title">研究任务历史</h4>
+                <p class="ba-history__hint">最近 50 条，来自后端持久化记录；刷新页面不会丢失。</p>
+              </div>
+            </div>
+            <el-alert
+              v-if="historyError"
+              type="error"
+              :closable="false"
+              show-icon
+              :title="historyError"
+            />
+            <el-table
+              v-else
+              :data="historyRows"
+              row-key="taskId"
+              class="ba-table"
+              empty-text="该受试者还没有研究任务。"
+            >
+              <el-table-column label="任务" width="100">
+                <template #default="{ row }">#{{ row.taskId }}</template>
+              </el-table-column>
+              <el-table-column label="快照" width="100">
+                <template #default="{ row }">#{{ row.snapshotId }}</template>
+              </el-table-column>
+              <el-table-column label="状态" width="130">
+                <template #default="{ row }">
+                  <StatusTag v-if="isKnownStatus(row.status)" :type="row.status" />
+                  <el-tag v-else size="small" type="info">{{ row.status }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="AD 24 个月" width="120" align="right">
+                <template #default="{ row }">{{ formatCif(row.result?.prediction?.adCif24m) }}</template>
+              </el-table-column>
+              <el-table-column label="其他痴呆 24 个月" width="150" align="right">
+                <template #default="{ row }">
+                  {{ formatCif(row.result?.prediction?.otherDementiaCif24m) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="创建时间" min-width="170">
+                <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
     </template>
-
-    <div v-if="validSubject" class="ba-history">
-      <div class="ba-history__head">
-        <div>
-          <h4 class="ba-history__title">研究任务历史</h4>
-          <p class="ba-history__hint">最近 50 条，来自后端持久化记录；刷新页面不会丢失。</p>
-        </div>
-      </div>
-      <el-alert
-        v-if="historyError"
-        type="error"
-        :closable="false"
-        show-icon
-        :title="historyError"
-      />
-      <el-table
-        v-else
-        :data="historyRows"
-        row-key="taskId"
-        class="ba-table"
-        empty-text="该受试者还没有研究任务。"
-      >
-        <el-table-column label="任务" width="100">
-          <template #default="{ row }">#{{ row.taskId }}</template>
-        </el-table-column>
-        <el-table-column label="快照" width="100">
-          <template #default="{ row }">#{{ row.snapshotId }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="130">
-          <template #default="{ row }">
-            <StatusTag v-if="isKnownStatus(row.status)" :type="row.status" />
-            <el-tag v-else size="small" type="info">{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="AD 24 个月" width="120" align="right">
-          <template #default="{ row }">{{ formatCif(row.result?.prediction?.adCif24m) }}</template>
-        </el-table-column>
-        <el-table-column label="其他痴呆 24 个月" width="150" align="right">
-          <template #default="{ row }">
-            {{ formatCif(row.result?.prediction?.otherDementiaCif24m) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="创建时间" min-width="170">
-          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-        </el-table-column>
-      </el-table>
-    </div>
 
     <el-drawer
       v-model="drawerOpen"
@@ -267,6 +272,7 @@ const batchRunning = ref(false)
 const retryingId = ref(null)
 
 const syncFilter = ref('ALL')
+const activeTab = ref('snapshots')
 const historyRows = ref([])
 const historyLoading = ref(false)
 const historyError = ref('')
@@ -542,6 +548,7 @@ async function openBatch() {
 watch(
   () => props.subjectId,
   () => {
+    activeTab.value = 'snapshots'
     loadSnapshots()
     loadHistory()
   },
@@ -612,10 +619,13 @@ defineExpose({
   width: 100%;
 }
 
+.ba-tabs {
+  margin-top: 2px;
+}
+
 .ba-history {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px dashed var(--line);
+  margin-top: 4px;
+  padding-top: 2px;
 }
 
 .ba-history__head {

@@ -93,7 +93,7 @@ class SchemaMigrationTest {
         // gap, a re-ordering or a forgotten migration fails loudly instead of silently passing.
         assertThat(versions)
                 .containsExactly(
-                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16");
+                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17");
     }
 
     /**
@@ -229,6 +229,24 @@ class SchemaMigrationTest {
                         "patient:PATIENT",
                         "research_doctor:RESEARCHER",
                         "research_doctor:DOCTOR");
+    }
+
+    @Test
+    void seededPatientUsesAssignedDataScope() {
+        String scope =
+                jdbc.queryForObject(
+                        """
+                        SELECT u.data_scope
+                        FROM sys_user u
+                        JOIN user_role ur ON ur.user_id = u.id
+                        JOIN sys_role r ON r.id = ur.role_id
+                        WHERE u.username = 'patient' AND r.role_code = 'PATIENT'
+                        """,
+                        String.class);
+
+        assertThat(scope)
+                .as("patients only read their own summary, never the full cohort")
+                .isEqualTo("ASSIGNED");
     }
 
     @Test
