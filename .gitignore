@@ -35,3 +35,4 @@ test-results/
 cookies.txt
 application-local.yml
 .vite/
+.tmp/
