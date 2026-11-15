@@ -8089,6 +8089,142 @@
           }
         }
       }
+    },
+    "/api/research/table-assessment-tasks/snapshots/{id}/sync": {
+      "post": {
+        "operationId": "syncTrainedAssessmentSnapshot",
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO",
+        "summary": "重试将已登记快照同步到研究宿主",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "登记后的快照编号",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "snapshotId",
+                        "hostSyncStatus"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "snapshotId": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "format": "int64"
+                        },
+                        "hostSyncStatus": {
+                          "enum": [
+                            "PENDING",
+                            "SYNCED",
+                            "FAILED"
+                          ],
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "format": "int64"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {

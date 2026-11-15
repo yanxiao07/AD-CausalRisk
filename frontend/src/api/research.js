@@ -52,6 +52,14 @@ export function registerResearchSnapshot({ subjectId, indexDate, features, model
   return request.post('/research/table-assessment-tasks/snapshots/register', body, { silent: true })
 }
 
+export function retryResearchSnapshotSync(snapshotId) {
+  return request.post(
+    `/research/table-assessment-tasks/snapshots/${Number(snapshotId)}/sync`,
+    null,
+    { silent: true }
+  )
+}
+
 export function submitResearchTableTask({ snapshotId, idempotencyKey }) {
   return request.post(
     '/research/table-assessment-tasks',

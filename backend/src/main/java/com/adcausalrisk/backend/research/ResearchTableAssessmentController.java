@@ -78,6 +78,15 @@ public class ResearchTableAssessmentController {
                 registration.snapshotId(), registration.hostSyncStatus()));
     }
 
+    @PostMapping("/snapshots/{id}/sync")
+    public Envelope<?> sync(@PathVariable long id, Authentication auth) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
+        return Envelope.success(new SnapshotRegistration(id, service.syncToHost(id, principal)));
+    }
+
     private static String text(JsonNode payload, String field) {
         JsonNode value = payload.get(field);
         return value == null || value.isNull() ? null : value.asText();

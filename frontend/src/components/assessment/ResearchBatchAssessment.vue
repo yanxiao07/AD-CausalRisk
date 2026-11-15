@@ -57,11 +57,22 @@
               <span v-else class="ba-muted">—</span>
             </template>
           </el-table-column>
-          <el-table-column label="宿主同步" width="120">
+          <el-table-column label="宿主同步" width="150">
             <template #default="{ row }">
               <el-tag :type="syncTag(row.hostSyncStatus)" size="small" effect="light">
                 {{ syncLabel(row.hostSyncStatus) }}
               </el-tag>
+              <el-button
+                v-if="row.hostSyncStatus !== 'SYNCED'"
+                link
+                type="primary"
+                size="small"
+                class="ba-retry"
+                :loading="retryingId === row.snapshotId"
+                @click.stop="retrySync(row)"
+              >
+                重试
+              </el-button>
             </template>
           </el-table-column>
           <el-table-column label="说明" min-width="280">
@@ -157,6 +168,7 @@ import { newIdempotencyKey } from '@/api/assessments.js'
 import {
   getResearchTableTask,
   listResearchSnapshots,
+  retryResearchSnapshotSync,
   submitResearchTableTask
 } from '@/api/research.js'
 
@@ -179,6 +191,7 @@ const selected = ref([])
 const drawerOpen = ref(false)
 const batchRows = ref([])
 const batchRunning = ref(false)
+const retryingId = ref(null)
 
 /** snapshotId -> idempotency key，重试同一快照时复用 */
 const intentKeys = new Map()
@@ -232,6 +245,25 @@ function syncTag(status) {
 
 function onSelectionChange(rows) {
   selected.value = Array.isArray(rows) ? rows : []
+}
+
+async function retrySync(row) {
+  if (retryingId.value) return
+  retryingId.value = row.snapshotId
+  try {
+    const result = await retryResearchSnapshotSync(row.snapshotId)
+    row.hostSyncStatus = result?.hostSyncStatus || 'PENDING'
+    if (row.hostSyncStatus === 'SYNCED') {
+      ElMessage.success('快照已同步到研究宿主')
+    } else {
+      ElMessage.warning('同步尚未完成，请稍后刷新快照后重试')
+    }
+    await loadSnapshots()
+  } catch (problem) {
+    ElMessage.error(describeProblem(problem))
+  } finally {
+    retryingId.value = null
+  }
 }
 
 function describeProblem(problem) {
@@ -420,6 +452,10 @@ defineExpose({ reload: loadSnapshots })
 
 .ba-muted {
   color: var(--muted);
+}
+
+.ba-retry {
+  margin-left: 4px;
 }
 
 .ba-danger {

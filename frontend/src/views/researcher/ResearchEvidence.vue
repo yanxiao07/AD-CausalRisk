@@ -175,9 +175,7 @@
           </div>
         </el-form-item>
         <el-alert type="info" :closable="false" show-icon class="register-note">
-          登记会按 research-table-agent 契约生成请求，并使用当前已交付的七变量逻辑回归模型身份写入
-          research_table_snapshot。数据范围标记为 CONSTRUCTED_VALIDATION；当前 Python 宿主只接受预注册
-          runId，登记后的快照可被列表检索，真正执行仍依赖宿主支持对应 runId。
+          登记后系统会自动将快照同步至 Python 研究宿主。若同步失败，请在列表中点击重试。
         </el-alert>
         <p v-if="registerError" class="register-error">{{ registerError }}</p>
       </el-form>
