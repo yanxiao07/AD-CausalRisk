@@ -121,6 +121,7 @@ npm run build
 
 - [产品化规划](docs/Frontend_Productization_Plan.md)
 - [P1 验收报告](docs/P1_Acceptance_Report.md)
+- [P2 数据验证报告](docs/P2_Data_Validation_Report.md)
 - [P2 数据模板](docs/W2_203_Data_Template.md)
 - [发布说明](docs/Release_Notes_v1.0.md)
 - [集成契约](docs/Integration_Contract.md)
