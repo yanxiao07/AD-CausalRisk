@@ -3,9 +3,15 @@
 The runId is looked up in a host-owned directory.  The incoming request is
 compared with the frozen request digest, and the agent is rebuilt from the
 bundle's trusted context; no model path or context is accepted from the wire.
+
+Run ``python -m research_runtime.dynamic_host --help`` for the local demo CLI.
 """
+import argparse
+import json
+import os
 from copy import deepcopy
 from hashlib import sha256
+from http.server import HTTPServer
 from pathlib import Path
 
 from .dynamic_snapshot import (DATA_SCOPES, SnapshotDirectory,
@@ -91,3 +97,67 @@ class DynamicResearchHost:
             raise
         except Exception:
             raise ResearchAgentError("HOST_BINDING_INVALID", run_id) from None
+
+
+def main():
+    """Local one-command host used by the desktop start script.
+
+    This keeps the research host on loopback, requires the trusted model
+    manifest, and serves the frozen snapshot bundles in ``--snapshot-dir``.
+    """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=16301)
+    parser.add_argument("--manifest", type=Path, required=True,
+                        help="Trusted Model_Manifest.json")
+    parser.add_argument("--artifact", type=Path,
+                        help="final__logistic.joblib (must match the manifest)")
+    parser.add_argument("--trusted-manifest-sha256",
+                        help="Expected manifest SHA-256; defaults to the local file digest")
+    parser.add_argument("--snapshot-dir", type=Path,
+                        default=Path("runtime/dynamic-snapshots"))
+    parser.add_argument("--token", default=os.environ.get("RESEARCH_TABLE_TEST_TOKEN"),
+                        help="Bearer token required by the host")
+    args = parser.parse_args()
+
+    manifest = args.manifest.resolve()
+    if not manifest.is_file():
+        parser.exit(2, f"manifest not found: {manifest}\n")
+    trusted = (args.trusted_manifest_sha256 or
+               sha256(manifest.read_bytes()).hexdigest())
+    if args.artifact is not None:
+        artifact = args.artifact.resolve()
+        if not artifact.is_file():
+            parser.exit(2, f"artifact not found: {artifact}\n")
+    snapshot_dir = args.snapshot_dir.resolve()
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    token = args.token or "adcr-research-token"
+
+    try:
+        host = DynamicResearchHost(manifest, trusted, snapshot_dir)
+    except (ValueError, OSError, KeyError, TypeError) as error:
+        parser.exit(1, f"research host configuration unavailable: {error}\n")
+
+    from research_runtime.examples.research_table_http import handler
+    server = HTTPServer((args.host, args.port), handler(host.resolve, ("Bearer " + token).encode()))
+    handshake = snapshot_dir.parent / "dynamic-host-handshake.json"
+    if handshake.exists():
+        handshake.unlink()
+    handshake.parent.mkdir(parents=True, exist_ok=True)
+    with handshake.open("x", encoding="utf-8") as stream:
+        json.dump(dict(host=args.host, port=server.server_port, mode="dynamic",
+                       snapshots=host.describe(), handshake=str(handshake)), stream,
+                  ensure_ascii=False, indent=2)
+    print(json.dumps(dict(mode="dynamic", host=args.host, port=server.server_port,
+                          snapshots=host.describe(), handshake=str(handshake)),
+                     ensure_ascii=False), flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()

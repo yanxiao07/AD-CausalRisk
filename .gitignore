@@ -36,3 +36,6 @@ cookies.txt
 application-local.yml
 .vite/
 .tmp/
+AD-CausalRisk-w1/
+# local research-host snapshot bundles (contain subject data)
+runtime/dynamic-snapshots/
