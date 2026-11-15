@@ -8418,6 +8418,179 @@
         },
         "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
       }
+    },
+    "/api/research/table-assessment-tasks/snapshots/batch": {
+      "post": {
+        "operationId": "batchRegisterResearchSnapshots",
+        "summary": "由受试者最新访视批量生成七变量快照，可选择立即评估",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchBatchSnapshotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "每个受试者的快照与任务结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ResearchBatchSnapshotResult"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+      }
+    },
+    "/api/research/table-assessment-tasks/summary": {
+      "get": {
+        "operationId": "getResearchTaskSummary",
+        "summary": "研究员工作台当日模型任务吞吐摘要",
+        "responses": {
+          "200": {
+            "description": "今日任务数、完成/失败数与最近任务",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ResearchTaskSummary"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+      }
     }
   },
   "components": {
@@ -11509,6 +11682,141 @@
             }
           }
         ]
+      },
+      "ResearchBatchSnapshotRequest": {
+        "type": "object",
+        "required": [
+          "subjectIds"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "subjectIds": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "format": "int64"
+            }
+          },
+          "evaluate": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "ResearchBatchSnapshotItem": {
+        "type": "object",
+        "required": [
+          "subjectId"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "subjectId": {
+            "type": "integer",
+            "minimum": 1,
+            "format": "int64"
+          },
+          "snapshotId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "hostSyncStatus": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "PENDING",
+              "SYNCED",
+              "FAILED",
+              null
+            ]
+          },
+          "taskId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "taskStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ResearchBatchSnapshotResult": {
+        "type": "object",
+        "required": [
+          "items",
+          "succeeded",
+          "failed"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResearchBatchSnapshotItem"
+            }
+          },
+          "succeeded": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ResearchTaskSummary": {
+        "type": "object",
+        "required": [
+          "tasksToday",
+          "completedToday",
+          "failedToday",
+          "averageSeconds",
+          "recent"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "tasksToday": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completedToday": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failedToday": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "averageSeconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResearchTableTask"
+            }
+          }
+        }
       }
     },
     "securitySchemes": {

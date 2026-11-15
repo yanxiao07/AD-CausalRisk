@@ -20,6 +20,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -28,12 +29,17 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -53,6 +59,11 @@ class ResearchTableAssessmentService {
                 String errorCode, JsonNode result, Instant createdAt, Instant updatedAt) {}
     record SnapshotOption(long snapshotId, Long taskId, String hostSyncStatus) {}
     record Registration(long snapshotId, String hostSyncStatus) {}
+    record TaskSummary(long tasksToday, long completedToday, long failedToday, long averageSeconds,
+                       List<Task> recent) {}
+    record BatchItem(long subjectId, Long snapshotId, String hostSyncStatus, Long taskId,
+                     String taskStatus, String message) {}
+    record BatchResult(List<BatchItem> items, int succeeded, int failed) {}
 
     private record Snapshot(byte[] requestBytes, JsonNode request, JsonNode model, String requestDigest,
                             String inputDigest, String contextDigest) {}
@@ -172,6 +183,99 @@ class ResearchTableAssessmentService {
             String runId, AppUserPrincipal principal) {
         long id = registerManual(subjectId, features, indexDate, dataVersion, runId, principal);
         return new Registration(id, syncToHost(id, principal));
+    }
+
+    /**
+     * Turn the latest observed visit of each selected subject into a seven-variable
+     * snapshot. Only MMSE and CDR-SB are available in the visit table; every other
+     * variable is deliberately recorded as NOT_COLLECTED rather than imputed.
+     */
+    BatchResult batch(List<Long> requested, boolean evaluate, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        if (requested == null || requested.isEmpty() || requested.size() > 50) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择 1-50 个受试者");
+        }
+        Set<Long> subjectIds = new LinkedHashSet<>();
+        for (Long id : requested) {
+            if (id != null && id > 0) {
+                subjectIds.add(id);
+            }
+        }
+        if (subjectIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请选择 1-50 个受试者");
+        }
+        List<BatchItem> items = new ArrayList<>();
+        for (long subjectId : subjectIds) {
+            try {
+                if (!access.canReadRawScores(principal, subjectId)) {
+                    items.add(new BatchItem(subjectId, null, null, null, null, "没有该受试者的原始数据权限"));
+                    continue;
+                }
+                var visit = jdbc.query("""
+                        SELECT v.visit_date,v.mmse,v.cdr_sb,s.data_version
+                        FROM visit v JOIN subject s ON s.id=v.subject_id
+                        WHERE v.subject_id=? ORDER BY v.visit_date DESC,v.id DESC LIMIT 1
+                        """, (row, index) -> new Object[] {row.getDate("visit_date").toLocalDate().toString(),
+                        row.getBigDecimal("mmse"), row.getBigDecimal("cdr_sb"), row.getString("data_version")},
+                        subjectId).stream().findFirst().orElse(null);
+                if (visit == null) {
+                    items.add(new BatchItem(subjectId, null, null, null, null, "没有可用于生成快照的访视数据"));
+                    continue;
+                }
+                ObjectNode features = JsonNodeFactory.instance.objectNode();
+                for (String feature : MANUAL_FEATURES) {
+                    features.putNull(feature);
+                }
+                putIfPresent(features, "mmse", (BigDecimal) visit[1]);
+                putIfPresent(features, "cdr_sb", (BigDecimal) visit[2]);
+                Registration registration = registerManualAndSync(subjectId, features, (String) visit[0],
+                        (String) visit[3], null, principal);
+                Long taskId = null;
+                String taskStatus = null;
+                String message = null;
+                if (evaluate && "SYNCED".equals(registration.hostSyncStatus())) {
+                    Task task = submit(registration.snapshotId(), "batch-" + registration.snapshotId(), principal);
+                    taskId = task.taskId();
+                    taskStatus = task.status();
+                } else if (evaluate) {
+                    message = "快照已登记，但尚未同步到研究宿主，暂未评估";
+                }
+                items.add(new BatchItem(subjectId, registration.snapshotId(), registration.hostSyncStatus(),
+                        taskId, taskStatus, message));
+            } catch (BusinessException problem) {
+                items.add(new BatchItem(subjectId, null, null, null, null, problem.getMessage()));
+            } catch (RuntimeException problem) {
+                items.add(new BatchItem(subjectId, null, null, null, null, "批量生成失败"));
+            }
+        }
+        int succeeded = (int) items.stream().filter(item -> item.snapshotId() != null).count();
+        return new BatchResult(items, succeeded, items.size() - succeeded);
+    }
+
+    private static void putIfPresent(ObjectNode features, String name, BigDecimal value) {
+        if (value == null) {
+            features.putNull(name);
+        } else {
+            features.put(name, value);
+        }
+    }
+
+    /** Today's research throughput for the researcher workbench (owner-scoped). */
+    TaskSummary summary(AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        Instant start = LocalDate.now(clock).atStartOfDay(ZoneOffset.UTC).toInstant();
+        List<Task> tasks = jdbc.query(TASK_QUERY + """
+                 WHERE s.authorized_user_id=? AND t.created_at>=?
+                 ORDER BY t.created_at DESC,t.id DESC
+                """, (row, index) -> mapTask(row, principal), principal.userId(), Timestamp.from(start));
+        long completed = tasks.stream().filter(task -> "COMPLETED".equals(task.status())).count();
+        long failed = tasks.stream().filter(task -> "FAILED".equals(task.status())
+                || OUTCOME_UNKNOWN.equals(task.status())).count();
+        long average = Math.round(tasks.stream().filter(task -> "COMPLETED".equals(task.status()))
+                .mapToLong(task -> Math.max(0, Duration.between(task.createdAt(), task.updatedAt()).toSeconds()))
+                .average().orElse(0));
+        return new TaskSummary(tasks.size(), completed, failed, average,
+                tasks.stream().limit(5).toList());
     }
 
     String syncToHost(long snapshotId, AppUserPrincipal principal) {

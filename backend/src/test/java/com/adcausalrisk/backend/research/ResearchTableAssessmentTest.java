@@ -198,6 +198,37 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void batchBuildsSnapshotsFromTheLatestVisitWithoutInventingMissingVariables() throws Exception {
+        String code = "DEMO-BATCH-" + UUID.randomUUID();
+        long subjectId = subject(code);
+        jdbc.update("""
+                INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb)
+                VALUES(?,?,?,?,?)
+                """, subjectId, "V-BATCH", java.sql.Date.valueOf("2026-11-13"),
+                new java.math.BigDecimal("28.0"), new java.math.BigDecimal("0.5"));
+
+        var payload = json.createObjectNode();
+        payload.putArray("subjectIds").add(subjectId);
+        payload.put("evaluate", false);
+
+        JsonNode created = body(mvc.perform(post(PATH + "/snapshots/batch")
+                .with(authentication(actor("admin", "ADMIN")))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(payload.toString())));
+        JsonNode item = created.get("data").get("items").get(0);
+        assertThat(item.get("hostSyncStatus").asText()).isEqualTo("SYNCED");
+        long snapshotId = item.get("snapshotId").longValue();
+        var row = jdbc.queryForMap("SELECT * FROM research_table_snapshot WHERE id=?", snapshotId);
+        JsonNode request = json.readTree((String) row.get("request_json"));
+        assertThat(request.get("indexDate").asText()).isEqualTo("2026-11-13");
+        assertThat(request.get("features").get("mmse").get("value").asInt()).isEqualTo(28);
+        assertThat(request.get("features").get("cdr_sb").get("value").decimalValue())
+                .isEqualByComparingTo("0.5");
+        assertThat(request.get("features").get("age_years").get("missingReason").asText())
+                .isEqualTo("NOT_COLLECTED");
+    }
+
+    @Test
     void registeredManualSnapshotPassesPythonBundleVerification(@TempDir Path temp) throws Exception {
         String code = "DEMO-PY-" + UUID.randomUUID();
         long subjectId = subject(code);
@@ -517,6 +548,17 @@ class ResearchTableAssessmentTest {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.setExecutor(HOST_THREADS);
+            server.createContext("/api/research-table/v1/snapshots", http -> {
+                try (http) {
+                    http.getRequestBody().readAllBytes();
+                    byte[] response = "{\"status\":\"SYNCED\"}".getBytes(StandardCharsets.UTF_8);
+                    http.getResponseHeaders().set("Content-Type", "application/json");
+                    http.sendResponseHeaders(200, response.length);
+                    http.getResponseBody().write(response);
+                } catch (IOException disconnected) {
+                    // The batch test only needs the status; a closed socket is not asserted here.
+                }
+            });
             server.createContext(ResearchTableProtocol.PATH, http -> {
                 Exchange expected = EXCHANGE.get();
                 REQUESTS.incrementAndGet();

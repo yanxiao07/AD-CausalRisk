@@ -103,3 +103,21 @@ export function retryResearchTableTask(taskId) {
     silent: true
   })
 }
+
+/** GET /api/research/table-assessment-tasks/summary —— 当前研究员今日任务吞吐。 */
+export function getResearchTaskSummary() {
+  return request.get('/research/table-assessment-tasks/summary', { silent: true })
+}
+
+/**
+ * POST /api/research/table-assessment-tasks/snapshots/batch
+ * 按受试者最新一次访视批量生成七变量快照；缺失变量由后端标记 NOT_COLLECTED。
+ * Body: { subjectIds: number[], evaluate?: boolean }
+ */
+export function batchResearchSnapshots({ subjectIds, evaluate = false }) {
+  return request.post(
+    '/research/table-assessment-tasks/snapshots/batch',
+    { subjectIds: subjectIds.map(Number), evaluate: Boolean(evaluate) },
+    { silent: true }
+  )
+}

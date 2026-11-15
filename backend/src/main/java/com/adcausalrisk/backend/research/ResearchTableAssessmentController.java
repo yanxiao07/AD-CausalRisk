@@ -78,6 +78,33 @@ public class ResearchTableAssessmentController {
                 registration.snapshotId(), registration.hostSyncStatus()));
     }
 
+    @PostMapping(value = "/snapshots/batch", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public Envelope<?> batch(@RequestBody byte[] body, Authentication auth) {
+        JsonNode payload;
+        try {
+            payload = protocol.parse(body);
+        } catch (IOException | IllegalArgumentException invalid) {
+            throw new BusinessException(ErrorCode.MALFORMED_JSON);
+        }
+        if (payload == null || !payload.isObject() || !payload.path("subjectIds").isArray()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "subjectIds 必须为数组");
+        }
+        java.util.List<Long> subjectIds = new java.util.ArrayList<>();
+        payload.get("subjectIds").forEach(node -> {
+            if (!node.isIntegralNumber() || !node.canConvertToLong()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "subjectIds 必须为正整数");
+            }
+            subjectIds.add(node.longValue());
+        });
+        boolean evaluate = !payload.has("evaluate") || payload.path("evaluate").asBoolean(true);
+        return Envelope.success(service.batch(subjectIds, evaluate, (AppUserPrincipal) auth.getPrincipal()));
+    }
+
+    @GetMapping("/summary")
+    public Envelope<?> summary(Authentication auth) {
+        return Envelope.success(service.summary((AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @PostMapping("/snapshots/{id}/sync")
     public Envelope<?> sync(@PathVariable long id, Authentication auth) {
         if (id <= 0) {
