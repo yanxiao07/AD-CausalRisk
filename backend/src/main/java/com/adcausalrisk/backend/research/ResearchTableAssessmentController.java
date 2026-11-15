@@ -60,20 +60,19 @@ public class ResearchTableAssessmentController {
         }
         AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
         JsonNode request = payload.path("request");
-        JsonNode model = payload.path("model");
-        if (request.isObject() && model.isObject()) {
+        if (request.isObject()) {
             return Envelope.success(new SnapshotRegistration(
-                    service.register(subject.longValue(), request, model, principal)));
+                    service.register(subject.longValue(), request, principal)));
         }
         JsonNode features = payload.path("features");
         if (!features.isObject()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
-                    "请提供 features 七变量数据，或完整的 request 与 model");
+                    "请提供 features 七变量数据");
         }
         return Envelope.success(new SnapshotRegistration(service.registerManual(
                 subject.longValue(), features,
                 text(payload, "indexDate"), text(payload, "dataVersion"), text(payload, "runId"),
-                model.isObject() ? model : null, principal)));
+                principal)));
     }
 
     private static String text(JsonNode payload, String field) {

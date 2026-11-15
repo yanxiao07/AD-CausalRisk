@@ -7,8 +7,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -121,12 +123,10 @@ class ResearchTableAssessmentTest {
         String code = "DEMO-REG-" + UUID.randomUUID();
         long subjectId = subject(code);
         var request = uniqueRequest().put("subjectCode", code).put("modelKey", "trained-seven-logistic");
-        var model = fixture("response-seven").get("model").deepCopy();
 
         var payload = json.createObjectNode();
         payload.put("subjectId", subjectId);
         payload.set("request", request);
-        payload.set("model", model);
 
         var actor = actor("admin", "ADMIN");
         JsonNode created = json.readTree(mvc.perform(post(PATH + "/snapshots/register")
@@ -142,14 +142,18 @@ class ResearchTableAssessmentTest {
         var row = jdbc.queryForMap("SELECT * FROM research_table_snapshot WHERE id=?", snapshotId);
         assertThat(((Number) row.get("authorized_user_id")).longValue()).isEqualTo(userId("admin"));
         assertThat(row.get("data_scope")).isEqualTo("CONSTRUCTED_VALIDATION");
-        assertThat(row.get("request_sha256")).isEqualTo(protocol.digest(request));
+        JsonNode storedRequest = json.readTree((String) row.get("request_json"));
+        JsonNode storedModel = json.readTree((String) row.get("model_json"));
+        assertThat(storedModel.get("runtimeSourceSha256").asText())
+                .isEqualTo("f69db2e64f0810d6abb18516e3e845067f69cad9c8422c4c09be5e4329b1450e");
+        assertThat(row.get("request_sha256")).isEqualTo(protocol.digest(storedRequest));
         assertThat(row.get("input_sha256")).isEqualTo(
-                protocol.digest(protocol.admissionCore(request, model)));
+                protocol.digest(protocol.admissionCore(storedRequest, storedModel)));
         assertThat(row.get("context_sha256")).isEqualTo(
-                protocol.digest(protocol.registrationContext(request, model)));
+                protocol.digest(json.readTree((String) row.get("context_json"))));
         assertThat(row.get("wire_sha256")).isEqualTo(
                 HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                        .digest(protocol.canonicalBytes(request))));
+                        .digest(protocol.canonicalBytes(storedRequest))));
 
         JsonNode listed = body(mvc.perform(get(PATH + "/snapshots?subjectId=" + subjectId)
                 .with(authentication(actor))));
@@ -194,6 +198,61 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void registeredManualSnapshotPassesPythonBundleVerification(@TempDir Path temp) throws Exception {
+        String code = "DEMO-PY-" + UUID.randomUUID();
+        long subjectId = subject(code);
+        var payload = json.createObjectNode();
+        payload.put("subjectId", subjectId);
+        payload.put("indexDate", "2026-11-15");
+        var features = payload.putObject("features");
+        features.put("age_years", 72);
+        features.put("education_years", 14);
+        features.put("mmse", 26);
+        features.put("cdr_sb", 1.5);
+        features.put("cdr_global", 0.5);
+        features.put("adas__total13", 18);
+        features.put("faq__faqtotal", 4);
+
+        JsonNode created = json.readTree(mvc.perform(post(PATH + "/snapshots/register")
+                        .with(authentication(actor("admin", "ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload.toString()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray());
+        long snapshotId = created.get("data").get("snapshotId").longValue();
+        var row = jdbc.queryForMap("SELECT * FROM research_table_snapshot WHERE id=?", snapshotId);
+
+        Files.writeString(temp.resolve("request.json"), (String) row.get("request_json"), StandardCharsets.UTF_8);
+        Files.writeString(temp.resolve("model.json"), (String) row.get("model_json"), StandardCharsets.UTF_8);
+        Files.writeString(temp.resolve("context.json"), (String) row.get("context_json"), StandardCharsets.UTF_8);
+        Files.writeString(temp.resolve("verify.py"), """
+                import json, sys
+                sys.path.insert(0, sys.argv[1])
+                from research_runtime.dynamic_snapshot import bundle_from_parts
+                base = sys.argv[2]
+                req = json.load(open(base + "/request.json", encoding="utf-8"))
+                model = json.load(open(base + "/model.json", encoding="utf-8"))
+                context = json.load(open(base + "/context.json", encoding="utf-8"))
+                bundle_from_parts(run_id=req["runId"], request=req, model=model, context=context,
+                                  snapshot_id=int(sys.argv[3]), subject_id=int(sys.argv[4]))
+                print("VERIFY_OK")
+                """, StandardCharsets.UTF_8);
+
+        Path repo = Path.of(System.getProperty("user.dir")).toAbsolutePath().getParent();
+        Path w1 = repo.resolveSibling("AD-CausalRisk-w1");
+        Path python = w1.resolve(".venv-research").resolve("Scripts").resolve("python.exe");
+        Assumptions.assumeTrue(Files.isRegularFile(python), "W1 Python environment is not available");
+
+        Process process = new ProcessBuilder(python.toString(), temp.resolve("verify.py").toString(),
+                w1.toString(), temp.toString(), Long.toString(snapshotId), Long.toString(subjectId))
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(process.waitFor(60, TimeUnit.SECONDS)).isTrue();
+        assertThat(output).contains("VERIFY_OK");
+    }
+
+    @Test
     void rejectsRegistrationWhoseSubjectCodeDoesNotMatchTheSubject() throws Exception {
         String code = "DEMO-REG-" + UUID.randomUUID();
         long subjectId = subject(code);
@@ -201,7 +260,6 @@ class ResearchTableAssessmentTest {
         var payload = json.createObjectNode();
         payload.put("subjectId", subjectId);
         payload.set("request", request);
-        payload.set("model", fixture("response-seven").get("model"));
 
         mvc.perform(post(PATH + "/snapshots/register")
                         .with(authentication(actor("admin", "ADMIN")))

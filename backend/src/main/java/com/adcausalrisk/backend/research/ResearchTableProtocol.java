@@ -31,6 +31,10 @@ final class ResearchTableProtocol {
     private static final double TOLERANCE = 1e-12;
     private static final List<String> IDENTITY = List.of("contractVersion", "runId", "modelKey",
             "subjectCode", "dataVersion", "indexDate", "availabilityPolicy", "predictionWindowMonths");
+    private static final List<String> SEVEN_FEATURES = List.of(
+            "age_years", "education_years", "mmse", "cdr_sb", "cdr_global", "adas__total13", "faq__faqtotal");
+    private static final List<String> INSTRUMENT_FEATURES = List.of(
+            "mmse", "cdr_sb", "cdr_global", "adas__total13", "faq__faqtotal");
 
     private final ObjectMapper json;
     private final JsonNode contract;
@@ -104,8 +108,36 @@ final class ResearchTableProtocol {
     }
 
     /**
-     * 本地登记阶段的上下文摘要。真实执行端必须使用与研究宿主一致的 sourceMappings/evidence；
-     * 当前受控登记只保证摘要是 deterministic 的 64 位十六进制，便于快照回读与审计。
+     * The trusted source mapping of the delivered seven-variable model. It is a
+     * property of the model package, not of the incoming request; its digest must
+     * equal {@code model.sourceMappingSha256} (2be25c0e...).
+     */
+    ObjectNode sourceMappings() {
+        ObjectNode mappings = json.createObjectNode();
+        for (String feature : SEVEN_FEATURES) {
+            ObjectNode row = mappings.putObject(feature);
+            boolean instrument = INSTRUMENT_FEATURES.contains(feature);
+            row.put("sourceId", "CONSTRUCTED-SRC-" + feature);
+            row.put("dataset", "CONSTRUCTED");
+            row.put("table", "CONSTRUCTED_TABLE");
+            row.put("field", feature);
+            row.put("release", "constructed-v1");
+            if (instrument) {
+                row.put("language", "en");
+                row.put("instrumentVersion", "constructed-v1");
+            } else {
+                row.putNull("language");
+                row.putNull("instrumentVersion");
+            }
+            row.putNull("processingVersion");
+        }
+        return mappings;
+    }
+
+    /**
+     * Trusted execution context for a controlled snapshot. The mapping and the
+     * evidence catalog are built from server-owned constants and the normalized
+     * request; they are never copied from a caller-supplied context.
      */
     JsonNode registrationContext(JsonNode request, JsonNode model) {
         ObjectNode context = json.createObjectNode();
@@ -114,8 +146,23 @@ final class ResearchTableProtocol {
         context.put("indexDate", request.path("indexDate").asText());
         context.put("availabilityPolicy", request.path("availabilityPolicy").asText());
         context.set("model", model);
-        context.set("sourceMappings", json.createObjectNode());
-        context.set("evidence", json.createObjectNode());
+        context.set("sourceMappings", sourceMappings());
+        ObjectNode evidence = context.putObject("evidence");
+        JsonNode features = request.path("features");
+        for (String feature : SEVEN_FEATURES) {
+            JsonNode observation = features.get(feature);
+            if (observation == null || !observation.isObject()) {
+                throw new IllegalArgumentException("Missing normalized feature " + feature);
+            }
+            String ref = observation.path("evidenceRef").asText("");
+            if (ref.isBlank()) {
+                throw new IllegalArgumentException("Missing evidenceRef for " + feature);
+            }
+            ObjectNode row = evidence.putObject(ref);
+            row.put("subjectCode", request.path("subjectCode").asText());
+            row.put("feature", feature);
+            row.set("observation", observation.deepCopy());
+        }
         return context;
     }
 

@@ -11137,9 +11137,6 @@
           },
           "request": {
             "type": "object"
-          },
-          "model": {
-            "type": "object"
           }
         }
       }

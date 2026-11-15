@@ -63,6 +63,7 @@ class ResearchTableAssessmentService {
     private final SubjectAccessPolicy access;
     private final ResearchTableClient client;
     private final ResearchTableProtocol protocol;
+    private final ResearchModelIdentity modelIdentity;
     private final AuditService audit;
     private final Clock clock;
     @Value("${research.table.test-fixtures-enabled:false}")
@@ -70,13 +71,15 @@ class ResearchTableAssessmentService {
 
     ResearchTableAssessmentService(JdbcTemplate jdbc, PlatformTransactionManager manager,
             IdempotencyRecordRepository idempotency, SubjectAccessPolicy access,
-            ResearchTableClient client, ResearchTableProtocol protocol, AuditService audit, Clock clock) {
+            ResearchTableClient client, ResearchTableProtocol protocol, ResearchModelIdentity modelIdentity,
+            AuditService audit, Clock clock) {
         this.jdbc = jdbc;
         transaction = new TransactionTemplate(manager);
         this.idempotency = idempotency;
         this.access = access;
         this.client = client;
         this.protocol = protocol;
+        this.modelIdentity = modelIdentity;
         this.audit = audit;
         this.clock = clock;
     }
@@ -105,36 +108,34 @@ class ResearchTableAssessmentService {
         return find(taskId, principal);
     }
 
-    long register(long subjectId, JsonNode request, JsonNode model, AppUserPrincipal principal) {
+    long register(long subjectId, JsonNode request, AppUserPrincipal principal) {
         requireResearchRole(principal);
         if (!access.canReadRawScores(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
         String subjectCode = jdbc.query("SELECT subject_code FROM subject WHERE id=?", (row, index) -> row.getString(1),
                 subjectId).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
-        if (!subjectCode.equals(request.path("subjectCode").asText())) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请求 subjectCode 必须与所选受试者一致");
-        }
-        if (!TRAINED_MODEL.equals(request.path("modelKey").asText())
-                || !"seven".equals(model.path("specification").asText())
-                || !"logistic".equals(model.path("family").asText())) {
+        ObjectNode model = modelIdentity.identity();
+        ObjectNode normalized = normalizedRequest(request, subjectCode);
+        if (!TRAINED_MODEL.equals(normalized.path("modelKey").asText())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "受控登记只接受已训练的七变量逻辑回归身份");
         }
         try {
-            protocol.validateRequest(request, model);
+            protocol.validateRequest(normalized, model);
         } catch (IllegalArgumentException invalid) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "研究请求或模型身份不符合契约");
         }
-        byte[] requestBytes = protocol.canonicalBytes(request);
-        String requestDigest = protocol.digest(request);
-        String inputDigest = protocol.digest(protocol.admissionCore(request, model));
-        String contextDigest = protocol.digest(protocol.registrationContext(request, model));
+        byte[] requestBytes = protocol.canonicalBytes(normalized);
+        String requestDigest = protocol.digest(normalized);
+        String inputDigest = protocol.digest(protocol.admissionCore(normalized, model));
+        JsonNode context = protocol.registrationContext(normalized, model);
+        String contextDigest = protocol.digest(context);
         var keys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
             var statement = connection.prepareStatement("""
                     INSERT INTO research_table_snapshot(subject_id,authorized_user_id,request_json,wire_sha256,
-                        request_sha256,model_json,data_scope,input_sha256,context_sha256)
-                    VALUES(?,?,?,?,?,?,?,?,?)
+                        request_sha256,model_json,data_scope,input_sha256,context_sha256,context_json)
+                    VALUES(?,?,?,?,?,?,?,?,?,?)
                     """, Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, subjectId);
             statement.setLong(2, principal.userId());
@@ -145,6 +146,7 @@ class ResearchTableAssessmentService {
             statement.setString(7, "CONSTRUCTED_VALIDATION");
             statement.setString(8, inputDigest);
             statement.setString(9, contextDigest);
+            statement.setString(10, context.toString());
             return statement;
         }, keys);
         long id = keys.getKey().longValue();
@@ -153,8 +155,58 @@ class ResearchTableAssessmentService {
         return id;
     }
 
+    /**
+     * Normalize caller-supplied observations into the trusted seven-variable
+     * admission form. Provenance, QC and completion are server-owned: a client may
+     * supply values and dates, never a model identity or a pass/fail decision.
+     */
+    private ObjectNode normalizedRequest(JsonNode source, String subjectCode) {
+        if (source == null || !source.isObject()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "研究请求必须为 JSON 对象");
+        }
+        if (!subjectCode.equals(source.path("subjectCode").asText())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请求 subjectCode 必须与所选受试者一致");
+        }
+        ObjectNode request = source.deepCopy();
+        JsonNode node = request.get("features");
+        if (node == null || !node.isObject()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "features 必须为七变量对象");
+        }
+        ObjectNode features = (ObjectNode) node;
+        for (String feature : MANUAL_FEATURES) {
+            JsonNode raw = features.get(feature);
+            if (raw == null || !raw.isObject()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少特征 " + feature);
+            }
+            ObjectNode observation = (ObjectNode) raw;
+            boolean missing = !observation.has("value") || observation.get("value").isNull();
+            boolean demographic = feature.equals("age_years") || feature.equals("education_years");
+            observation.put("unit", demographic ? "years" : "score");
+            observation.put("sourceRef", "CONSTRUCTED-SRC-" + feature);
+            observation.put("evidenceRef", "EV-" + feature);
+            if (missing) {
+                observation.putNull("value");
+                observation.putNull("measuredDate");
+                observation.putNull("availableDate");
+                observation.put("dateBasis", "UNKNOWN");
+                observation.putNull("scanId");
+                observation.put("qc", "UNKNOWN");
+                observation.put("completion", "INCOMPLETE");
+                observation.put("missingReason", "NOT_COLLECTED");
+            } else {
+                observation.put("qc", demographic ? "NOT_APPLICABLE" : "PASS");
+                observation.put("completion", demographic ? "NOT_APPLICABLE" : "COMPLETE");
+                observation.putNull("missingReason");
+                if (!observation.hasNonNull("dateBasis")) {
+                    observation.put("dateBasis", "MEASUREMENT_DATE");
+                }
+            }
+        }
+        return request;
+    }
+
     long registerManual(long subjectId, JsonNode features, String indexDate, String dataVersion,
-            String runId, JsonNode model, AppUserPrincipal principal) {
+            String runId, AppUserPrincipal principal) {
         requireResearchRole(principal);
         if (!access.canReadRawScores(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
@@ -177,7 +229,7 @@ class ResearchTableAssessmentService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "runId 须匹配 run-* 格式");
         }
         ObjectNode request = manualRequest(subjectCode, features, date, version, run);
-        return register(subjectId, request, model == null ? defaultModelIdentity() : model, principal);
+        return register(subjectId, request, principal);
     }
 
     private ObjectNode manualRequest(String subjectCode, JsonNode features, String date,
@@ -206,46 +258,29 @@ class ResearchTableAssessmentService {
     private ObjectNode manualObservation(String feature, JsonNode value, String date) {
         ObjectNode observation = JsonNodeFactory.instance.objectNode();
         boolean missing = value.isNull() || value.isMissingNode();
+        boolean demographic = feature.equals("age_years") || feature.equals("education_years");
         if (missing) {
             observation.putNull("value");
             observation.put("qc", "UNKNOWN");
             observation.put("completion", "INCOMPLETE");
             observation.put("missingReason", "NOT_COLLECTED");
+            observation.putNull("measuredDate");
+            observation.putNull("availableDate");
+            observation.put("dateBasis", "UNKNOWN");
         } else {
             observation.set("value", value);
-            observation.put("qc", "PASS");
-            observation.put("completion", "COMPLETE");
+            observation.put("qc", demographic ? "NOT_APPLICABLE" : "PASS");
+            observation.put("completion", demographic ? "NOT_APPLICABLE" : "COMPLETE");
             observation.putNull("missingReason");
+            observation.put("measuredDate", date);
+            observation.put("availableDate", date);
+            observation.put("dateBasis", "MEASUREMENT_DATE");
         }
-        observation.put("unit", feature.endsWith("_years") ? "years" : "score");
-        observation.put("measuredDate", date);
-        observation.put("availableDate", date);
-        observation.put("dateBasis", "MEASUREMENT_DATE");
-        observation.put("sourceRef", "MANUAL-ENTRY");
+        observation.put("unit", demographic ? "years" : "score");
+        observation.put("sourceRef", "CONSTRUCTED-SRC-" + feature);
         observation.putNull("scanId");
-        observation.put("evidenceRef", "MANUAL-" + feature);
+        observation.put("evidenceRef", "EV-" + feature);
         return observation;
-    }
-
-    private ObjectNode defaultModelIdentity() {
-        // Identity of the delivered final__logistic.joblib model bundle. A caller may
-        // override it with an explicit model object when a different controlled
-        // artifact is registered.
-        ObjectNode model = JsonNodeFactory.instance.objectNode();
-        model.put("family", "logistic");
-        model.put("specification", "seven");
-        model.put("role", "FULL_COHORT_SEVEN_VARIABLE_RESEARCH_MODEL");
-        ArrayNode features = model.putArray("features");
-        MANUAL_FEATURES.forEach(features::add);
-        model.put("predictionPolicy", "raw_uncalibrated_24month_CIF");
-        model.putNull("graphProtocolSha256");
-        model.put("manifestSha256", "46ad244fe612306cc95a2a457c44ac234361db5ab70184c2ee2226527883a511");
-        model.put("artifactSha256", "66cfc25386ef9d90c9a6572ac13f673269426fce277d6604e7d1a355ff0a1fd5");
-        model.put("trainingPlanSha256", "47ae229df74070f56165ece9b828a1aebcbf1b316b2005439e3f76fa89b0d54e");
-        model.put("runtimeSourceSha256", "f69db2e64f0810d6abb18516e3e845067f69cad9c8422c4c09be5e4329b1450e");
-        model.put("softwareLockSha256", "df6ed05f512953046fda442f5d553deee8c314db1496eb18ae43f455f5c77f68");
-        model.put("sourceMappingSha256", "2be25c0e3176806765a4350185191640144a2370d6951d62c66a4fdcdfac488f");
-        return model;
     }
 
     List<SnapshotOption> snapshots(long subjectId, AppUserPrincipal principal) {
