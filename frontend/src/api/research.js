@@ -86,6 +86,17 @@ export function listResearchTaskHistory(subjectId) {
   })
 }
 
+/**
+ * GET /api/research/table-assessment-tasks/archive?subjectId={id}
+ * 该受试者名下的研究验证结果；ADMIN / RESEARCHER / 有档案 VIEW/MANAGE 的 DOCTOR 可读。
+ */
+export function listResearchArchive(subjectId) {
+  return request.get('/research/table-assessment-tasks/archive', {
+    params: { subjectId: Number(subjectId) },
+    silent: true
+  })
+}
+
 /** POST /api/research/table-assessment-tasks/{id}/retry —— 仅 FAILED / OUTCOME_UNKNOWN。 */
 export function retryResearchTableTask(taskId) {
   return request.post(`/research/table-assessment-tasks/${Number(taskId)}/retry`, null, {

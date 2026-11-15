@@ -98,6 +98,12 @@ const routes = [
     meta: { title: '评估报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER', 'ADMIN'] }
   },
   {
+    path: '/reports/research/:taskId(\\d+)',
+    name: 'ResearchReportDetail',
+    component: () => import('../views/doctor/ResearchReportDetail.vue'),
+    meta: { title: '模型验证报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER', 'ADMIN'] }
+  },
+  {
     path: '/reports/:assessmentId(\\d+)',
     name: 'ReportDetail',
     component: () => import('../views/doctor/ReportDetail.vue'),

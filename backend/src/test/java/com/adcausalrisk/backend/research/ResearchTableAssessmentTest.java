@@ -340,6 +340,33 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void treatingDoctorCanReadTheSubjectResearchArchiveButNotOwnerHistory() throws Exception {
+        var request = fixture("request-seven");
+        long snapshot = snapshot(request, fixture("response-seven"), "admin");
+        reply(request, fixture("response-seven"), 200, false);
+        JsonNode task = body(submit(snapshot, "archive", actor("admin", "ADMIN"))).get("data");
+        long subjectId = task.get("subjectId").asLong();
+        long taskId = task.get("taskId").asLong();
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,?)",
+                subjectId, userId("doctor"), "VIEW");
+
+        var doctor = actor("doctor", "DOCTOR");
+        JsonNode archive = body(mvc.perform(get(PATH + "/archive").param("subjectId", Long.toString(subjectId))
+                .with(authentication(doctor)))).get("data");
+        assertThat(archive.isArray()).isTrue();
+        assertThat(archive.size()).isEqualTo(1);
+        assertThat(archive.get(0).get("taskId").asLong()).isEqualTo(taskId);
+        assertThat(archive.get(0).get("status").asText()).isEqualTo("COMPLETED");
+
+        body(mvc.perform(get(PATH + "/" + taskId).with(authentication(doctor))))
+                .get("data").get("taskId").asLong();
+        mvc.perform(get(PATH + "/history").param("subjectId", Long.toString(subjectId))
+                .with(authentication(doctor))).andExpect(status().isForbidden());
+        mvc.perform(get(PATH + "/archive").param("subjectId", Long.toString(subjectId))
+                .with(authentication(actor("patient", "PATIENT")))).andExpect(status().isForbidden());
+    }
+
+    @Test
     void retriesUnknownTaskAndRefusesCompletedTask() throws Exception {
         var request = fixture("request-seven");
         long snapshot = snapshot(request, fixture("response-seven"), "admin");

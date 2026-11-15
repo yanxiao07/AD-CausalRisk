@@ -494,9 +494,21 @@ class ResearchTableAssessmentService {
     }
 
     Task find(long id, AppUserPrincipal principal) {
-        requireResearchRole(principal);
+        requireArchiveRole(principal);
         return jdbc.query(TASK_QUERY + " WHERE t.id=?", (row, index) -> mapTask(row, principal),
                 id).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+    }
+
+    /** Research results that belong to one subject, readable by the treating doctor as well. */
+    List<Task> archive(long subjectId, AppUserPrincipal principal) {
+        requireArchiveRole(principal);
+        if (!access.canReadRawScores(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        return jdbc.query(TASK_QUERY + """
+                 WHERE s.subject_id=?
+                 ORDER BY t.created_at DESC,t.id DESC LIMIT 50
+                """, (row, index) -> mapTask(row, principal), subjectId);
     }
 
     List<Task> history(long subjectId, AppUserPrincipal principal) {
@@ -531,7 +543,9 @@ class ResearchTableAssessmentService {
 
     private Task mapTask(java.sql.ResultSet row, AppUserPrincipal principal) throws java.sql.SQLException {
         long subjectId = row.getLong("subject_id");
-        authorize(principal, subjectId, row.getLong("authorized_user_id"));
+        if (!access.canReadRawScores(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
         String result = row.getString("result_json");
         try {
             return new Task(row.getLong("id"), row.getLong("snapshot_id"), subjectId, row.getString("run_id"),
@@ -552,6 +566,17 @@ class ResearchTableAssessmentService {
     private static void requireResearchRole(AppUserPrincipal principal) {
         if (principal.roleCodes().contains("PATIENT") || (!principal.roleCodes().contains("ADMIN")
                 && !principal.roleCodes().contains("RESEARCHER"))) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+    }
+
+    private static void requireArchiveRole(AppUserPrincipal principal) {
+        if (principal.roleCodes().contains("PATIENT")) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        if (!principal.roleCodes().contains("ADMIN")
+                && !principal.roleCodes().contains("RESEARCHER")
+                && !principal.roleCodes().contains("DOCTOR")) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
     }

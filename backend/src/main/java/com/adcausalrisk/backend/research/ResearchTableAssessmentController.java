@@ -108,6 +108,14 @@ public class ResearchTableAssessmentController {
         return Envelope.success(service.history(subjectId, (AppUserPrincipal) auth.getPrincipal()));
     }
 
+    @GetMapping("/archive")
+    public Envelope<?> archive(@RequestParam long subjectId, Authentication auth) {
+        if (subjectId <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        return Envelope.success(service.archive(subjectId, (AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @PostMapping("/{id}/retry")
     public Envelope<?> retry(@PathVariable long id, Authentication auth) {
         if (id <= 0) {

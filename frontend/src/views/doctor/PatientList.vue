@@ -119,7 +119,7 @@
     <!-- 抽屉：档案概览 + 风险评估（含因果图）+ 随访计划 + 历史访视 -->
     <el-drawer
       v-model="drawerOpen"
-      :title="selected?.alias || '档案概览'"
+      :title="selected ? '受试者档案' : '档案概览'"
       direction="rtl"
       :size="drawerSize"
       destroy-on-close
@@ -199,6 +199,65 @@
                 <p class="followup__hint">{{ followUpSummaryText }}</p>
               </section>
             </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="模型验证结果" name="research">
+            <div class="research-head">
+              <div>
+                <strong>该受试者的研究验证结果</strong>
+                <p>来自已登记冻结快照；只展示模型验证输出，不是临床诊断。</p>
+              </div>
+              <el-button size="small" :icon="Refresh" :loading="researchLoading" @click="loadResearchArchive">
+                刷新
+              </el-button>
+            </div>
+
+            <el-alert
+              v-if="researchError"
+              class="research-error"
+              type="warning"
+              :closable="false"
+              show-icon
+              :title="researchError"
+            />
+
+            <el-table
+              v-loading="researchLoading"
+              :data="researchArchive"
+              size="small"
+              empty-text="还没有研究验证结果"
+            >
+              <el-table-column prop="taskId" label="任务" width="64" />
+              <el-table-column prop="snapshotId" label="快照" width="64" />
+              <el-table-column label="状态" width="96">
+                <template #default="{ row }">
+                  <StatusTag :type="row.status" />
+                </template>
+              </el-table-column>
+              <el-table-column label="AD 24 个月" width="96">
+                <template #default="{ row }">{{ researchCif(row.result?.prediction?.adCif24m) }}</template>
+              </el-table-column>
+              <el-table-column label="其他痴呆 24 个月" width="120">
+                <template #default="{ row }">
+                  {{ researchCif(row.result?.prediction?.otherDementiaCif24m) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="创建时间" width="140">
+                <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="90" fixed="right">
+                <template #default="{ row }">
+                  <el-button
+                    text
+                    type="primary"
+                    :disabled="!row.taskId"
+                    @click="router.push(`/reports/research/${row.taskId}`)"
+                  >
+                    查看报告
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
           </el-tab-pane>
 
           <!-- Tab 2：全量报告库（所有历史评估报告集中管理） -->
@@ -643,6 +702,7 @@ import GraphDiffDialog from '@/components/subject/GraphDiffDialog.vue'
 import QualityCheckDialog from '@/components/subject/QualityCheckDialog.vue'
 import { getSubjectCapabilities, getSubjectDetail, listSubjects } from '@/api/subjects.js'
 import { listFollowUps } from '@/api/followups.js'
+import { listResearchArchive } from '@/api/research.js'
 import {
   getAssessment,
   getAssessmentReviews,
@@ -746,6 +806,9 @@ const drawerSize = computed(() => (isNarrow.value ? '100%' : '760px'))
 
 // ---- 档案库（Tabs） ----
 const drawerTab = ref('overview')
+const researchArchive = ref([])
+const researchLoading = ref(false)
+const researchError = ref('')
 const reportLibrary = ref([])
 const reportSort = ref('timeDesc')
 const reportDetailMap = ref({})
@@ -866,8 +929,43 @@ function openDrawer(row) {
   if (row?.id) router.replace({ query: { ...route.query, subjectId: String(row.id) } })
 }
 
+/** 模型验证结果 Tab：按受试者读取研究任务归档，只读。 */
+async function loadResearchArchive() {
+  const subjectId = selected.value?.id
+  if (!subjectId) return
+  researchLoading.value = true
+  researchError.value = ''
+  try {
+    const list = await listResearchArchive(subjectId)
+    researchArchive.value = Array.isArray(list) ? list : []
+  } catch (problem) {
+    researchArchive.value = []
+    researchError.value =
+      problem?.httpStatus === 403
+        ? '当前账号没有该档案的研究验证结果读取权限'
+        : problem?.message || '研究验证结果加载失败，请稍后重试'
+  } finally {
+    researchLoading.value = false
+  }
+}
+
+function researchCif(value) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? `${(value * 100).toFixed(2)}%`
+    : '—'
+}
+
+watch(drawerTab, (tab) => {
+  if (tab === 'research') loadResearchArchive()
+})
+
 // 关闭抽屉时清掉 URL 上的 subjectId
 watch(drawerOpen, (open) => {
+  if (!open) {
+    researchArchive.value = []
+    researchError.value = ''
+    drawerTab.value = 'overview'
+  }
   if (open || !route.query.subjectId) return
   const query = { ...route.query }
   delete query.subjectId
@@ -1616,6 +1714,35 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 1.7;
   color: var(--muted);
+}
+
+.research-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 4px 0 14px;
+}
+
+.research-head strong {
+  display: block;
+  font-size: 14px;
+  color: var(--ink-700);
+}
+
+.research-head p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.research-head .el-button {
+  flex: none;
+}
+
+.research-error {
+  margin-bottom: 12px;
 }
 
 .reports-head {

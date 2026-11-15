@@ -8287,6 +8287,67 @@
         "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
       }
     },
+    "/api/research/table-assessment-tasks/archive": {
+      "get": {
+        "operationId": "listResearchTableTaskArchive",
+        "summary": "读取某受试者名下的研究验证结果（供 360 档案与报告使用）",
+        "parameters": [
+          {
+            "name": "subjectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "该受试者的研究任务结果（最近 50 条）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchTableTaskListEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+      }
+    },
     "/api/research/table-assessment-tasks/{id}/retry": {
       "post": {
         "operationId": "retryResearchTableTask",
