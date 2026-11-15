@@ -47,6 +47,24 @@ JSON Schema将1.0视为integer，不能据此放行APOE；适配器和语义校�
 
 `runId`仅关联调用，**不提供缓存/重放或持久化幂等**。相同请求再次执行会新消费宿主许可；Java须持久化自己的任务、冻结输入与幂等键。超时结局未知时不得自动重复POST；不能声称可GET找回、取消Python运行或实时推送阶段。
 
+## 动态快照模式（W1）
+
+Python 宿主增加 `--snapshot-dir`：启动时读取宿主自有的冻结快照包（`research-dynamic-snapshot-v1`），请求到达时按 `runId` 精确匹配。包内含 `snapshotId`、`request`、`model`、完整 `context` 及三个摘要；宿主用 `research_table_protocol.digest` 重算 `requestSha256`、`inputSha256=digest(admissionCore)`、`contextSha256=digest(context)`，任一与包或调用方声明不一致即拒绝。未知/非法 `runId` 返回 `RUN_ID_INVALID`，请求摘要不符返回 `SNAPSHOT_BINDING_MISMATCH`，包内模型与宿主实际加载的清单/权重/训练计划/运行时/依赖锁不一致返回 `HOST_BINDING_INVALID`。每次请求重建 `ResearchTableAgent`，`TableAssessment` 按模型身份摘要缓存；请求体不携带可信上下文或摘要，客户端不能指定模型路径、来源映射或授权开关。
+
+Java 生产登记接口目前把 `registrationContext` 的 `sourceMappings`/`evidence` 固定为空，并以其摘要写入 `research_table_snapshot.context_sha256`；该摘要无法等于 Python 准入所需的完整 context 摘要。因此受控运维在 Java 登记（保留权限、受试者、请求与审计校验）后，只将 `context_sha256` 修正为宿主核验的真实摘要，再执行任务。这是 Java 登记侧待修复缺陷，不改变 Python 准入规则；快照 #2 因 `MANUAL-ENTRY` 来源重复、年龄/教育 QC 错误及该摘要缺陷不可执行，未被伪装成成功。
+
+W1 使用新登记快照 #4（subject 203，`run-manual-w1-snapshot3`）完成真实联调：任务 1 为 `COMPLETED`，`adCif24m=0.1933752820629015`、`otherDementiaCif24m=0.000795670798321653`、`directCifCalls=1`、`explanationCifCalls=64`、`isCausalEffect=false`，GET 回读的 CIF 与 `trustedContextSha256` 一致。启动示例：
+
+```text
+RESEARCH_TABLE_TEST_TOKEN=<token> .venv-research/Scripts/python.exe \
+  research_runtime/examples/research_table_http.py --port 16300 \
+  --manifest <host-manifest.json> \
+  --trained-manifest C:\controlled-model\Model_Manifest.json \
+  --trusted-manifest-sha256 46ad244f... --snapshot-dir <bundle-dir>
+```
+
+快照包默认不入库；`<bundle-dir>` 是受控目录，宿主只读。启动清单只暴露 `mode=dynamic` 和 `runId/snapshotId/subjectId` 描述，不暴露模型路径或上下文。
+
 ## Java字段与责任映射
 
 下表对照现有`AgentRequest`，不等于全库没有这些材料。不得仅将DEMO编号改名为真实来源，不能把旧请求塞入新模型。
