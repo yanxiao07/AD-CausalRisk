@@ -12,7 +12,15 @@
       暂无审计事件。只有接入了 @AuditLog 的操作才会写入这里。
     </div>
 
-    <el-table v-else :data="rows" class="audit__table" max-height="320" size="small">
+    <el-table
+      v-else
+      :data="rows"
+      class="audit__table"
+      max-height="320"
+      size="small"
+      row-class-name="audit__row"
+      @row-click="(row) => emit('row-click', row)"
+    >
       <el-table-column label="时间" width="170">
         <template #default="{ row }">{{ formatTime(row.timestamp) }}</template>
       </el-table-column>
@@ -42,7 +50,7 @@ const props = defineProps({
   showRefresh: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['refresh'])
+const emit = defineEmits(['refresh', 'row-click'])
 
 const rows = computed(() => (props.limit > 0 ? props.events.slice(0, props.limit) : props.events))
 
@@ -82,6 +90,10 @@ function formatTime(value) {
 
 .audit__table {
   width: 100%;
+}
+
+.audit__table :deep(.audit__row) {
+  cursor: pointer;
 }
 
 /* 深色大屏 */

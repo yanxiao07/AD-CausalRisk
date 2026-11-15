@@ -110,6 +110,12 @@ const routes = [
     meta: { title: '评估报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER', 'ADMIN'] }
   },
   {
+    path: '/settings/profile',
+    name: 'ProfileSettings',
+    component: () => import('../views/common/ProfileSettings.vue'),
+    meta: { title: '个人设置', layout: 'sidebar', roles: ['ADMIN', 'RESEARCHER', 'DOCTOR'] }
+  },
+  {
     path: '/graph',
     name: 'GraphView',
     component: () => import('../views/doctor/GraphView.vue'),

@@ -56,6 +56,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="profile" :icon="User">账号信息</el-dropdown-item>
+                <el-dropdown-item command="account" :icon="EditPen">个人设置</el-dropdown-item>
                 <el-dropdown-item command="preferences" :icon="Setting">用户设置</el-dropdown-item>
                 <el-dropdown-item divided command="logout" :icon="SwitchButton">
                   退出登录
@@ -115,6 +116,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
   ArrowDown,
+  EditPen,
   Expand,
   Fold,
   HomeFilled,
@@ -159,6 +161,10 @@ function onSelect(key) {
 async function onCommand(command) {
   if (command === 'profile') {
     profileOpen.value = true
+    return
+  }
+  if (command === 'account') {
+    router.push('/settings/profile')
     return
   }
   if (command === 'preferences') {
