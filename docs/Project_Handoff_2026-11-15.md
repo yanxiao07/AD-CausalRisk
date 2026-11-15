@@ -1,9 +1,9 @@
-# AD-CausalRisk 项目交接与多 Agent 开发规划
+# AD-CausalRisk 项目交接与单工作区串行开发规划
 
 - 日期：2026-11-15
 - 适用仓库：`C:\Users\34079\Desktop\AD-CausalRisk`
 - 当前分支：`feat/backend-integration`
-- 当前 HEAD：`154af1a feat(frontend): implement role-based onboarding wizard and batch research assessment drawer`
+- 当前 HEAD：`f8d3839 Merge branch 'feat/w1-dynamic-host' into feat/backend-integration`
 - 文档定位：项目级交接、问题清单、工作流拆分、验收口径、子 Agent 协作规则
 - 配套任务板：`docs/Subagent_Task_Board.md`
 
@@ -358,7 +358,7 @@ subject.patient_id BIGINT NULL
 - 旧 `/subjects` 仍可用。
 - 迁移可回滚/可重跑。
 
-### W4 系统控制台二期（P2，可与 W1 并行）
+### W4 系统控制台二期（P2，排在 W1 之后）
 
 目标：把“控制台”补成真正可运维。
 
@@ -441,7 +441,7 @@ subject.patient_id BIGINT NULL
 
 ---
 
-## 7. 里程碑与并行策略
+## 7. 里程碑与串行策略
 
 ### M0 交付卫生
 
@@ -463,30 +463,31 @@ subject.patient_id BIGINT NULL
 - W4 + W6 + W7 + W8
 - 产出：可部署、可运维、可演示
 
-并行建议：
+串行策略：
 
-- M0 完成后：W1、W3 设计、W4、W6、W7 可并行。
-- W2 依赖 W1；W5 依赖 W3；W8 最后。
-- 涉及共享契约/路由/README 的改动必须串行，由负责人合并。
+- 所有任务进入同一任务队列，按 W0 → W1 → W2 → W3 → W4 → W5 → W6 → W7 → W8 顺序调度。
+- 为避免依赖环境重复配置，所有主/子 Agent 共享同一个主工作区（AD-CausalRisk）及同一套 `.venv` / `node_modules`。采用任务队列串行调度，当前任务未 commit 前，不启动下一个任务。
+- 当前一张任务卡未 commit、未验证完成前，不启动下一张任务卡。
+- 依赖关系不变：W2 依赖 W1；W5 依赖 W3；W8 最后。
+- 涉及共享契约/路由/README 的改动由当前任务负责人完成并 commit，下一位再开始。
 
 ---
 
-## 8. 多 Agent 协作规则
+## 8. 单工作区 Agent 协作规则
 
 ### 8.1 一个会话一个工作流
 
 每个子 Agent 只负责一个 W 或一张任务卡，不跨工作流改文件。
 
-### 8.2 分支与工作区
+### 8.2 单工作区强制串行
 
-建议每个并行任务使用独立 worktree：
+为避免依赖环境重复配置，所有主/子 Agent 共享同一个主工作区（AD-CausalRisk）及同一套 `.venv` / `node_modules`。采用任务队列串行调度，当前任务未 commit 前，不启动下一个任务。
 
-```powershell
-git worktree add ..\AD-CausalRisk-w1 -b feat/w1-dynamic-host
-git worktree add ..\AD-CausalRisk-w3 -b feat/w3-patient-index
-```
-
-不要多个 Agent 在同一工作区同时改文件。
+- 不再创建 worktree，不再复制独立 `.venv` / `node_modules`。
+- 子 Agent 直接在主工作区按任务卡顺序执行；同一时刻只允许一个 Agent 修改文件。
+- 当前任务完成后，由负责人 commit（或明确记录未提交原因），再启动下一张任务卡。
+- 若任务确实需要隔离验证，使用临时目录/临时数据库，不创建物理 worktree。
+- 禁止多个 Agent 同时修改同一工作区。
 
 ### 8.3 文件所有权
 
