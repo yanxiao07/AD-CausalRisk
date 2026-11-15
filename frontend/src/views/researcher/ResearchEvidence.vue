@@ -157,7 +157,7 @@
             class="field"
           />
         </el-form-item>
-        <el-form-item label="七变量数据" required>
+        <el-form-item label="七变量数据（可留空）">
           <div class="feature-grid">
             <div v-for="field in featureFields" :key="field.key" class="feature-field">
               <span class="feature-field__label">{{ field.label }}</span>
@@ -173,6 +173,9 @@
               <span class="feature-field__unit">{{ field.unit }}</span>
             </div>
           </div>
+          <p class="register-hint">
+            留空字段会以 <code>NOT_COLLECTED</code> 记录缺失原因，不会补 0 或均值；缺失过多时模型可能返回 BLOCKED。
+          </p>
         </el-form-item>
         <el-alert type="info" :closable="false" show-icon class="register-note">
           登记后系统会自动将快照同步至 Python 研究宿主。若同步失败，请在列表中点击重试。
@@ -266,8 +269,8 @@ async function submitRegister() {
   }
   const missing = featureFields.filter((field) => registerFeatures[field.key] === null
     || registerFeatures[field.key] === undefined || Number.isNaN(registerFeatures[field.key]))
-  if (missing.length) {
-    registerError.value = `请填写完整七变量：${missing.map((field) => field.label).join('、')}`
+  if (missing.length === featureFields.length) {
+    registerError.value = '至少填写一项真实变量；留空字段会按 NOT_COLLECTED 记录'
     return
   }
   registering.value = true
@@ -547,6 +550,20 @@ onMounted(() => {
 
 .register-note {
   margin-top: 4px;
+}
+
+.register-hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.register-hint code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--surface-muted, #f2f5f8);
+  font-family: var(--font-mono, 'Cascadia Code', Consolas, monospace);
 }
 
 .feature-grid {
