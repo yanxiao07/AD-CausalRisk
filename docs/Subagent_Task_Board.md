@@ -24,6 +24,7 @@
 | T2.1 | 203 七变量数据采集 | P1 | T1.1 | C | 数据清单 |
 | T2.2 | 203 数据导入/登记 | P1 | T2.1 | C | 快照 |
 | T2.3 | 203 真实结果验收 | P1 | T1.3/T2.2 | C | 验收记录 |
+| T2.4 | 登记默认继承档案 dataVersion（D-1） | P2 | T2.2 | C | 代码/测试 |
 | T3.1 | 患者主索引 schema | P1 | T0.1 | D（远期） | V15 迁移 |
 | T3.2 | 回填与兼容 | P1 | T3.1 | D | 迁移脚本 |
 | T3.3 | 患者 APIs | P1 | T3.1 | D | 接口 |
@@ -212,6 +213,15 @@
 
 - 提交并记录结果。
 - 验收：COMPLETED、双 CIF、归因、免责声明。
+- 状态：已完成（P2），见 `docs/P2_Data_Validation_Report.md`。
+
+### T2.4 登记默认继承档案 dataVersion（D-1）
+
+- 优先级：P2，非阻塞。
+- 现状：`registerManual` 默认 `dataVersion=manual-snapshot-<date>`，与 `subject.data_version` 脱钩。
+- 改动：未显式传 `dataVersion` 时，默认继承受试者档案的 `data_version`；显式传入时保留覆盖。
+- 验收：快照 `request_json.dataVersion == subject.data_version`（未显式覆盖时）。
+- 来源：`docs/P2_Data_Validation_Report.md` 改进项 D-1。
 
 ### T3.1 患者主索引 schema
 
