@@ -276,7 +276,7 @@ class ResearchTableAssessmentService {
                  ORDER BY t.created_at DESC,t.id DESC
                 """, (row, index) -> {
                     try {
-                        return mapTask(row, principal);
+                        return mapTask(row, principal, false);
                     } catch (BusinessException denied) {
                         if (denied.errorCode() == ErrorCode.ACCESS_DENIED) {
                             return null;
@@ -626,8 +626,12 @@ class ResearchTableAssessmentService {
     }
 
     Task find(long id, AppUserPrincipal principal) {
+        return find(id, principal, false);
+    }
+
+    private Task find(long id, AppUserPrincipal principal, boolean allowAdmin) {
         requireArchiveRole(principal);
-        return jdbc.query(TASK_QUERY + " WHERE t.id=?", (row, index) -> mapTask(row, principal),
+        return jdbc.query(TASK_QUERY + " WHERE t.id=?", (row, index) -> mapTask(row, principal, allowAdmin),
                 id).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
     }
 
@@ -661,7 +665,7 @@ class ResearchTableAssessmentService {
         List<Object> pageParams = new ArrayList<>(params);
         pageParams.add(safeSize);
         pageParams.add((long) (safePage - 1) * safeSize);
-        List<Task> items = jdbc.query(select, (row, index) -> mapTask(row, principal), pageParams.toArray());
+        List<Task> items = jdbc.query(select, (row, index) -> mapTask(row, principal, true), pageParams.toArray());
         return new ReviewQueue(items, total == null ? 0 : total, safePage, safeSize);
     }
 
@@ -675,7 +679,7 @@ class ResearchTableAssessmentService {
         if (text.isEmpty() || text.length() > 2000) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "复核意见必填且不能超过 2000 字");
         }
-        Task task = find(taskId, principal);
+        Task task = find(taskId, principal, true);
         if (!"COMPLETED".equals(task.status())) {
             throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "仅已完成的研究任务可复核");
         }
@@ -689,7 +693,7 @@ class ResearchTableAssessmentService {
         }
         audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_REVIEW",
                 "taskId=" + taskId + " decision=" + normalized);
-        return find(taskId, principal);
+        return find(taskId, principal, true);
     }
 
     /** Research results that belong to one subject, readable by the treating doctor as well. */
@@ -702,12 +706,12 @@ class ResearchTableAssessmentService {
             return jdbc.query(TASK_QUERY + """
                      WHERE s.subject_id=?
                      ORDER BY t.created_at DESC,t.id DESC LIMIT 50
-                    """, (row, index) -> mapTask(row, principal), subjectId);
+                    """, (row, index) -> mapTask(row, principal, false), subjectId);
         }
         return jdbc.query(TASK_QUERY + """
                  WHERE s.subject_id=? AND s.authorized_user_id=?
                  ORDER BY t.created_at DESC,t.id DESC LIMIT 50
-                """, (row, index) -> mapTask(row, principal), subjectId, principal.userId());
+                """, (row, index) -> mapTask(row, principal, false), subjectId, principal.userId());
     }
 
     MigrationResult migrateLegacySnapshots(AppUserPrincipal principal) {
@@ -783,7 +787,7 @@ class ResearchTableAssessmentService {
         return jdbc.query(TASK_QUERY + """
                  WHERE s.subject_id=? AND s.authorized_user_id=?
                  ORDER BY t.created_at DESC,t.id DESC LIMIT 50
-                """, (row, index) -> mapTask(row, principal), subjectId, principal.userId());
+                """, (row, index) -> mapTask(row, principal, false), subjectId, principal.userId());
     }
 
     Task retry(long taskId, AppUserPrincipal principal) {
@@ -812,10 +816,10 @@ class ResearchTableAssessmentService {
         return find(taskId, principal);
     }
 
-    private Task mapTask(java.sql.ResultSet row, AppUserPrincipal principal) throws java.sql.SQLException {
+    private Task mapTask(java.sql.ResultSet row, AppUserPrincipal principal, boolean allowAdmin) throws java.sql.SQLException {
         long subjectId = row.getLong("subject_id");
         long ownerId = row.getLong("authorized_user_id");
-        boolean admin = principal.roleCodes().contains("ADMIN");
+        boolean admin = allowAdmin && principal.roleCodes().contains("ADMIN");
         boolean owner = principal.userId() == ownerId;
         boolean treatingDoctor = principal.roleCodes().contains("DOCTOR");
         // Admins can audit every research result. Everyone else needs a *current* archive
