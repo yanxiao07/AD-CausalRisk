@@ -74,7 +74,7 @@
                 {{ syncLabel(row.hostSyncStatus) }}
               </el-tag>
               <el-button
-                v-if="row.hostSyncStatus !== 'SYNCED'"
+                v-if="row.hostSyncStatus === 'PENDING' || row.hostSyncStatus === 'FAILED'"
                 link
                 type="primary"
                 size="small"
@@ -331,12 +331,14 @@ function syncLabel(status) {
   if (status === 'SYNCED') return '已同步'
   if (status === 'FAILED') return '同步失败'
   if (status === 'MIGRATION_FAILED') return '迁移失败'
+  if (status === 'MIGRATION_SKIPPED') return '需重新登记'
   return '待同步'
 }
 
 function syncTag(status) {
   if (status === 'SYNCED') return 'success'
   if (status === 'FAILED' || status === 'MIGRATION_FAILED') return 'danger'
+  if (status === 'MIGRATION_SKIPPED') return 'info'
   return 'warning'
 }
 

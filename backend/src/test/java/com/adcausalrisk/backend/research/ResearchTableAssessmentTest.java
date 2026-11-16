@@ -65,6 +65,8 @@ class ResearchTableAssessmentTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper json;
     @Autowired ResearchTableProtocol protocol;
+    @Autowired ResearchTableAssessmentService service;
+    @Autowired ResearchTaskRecovery recovery;
 
     private record Exchange(byte[] request, byte[] response, int status, boolean delay,
                             CountDownLatch started, AtomicReference<String> problem) {}
@@ -241,25 +243,79 @@ class ResearchTableAssessmentTest {
                 VALUES(?,?,?,?,?)
                 """, subjectId, "V-BATCH-EVAL", java.sql.Date.valueOf("2026-11-13"),
                 new java.math.BigDecimal("28.00"), new java.math.BigDecimal("0.50"));
-        reply(fixture("request-seven"), fixture("response-seven"), 200, false);
 
-        var payload = json.createObjectNode();
-        payload.putArray("subjectIds").add(subjectId);
-        payload.put("evaluate", true);
+        ResearchTableClient original = (ResearchTableClient) org.springframework.test.util.ReflectionTestUtils
+                .getField(service, "client");
+        ResearchTableClient mock = org.mockito.Mockito.mock(ResearchTableClient.class);
+        org.mockito.Mockito.when(mock.registerSnapshot(org.mockito.ArgumentMatchers.any(byte[].class)))
+                .thenReturn(new ResearchTableClient.Reply(200, json.createObjectNode().put("status", "SYNCED")));
+        org.mockito.Mockito.when(mock.assess(org.mockito.ArgumentMatchers.any(byte[].class)))
+                .thenAnswer(invocation -> {
+                    try {
+                        return new ResearchTableClient.Reply(200, successfulReply(invocation.getArgument(0)));
+                    } catch (Exception failure) {
+                        throw new IllegalStateException(failure);
+                    }
+                });
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "client", mock);
+        try {
+            var payload = json.createObjectNode();
+            payload.putArray("subjectIds").add(subjectId);
+            payload.put("evaluate", true);
 
-        JsonNode created = body(mvc.perform(post(PATH + "/snapshots/batch")
-                .with(authentication(actor("admin", "ADMIN")))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(payload.toString())));
-        JsonNode item = created.get("data").get("items").get(0);
-        assertThat(item.get("hostSyncStatus").asText()).isEqualTo("SYNCED");
-        long taskId = item.get("taskId").longValue();
-        String status = item.get("taskStatus").asText();
-        assertThat(status).isIn("FAILED", "OUTCOME_UNKNOWN");
-        JsonNode task = body(mvc.perform(get(PATH + "/" + taskId)
-                .with(authentication(actor("admin", "ADMIN"))))).get("data");
-        assertThat(task.get("taskId").longValue()).isEqualTo(taskId);
-        assertThat(task.get("status").asText()).isEqualTo(status);
+            JsonNode created = body(mvc.perform(post(PATH + "/snapshots/batch")
+                    .with(authentication(actor("admin", "ADMIN")))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(payload.toString())));
+            JsonNode item = created.get("data").get("items").get(0);
+            assertThat(item.get("hostSyncStatus").asText()).isEqualTo("SYNCED");
+            long taskId = item.get("taskId").longValue();
+            assertThat(item.get("taskStatus").asText()).isEqualTo("COMPLETED");
+            JsonNode task = body(mvc.perform(get(PATH + "/" + taskId)
+                    .with(authentication(actor("admin", "ADMIN"))))).get("data");
+            assertThat(task.get("taskId").longValue()).isEqualTo(taskId);
+            assertThat(task.get("status").asText()).isEqualTo("COMPLETED");
+        } finally {
+            org.springframework.test.util.ReflectionTestUtils.setField(service, "client", original);
+        }
+    }
+
+    private ObjectNode successfulReply(byte[] requestBytes) throws Exception {
+        JsonNode request = protocol.parse(requestBytes);
+        var row = jdbc.queryForMap("SELECT model_json,context_json FROM research_table_snapshot ORDER BY id DESC LIMIT 1");
+        JsonNode model = protocol.parse(((String) row.get("model_json")).getBytes(StandardCharsets.UTF_8));
+        JsonNode context = protocol.parse(((String) row.get("context_json")).getBytes(StandardCharsets.UTF_8));
+        ObjectNode response = fixture("response-seven");
+        for (String name : List.of("contractVersion", "runId", "modelKey", "subjectCode", "dataVersion",
+                "indexDate", "availabilityPolicy", "predictionWindowMonths")) {
+            response.set(name, request.get(name));
+        }
+        response.set("model", model);
+        response.put("dataScope", "CONSTRUCTED_VALIDATION");
+        response.put("status", "COMPLETED");
+        response.put("requestSha256", protocol.digest(request));
+
+        ObjectNode admission = (ObjectNode) response.get("admission");
+        admission.set("model", model);
+        admission.set("featureOrder", model.get("features"));
+        admission.put("availabilityPolicy", request.get("availabilityPolicy").asText());
+        admission.put("recordCount", 1);
+        admission.put("blockedRecordCount", 0);
+        admission.putArray("issues");
+        ObjectNode missing = admission.putObject("missingFeatureCounts");
+        for (JsonNode feature : model.get("features")) {
+            String name = feature.asText();
+            missing.put(name, request.get("features").get(name).get("value").isNull() ? 1 : 0);
+        }
+
+        ObjectNode binding = (ObjectNode) response.get("binding");
+        binding.put("inputSha256", protocol.digest(protocol.admissionCore(request, model)));
+        binding.put("trustedContextSha256", protocol.digest(context));
+        binding.set("model", model);
+        binding.set("featureOrder", model.get("features"));
+        binding.put("predictionPolicy", model.get("predictionPolicy").asText());
+        binding.put("predictionWindowMonths", 24);
+        return response;
     }
 
     @Test
@@ -586,6 +642,23 @@ class ResearchTableAssessmentTest {
                 """, validSubject, userId("admin"), valid.toString(), "0".repeat(64), "0".repeat(64),
                 "{}", "CONSTRUCTED_VALIDATION", "0".repeat(64), "0".repeat(64));
 
+        ObjectNode referenced = fixture("request-seven");
+        String referencedCode = "DEMO-MIG-USED-" + UUID.randomUUID();
+        referenced.put("subjectCode", referencedCode);
+        long referencedSubject = subject(referencedCode);
+        jdbc.update("""
+                INSERT INTO research_table_snapshot(subject_id,authorized_user_id,request_json,wire_sha256,
+                    request_sha256,model_json,data_scope,input_sha256,context_sha256,host_sync_status)
+                VALUES(?,?,?,?,?,?,?,?,?,'PENDING')
+                """, referencedSubject, userId("admin"), referenced.toString(), "0".repeat(64),
+                "0".repeat(64), "{}", "CONSTRUCTED_VALIDATION", "0".repeat(64), "0".repeat(64));
+        long referencedSnapshot = jdbc.queryForObject(
+                "SELECT id FROM research_table_snapshot WHERE subject_id=?", Long.class, referencedSubject);
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,created_at,updated_at)
+                VALUES(?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, referencedSnapshot, "run-legacy-referenced", "COMPLETED");
+
         ObjectNode invalid = fixture("request-seven");
         String invalidCode = "DEMO-MIG-BAD-" + UUID.randomUUID();
         invalid.put("subjectCode", invalidCode);
@@ -603,12 +676,47 @@ class ResearchTableAssessmentTest {
         assertEquals(1, result.get("migrated").asInt());
         assertEquals(1, result.get("failed").asInt());
         assertEquals(1, result.get("failedSnapshotIds").size());
+        assertEquals(1, result.get("skipped").asInt());
+        assertEquals(1, result.get("skippedSnapshotIds").size());
         assertEquals("PENDING", jdbc.queryForObject(
                 "SELECT host_sync_status FROM research_table_snapshot WHERE subject_id=?", String.class, validSubject));
         assertNotNull(jdbc.queryForObject(
                 "SELECT context_json FROM research_table_snapshot WHERE subject_id=?", String.class, validSubject));
         assertEquals("MIGRATION_FAILED", jdbc.queryForObject(
                 "SELECT host_sync_status FROM research_table_snapshot WHERE subject_id=?", String.class, invalidSubject));
+        assertEquals("MIGRATION_SKIPPED", jdbc.queryForObject(
+                "SELECT host_sync_status FROM research_table_snapshot WHERE subject_id=?", String.class, referencedSubject));
+        assertEquals("0".repeat(64), jdbc.queryForObject(
+                "SELECT request_sha256 FROM research_table_snapshot WHERE subject_id=?", String.class, referencedSubject));
+    }
+
+    @Test
+    void adminReadsTheResearchReviewQueueWithoutOwningTheTask() throws Exception {
+        long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "researcher");
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,created_at,updated_at)
+                VALUES(?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, snapshot, "run-admin-review", "COMPLETED");
+
+        JsonNode result = body(mvc.perform(get(PATH + "/reviews?status=PENDING")
+                .with(authentication(actor("admin", "ADMIN"))))).get("data");
+        assertEquals(1, result.get("total").asInt());
+        assertEquals("run-admin-review", result.get("items").get(0).get("runId").asText());
+    }
+
+    @Test
+    void recoversResearchTaskAbandonedInRunningState() throws Exception {
+        long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,execution_id,created_at,updated_at)
+                VALUES(?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, snapshot, "run-orphaned", "RUNNING", UUID.randomUUID().toString());
+
+        assertThat(recovery.recoverInterrupted()).isEqualTo(1);
+        var row = jdbc.queryForMap("SELECT status,error_code,execution_id FROM research_table_task WHERE run_id='run-orphaned'");
+        assertThat(row.get("status")).isEqualTo("OUTCOME_UNKNOWN");
+        assertThat(row.get("error_code")).isEqualTo(ResearchTaskRecovery.INTERRUPTED_CODE);
+        assertThat(row.get("execution_id")).isNull();
     }
 
     private ResultActions submit(long snapshot, String key, UsernamePasswordAuthenticationToken actor) throws Exception {

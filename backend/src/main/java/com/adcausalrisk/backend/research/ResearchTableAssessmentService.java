@@ -73,7 +73,8 @@ class ResearchTableAssessmentService {
                      String taskStatus, String message) {}
     record BatchResult(List<BatchItem> items, int succeeded, int failed) {}
 
-    record MigrationResult(int migrated, int failed, List<Long> failedSnapshotIds) {}
+    record MigrationResult(int migrated, int failed, int skipped, List<Long> failedSnapshotIds,
+                           List<Long> skippedSnapshotIds) {}
 
     private record Snapshot(byte[] requestBytes, JsonNode request, JsonNode model, String requestDigest,
                             String inputDigest, String contextDigest) {}
@@ -712,12 +713,28 @@ class ResearchTableAssessmentService {
     MigrationResult migrateLegacySnapshots(AppUserPrincipal principal) {
         requireAdmin(principal);
         List<Long> ids = jdbc.queryForList("""
-                SELECT id FROM research_table_snapshot
-                WHERE context_json IS NULL OR context_sha256 IS NULL
-                ORDER BY id
+                SELECT s.id FROM research_table_snapshot s
+                WHERE (s.context_json IS NULL OR s.context_sha256 IS NULL)
+                  AND NOT EXISTS (SELECT 1 FROM research_table_task t WHERE t.snapshot_id=s.id)
+                ORDER BY s.id
+                """, Long.class);
+        List<Long> referenced = jdbc.queryForList("""
+                SELECT DISTINCT s.id FROM research_table_snapshot s
+                JOIN research_table_task t ON t.snapshot_id=s.id
+                WHERE s.context_json IS NULL OR s.context_sha256 IS NULL
+                ORDER BY s.id
                 """, Long.class);
         int migrated = 0;
         List<Long> failed = new ArrayList<>();
+        List<Long> skipped = new ArrayList<>();
+        for (Long id : referenced) {
+            // Referenced snapshots must stay byte-identical: their task results are bound to
+            // the stored request/input/context digests. Rebuild a new snapshot instead.
+            jdbc.update("UPDATE research_table_snapshot SET host_sync_status='MIGRATION_SKIPPED' WHERE id=?", id);
+            audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_MIGRATION_SKIPPED",
+                    "snapshotId=" + id);
+            skipped.add(id);
+        }
         for (Long id : ids) {
             try {
                 String requestText = jdbc.queryForObject(
@@ -755,7 +772,7 @@ class ResearchTableAssessmentService {
                 failed.add(id);
             }
         }
-        return new MigrationResult(migrated, failed.size(), failed);
+        return new MigrationResult(migrated, failed.size(), skipped.size(), failed, skipped);
     }
 
     List<Task> history(long subjectId, AppUserPrincipal principal) {
@@ -798,11 +815,12 @@ class ResearchTableAssessmentService {
     private Task mapTask(java.sql.ResultSet row, AppUserPrincipal principal) throws java.sql.SQLException {
         long subjectId = row.getLong("subject_id");
         long ownerId = row.getLong("authorized_user_id");
+        boolean admin = principal.roleCodes().contains("ADMIN");
         boolean owner = principal.userId() == ownerId;
         boolean treatingDoctor = principal.roleCodes().contains("DOCTOR");
-        // Every read must be against the *current* archive permission. Ownership alone no
-        // longer grants access after a subject permission is revoked.
-        if (!access.canReadRawScores(principal, subjectId) || (!owner && !treatingDoctor)) {
+        // Admins can audit every research result. Everyone else needs a *current* archive
+        // permission; ownership alone no longer grants access after it is revoked.
+        if (!admin && (!access.canReadRawScores(principal, subjectId) || (!owner && !treatingDoctor))) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
         String result = row.getString("result_json");

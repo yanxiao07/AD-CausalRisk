@@ -7321,7 +7321,8 @@
                               "PENDING",
                               "SYNCED",
                               "FAILED",
-                              "MIGRATION_FAILED"
+                              "MIGRATION_FAILED",
+                              "MIGRATION_SKIPPED"
                             ],
                             "type": "string"
                           }
@@ -8018,7 +8019,8 @@
                             "PENDING",
                             "SYNCED",
                             "FAILED",
-                            "MIGRATION_FAILED"
+                            "MIGRATION_FAILED",
+                            "MIGRATION_SKIPPED"
                           ],
                           "type": "string"
                         }
@@ -8143,7 +8145,8 @@
                             "PENDING",
                             "SYNCED",
                             "FAILED",
-                            "MIGRATION_FAILED"
+                            "MIGRATION_FAILED",
+                            "MIGRATION_SKIPPED"
                           ],
                           "type": "string"
                         }
@@ -12234,7 +12237,8 @@
               "SYNCED",
               "FAILED",
               null,
-              "MIGRATION_FAILED"
+              "MIGRATION_FAILED",
+              "MIGRATION_SKIPPED"
             ]
           },
           "taskId": {
@@ -12490,7 +12494,9 @@
         "required": [
           "migrated",
           "failed",
-          "failedSnapshotIds"
+          "skipped",
+          "failedSnapshotIds",
+          "skippedSnapshotIds"
         ],
         "properties": {
           "migrated": {
@@ -12500,6 +12506,16 @@
             "type": "integer"
           },
           "failedSnapshotIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "skipped": {
+            "type": "integer"
+          },
+          "skippedSnapshotIds": {
             "type": "array",
             "items": {
               "type": "integer",
