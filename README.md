@@ -123,13 +123,11 @@ npm run build
 
 ## 文档
 
-- [产品化规划](docs/Frontend_Productization_Plan.md)
-- [P1 验收报告](docs/P1_Acceptance_Report.md)
-- [P2 数据验证报告](docs/P2_Data_Validation_Report.md)
-- [P2 数据模板](docs/W2_203_Data_Template.md)
 - [发布说明](docs/Release_Notes_v1.0.md)
 - [集成契约](docs/Integration_Contract.md)
 - [研究原则](docs/Research_Core_Principles.md)
+- [设计指南](docs/Design_Guide.md)
+- [研究表格 Agent 契约](docs/Research_Table_Agent_Contract.md)
 
 ## 目录
 
