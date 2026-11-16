@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -51,12 +52,19 @@ class ResearchTableAssessmentService {
             "age_years", "education_years", "mmse", "cdr_sb", "cdr_global", "adas__total13", "faq__faqtotal");
     private static final String TASK_QUERY = """
             SELECT t.id,t.snapshot_id,t.run_id,t.status,t.error_code,t.result_json,t.created_at,t.updated_at,
-                   s.subject_id,s.authorized_user_id
-            FROM research_table_task t JOIN research_table_snapshot s ON s.id=t.snapshot_id
+                   t.review_status,t.reviewed_by,t.reviewed_at,t.review_comment,
+                   s.subject_id,s.authorized_user_id,sub.subject_code,sub.alias AS subject_alias
+            FROM research_table_task t
+            JOIN research_table_snapshot s ON s.id=t.snapshot_id
+            JOIN subject sub ON sub.id=s.subject_id
             """;
 
-    record Task(long taskId, long snapshotId, long subjectId, String runId, String status,
-                String errorCode, JsonNode result, Instant createdAt, Instant updatedAt) {}
+    record Task(long taskId, long snapshotId, long subjectId, String subjectCode, String subjectAlias,
+                String runId, String status, String errorCode, JsonNode result,
+                Instant createdAt, Instant updatedAt,
+                String reviewStatus, Long reviewedBy, Instant reviewedAt, String reviewComment) {}
+
+    record ReviewQueue(List<Task> items, long total, int page, int pageSize) {}
     record SnapshotOption(long snapshotId, Long taskId, String hostSyncStatus) {}
     record Registration(long snapshotId, String hostSyncStatus) {}
     record TaskSummary(long tasksToday, long completedToday, long failedToday, long averageSeconds,
@@ -620,6 +628,67 @@ class ResearchTableAssessmentService {
                 id).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
     }
 
+    ReviewQueue reviewQueue(String status, int page, int pageSize, AppUserPrincipal principal) {
+        requireReviewRole(principal);
+        int safePage = Math.max(1, page);
+        int safeSize = Math.max(1, Math.min(100, pageSize));
+        boolean all = status == null || status.isBlank() || "ALL".equalsIgnoreCase(status);
+        boolean doctor = principal.roleCodes().contains("DOCTOR");
+        String reviewFilter = all ? "" : " AND t.review_status=?";
+        String permissionFilter = doctor
+                ? " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
+                        + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))"
+                : "";
+        String from = """
+                FROM research_table_task t
+                JOIN research_table_snapshot s ON s.id=t.snapshot_id
+                JOIN subject sub ON sub.id=s.subject_id
+                WHERE t.status='COMPLETED'
+                """ + reviewFilter + permissionFilter;
+        List<Object> params = new ArrayList<>();
+        if (!all) params.add(status.toUpperCase(Locale.ROOT));
+        if (doctor) params.add(principal.userId());
+
+        Long total = jdbc.queryForObject("SELECT COUNT(*) " + from, Long.class, params.toArray());
+        String select = """
+                SELECT t.id,t.snapshot_id,t.run_id,t.status,t.error_code,t.result_json,t.created_at,t.updated_at,
+                       t.review_status,t.reviewed_by,t.reviewed_at,t.review_comment,
+                       s.subject_id,s.authorized_user_id,sub.subject_code,sub.alias AS subject_alias
+                """ + from + " ORDER BY t.created_at DESC,t.id DESC LIMIT ? OFFSET ?";
+        List<Object> pageParams = new ArrayList<>(params);
+        pageParams.add(safeSize);
+        pageParams.add((long) (safePage - 1) * safeSize);
+        List<Task> items = jdbc.query(select, (row, index) -> mapTask(row, principal), pageParams.toArray());
+        return new ReviewQueue(items, total == null ? 0 : total, safePage, safeSize);
+    }
+
+    Task review(long taskId, String decision, String comment, AppUserPrincipal principal) {
+        requireReviewRole(principal);
+        String normalized = decision == null ? "" : decision.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("CONFIRMED", "NEEDS_DATA", "REJECTED").contains(normalized)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "复核结论不合法");
+        }
+        String text = comment == null ? "" : comment.trim();
+        if (text.isEmpty() || text.length() > 2000) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "复核意见必填且不能超过 2000 字");
+        }
+        Task task = find(taskId, principal);
+        if (!"COMPLETED".equals(task.status())) {
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "仅已完成的研究任务可复核");
+        }
+        int updated = jdbc.update("""
+                UPDATE research_table_task
+                SET review_status=?,reviewed_by=?,reviewed_at=?,review_comment=?
+                WHERE id=? AND status='COMPLETED' AND review_status='PENDING'
+                """, normalized, principal.userId(), Timestamp.from(clock.instant()), text, taskId);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "该研究任务已被复核，请刷新后查看");
+        }
+        audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_REVIEW",
+                "taskId=" + taskId + " decision=" + normalized);
+        return find(taskId, principal);
+    }
+
     /** Research results that belong to one subject, readable by the treating doctor as well. */
     List<Task> archive(long subjectId, AppUserPrincipal principal) {
         requireArchiveRole(principal);
@@ -687,10 +756,17 @@ class ResearchTableAssessmentService {
         }
         String result = row.getString("result_json");
         try {
-            return new Task(row.getLong("id"), row.getLong("snapshot_id"), subjectId, row.getString("run_id"),
+            Timestamp reviewedAt = row.getTimestamp("reviewed_at");
+            long reviewedBy = row.getLong("reviewed_by");
+            Long reviewer = row.wasNull() ? null : reviewedBy;
+            return new Task(row.getLong("id"), row.getLong("snapshot_id"), subjectId,
+                    row.getString("subject_code"), row.getString("subject_alias"),
+                    row.getString("run_id"),
                     row.getString("status"), row.getString("error_code"),
                     result == null ? null : protocol.parse(result.getBytes(StandardCharsets.UTF_8)),
-                    row.getTimestamp("created_at").toInstant(), row.getTimestamp("updated_at").toInstant());
+                    row.getTimestamp("created_at").toInstant(), row.getTimestamp("updated_at").toInstant(),
+                    row.getString("review_status"), reviewer,
+                    reviewedAt == null ? null : reviewedAt.toInstant(), row.getString("review_comment"));
         } catch (IOException invalid) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "研究任务结果不可读取");
         }
@@ -698,6 +774,13 @@ class ResearchTableAssessmentService {
 
     private void authorize(AppUserPrincipal principal, long subjectId, long owner) {
         if (principal.userId() != owner || !access.canReadRawScores(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+    }
+
+    private static void requireReviewRole(AppUserPrincipal principal) {
+        if (principal.roleCodes().contains("PATIENT")
+                || (!principal.roleCodes().contains("ADMIN") && !principal.roleCodes().contains("DOCTOR"))) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
     }

@@ -452,6 +452,48 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void doctorSeesAndReviewsCompletedResearchTasks() throws Exception {
+        var request = fixture("request-seven");
+        long snapshot = snapshot(request, fixture("response-seven"), "admin");
+        reply(request, fixture("response-seven"), 200, false);
+        JsonNode task = body(submit(snapshot, "review", actor("admin", "ADMIN"))).get("data");
+        long subjectId = task.get("subjectId").asLong();
+        long taskId = task.get("taskId").asLong();
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,?)",
+                subjectId, userId("doctor"), "VIEW");
+
+        var doctor = actor("doctor", "DOCTOR");
+        JsonNode queue = body(mvc.perform(get(PATH + "/reviews").with(authentication(doctor)))).get("data");
+        assertThat(queue.get("total").asLong()).isEqualTo(1);
+        JsonNode queued = queue.get("items").get(0);
+        assertThat(queued.get("taskId").asLong()).isEqualTo(taskId);
+        assertThat(queued.get("reviewStatus").asText()).isEqualTo("PENDING");
+        assertThat(queued.get("subjectCode").asText()).isNotBlank();
+        assertThat(queued.get("subjectAlias").asText()).isNotBlank();
+
+        JsonNode reviewed = body(mvc.perform(post(PATH + "/" + taskId + "/review")
+                        .with(authentication(doctor)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"CONFIRMED\",\"comment\":\"核对影像与量表一致\"}")))
+                .get("data");
+        assertThat(reviewed.get("reviewStatus").asText()).isEqualTo("CONFIRMED");
+        assertThat(reviewed.get("reviewedBy").asLong()).isEqualTo(userId("doctor"));
+        assertThat(reviewed.get("reviewComment").asText()).isEqualTo("核对影像与量表一致");
+
+        mvc.perform(post(PATH + "/" + taskId + "/review")
+                        .with(authentication(doctor)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"REJECTED\",\"comment\":\"再次复核\"}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void reviewQueueRejectsNonClinicalRoles() throws Exception {
+        mvc.perform(get(PATH + "/reviews").with(authentication(actor("researcher", "RESEARCHER"))))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(PATH + "/reviews").with(authentication(actor("patient", "PATIENT"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void retriesUnknownTaskAndRefusesCompletedTask() throws Exception {
         var request = fixture("request-seven");
         long snapshot = snapshot(request, fixture("response-seven"), "admin");

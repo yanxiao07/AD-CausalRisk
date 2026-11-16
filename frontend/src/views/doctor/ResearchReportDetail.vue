@@ -38,7 +38,17 @@
           <el-button type="primary" plain @click="goSubject">打开受试者档案</el-button>
         </div>
 
-        <div class="report-grid">
+        <el-alert
+          v-if="clinicalOnly"
+          class="report-alert"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="研究验证用途，不可用于临床决策"
+          description="该结果标记为不可用于临床；百分比为未校准的 24 个月累积发生率，不等同于临床风险或个体因果效应。"
+        />
+
+        <div class="report-grid" :class="{ 'report-grid--research': clinicalOnly }">
           <div class="report-stat">
             <span>AD 24 个月风险</span>
             <strong>{{ cif(prediction.adCif24m) }}</strong>
@@ -150,6 +160,9 @@ const error = ref('')
 const result = computed(() => task.value?.result || {})
 const model = computed(() => result.value.model || {})
 const prediction = computed(() => result.value.prediction || {})
+const clinicalOnly = computed(
+  () => result.value.clinicalUse === false || result.value.admission?.clinicalUse === false
+)
 const explanation = computed(() => result.value.explanation || {})
 const windowMonths = computed(() => result.value.predictionWindowMonths ?? 24)
 const scopeLabel = computed(() => {
@@ -305,6 +318,12 @@ onMounted(load)
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
   overflow-wrap: anywhere;
+}
+
+.report-grid--research .report-stat strong {
+  color: var(--ad-muted);
+  font-size: 16px;
+  font-weight: 500;
 }
 
 .report-alert {

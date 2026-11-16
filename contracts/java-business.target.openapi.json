@@ -8821,6 +8821,172 @@
           }
         ]
       }
+    },
+    "/api/research/table-assessment-tasks/reviews": {
+      "get": {
+        "operationId": "listResearchTaskReviewQueue",
+        "summary": "医生查看研究模型复核队列",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "CONFIRMED",
+                "NEEDS_DATA",
+                "REJECTED",
+                "ALL"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "研究模型复核队列",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchTableReviewQueueEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+      }
+    },
+    "/api/research/table-assessment-tasks/{id}/review": {
+      "post": {
+        "operationId": "reviewResearchTask",
+        "summary": "医生确认研究模型结果",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchTaskReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "复核后的研究任务",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchTableTaskEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "任务状态冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+      }
     }
   },
   "components": {
@@ -8876,6 +9042,43 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "subjectCode": {
+            "type": "string"
+          },
+          "subjectAlias": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewStatus": {
+            "enum": [
+              "PENDING",
+              "CONFIRMED",
+              "NEEDS_DATA",
+              "REJECTED"
+            ]
+          },
+          "reviewedBy": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "reviewedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "reviewComment": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -8887,7 +9090,13 @@
           "errorCode",
           "result",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "subjectCode",
+          "subjectAlias",
+          "reviewStatus",
+          "reviewedBy",
+          "reviewedAt",
+          "reviewComment"
         ],
         "additionalProperties": false,
         "if": {
@@ -12139,6 +12348,79 @@
         "required": [
           "currentPassword",
           "newPassword"
+        ],
+        "additionalProperties": false
+      },
+      "ResearchTableReviewQueue": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResearchTableTask"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "format": "int64"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "additionalProperties": false
+      },
+      "ResearchTableReviewQueueEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          {
+            "properties": {
+              "code": {
+                "const": 0
+              },
+              "errorCode": {
+                "type": "null"
+              },
+              "data": {
+                "$ref": "#/components/schemas/ResearchTableReviewQueue"
+              }
+            }
+          }
+        ]
+      },
+      "ResearchTaskReviewRequest": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "enum": [
+              "CONFIRMED",
+              "NEEDS_DATA",
+              "REJECTED"
+            ]
+          },
+          "comment": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "decision",
+          "comment"
         ],
         "additionalProperties": false
       }

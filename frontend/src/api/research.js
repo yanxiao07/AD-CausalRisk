@@ -104,6 +104,26 @@ export function retryResearchTableTask(taskId) {
   })
 }
 
+/**
+ * GET /api/research/table-assessment-tasks/reviews?status&page&pageSize
+ * 医生研究模型复核队列；仅 COMPLETED 任务，按档案权限过滤。
+ */
+export function listResearchReviews({ status = 'PENDING', page = 1, pageSize = 20 } = {}) {
+  return request.get('/research/table-assessment-tasks/reviews', {
+    params: { status, page, pageSize },
+    silent: true
+  })
+}
+
+/** POST /api/research/table-assessment-tasks/{id}/review —— 医生确认研究模型结果。 */
+export function reviewResearchTask(taskId, { decision, comment }) {
+  return request.post(
+    `/research/table-assessment-tasks/${Number(taskId)}/review`,
+    { decision, comment },
+    { silent: true }
+  )
+}
+
 /** GET /api/research/table-assessment-tasks/summary —— 当前研究员今日任务吞吐。 */
 export function getResearchTaskSummary() {
   return request.get('/research/table-assessment-tasks/summary', { silent: true })

@@ -151,6 +151,26 @@ public class ResearchTableAssessmentController {
         return Envelope.success(service.retry(id, (AppUserPrincipal) auth.getPrincipal()));
     }
 
+    record ReviewRequest(String decision, String comment) {}
+
+    @GetMapping("/reviews")
+    public Envelope<?> reviews(@RequestParam(defaultValue = "PENDING") String status,
+                               @RequestParam(defaultValue = "1") int page,
+                               @RequestParam(defaultValue = "20") int pageSize,
+                               Authentication auth) {
+        return Envelope.success(service.reviewQueue(status, page, pageSize,
+                (AppUserPrincipal) auth.getPrincipal()));
+    }
+
+    @PostMapping(value = "/{id}/review", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public Envelope<?> review(@PathVariable long id, @RequestBody ReviewRequest request, Authentication auth) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        return Envelope.success(service.review(id, request.decision(), request.comment(),
+                (AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @GetMapping("/{id}")
     public Envelope<?> task(@PathVariable long id, Authentication auth) {
         if (id <= 0) {
