@@ -43,6 +43,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -569,6 +571,44 @@ class ResearchTableAssessmentTest {
     private void validate(JsonNode request, JsonNode result, JsonNode model, JsonNode binding, String digest) {
         protocol.validateResponse(result, request, model, "CONSTRUCTED_VALIDATION", digest,
                 binding.get("inputSha256").asText(), binding.get("trustedContextSha256").asText());
+    }
+
+    @Test
+    void migratesLegacySnapshotAndMarksInvalidRequests() throws Exception {
+        ObjectNode valid = fixture("request-seven");
+        String validCode = "DEMO-MIG-" + UUID.randomUUID();
+        valid.put("subjectCode", validCode);
+        long validSubject = subject(validCode);
+        jdbc.update("""
+                INSERT INTO research_table_snapshot(subject_id,authorized_user_id,request_json,wire_sha256,
+                    request_sha256,model_json,data_scope,input_sha256,context_sha256,host_sync_status)
+                VALUES(?,?,?,?,?,?,?,?,?,'PENDING')
+                """, validSubject, userId("admin"), valid.toString(), "0".repeat(64), "0".repeat(64),
+                "{}", "CONSTRUCTED_VALIDATION", "0".repeat(64), "0".repeat(64));
+
+        ObjectNode invalid = fixture("request-seven");
+        String invalidCode = "DEMO-MIG-BAD-" + UUID.randomUUID();
+        invalid.put("subjectCode", invalidCode);
+        invalid.putObject("features");
+        long invalidSubject = subject(invalidCode);
+        jdbc.update("""
+                INSERT INTO research_table_snapshot(subject_id,authorized_user_id,request_json,wire_sha256,
+                    request_sha256,model_json,data_scope,input_sha256,context_sha256,host_sync_status)
+                VALUES(?,?,?,?,?,?,?,?,?, 'PENDING')
+                """, invalidSubject, userId("admin"), invalid.toString(), "0".repeat(64), "0".repeat(64),
+                "{}", "CONSTRUCTED_VALIDATION", "0".repeat(64), "0".repeat(64));
+
+        JsonNode result = body(mvc.perform(post("/api/research/table-assessment-tasks/snapshots/migrate")
+                .with(authentication(actor("admin", "ADMIN"))))).get("data");
+        assertEquals(1, result.get("migrated").asInt());
+        assertEquals(1, result.get("failed").asInt());
+        assertEquals(1, result.get("failedSnapshotIds").size());
+        assertEquals("PENDING", jdbc.queryForObject(
+                "SELECT host_sync_status FROM research_table_snapshot WHERE subject_id=?", String.class, validSubject));
+        assertNotNull(jdbc.queryForObject(
+                "SELECT context_json FROM research_table_snapshot WHERE subject_id=?", String.class, validSubject));
+        assertEquals("MIGRATION_FAILED", jdbc.queryForObject(
+                "SELECT host_sync_status FROM research_table_snapshot WHERE subject_id=?", String.class, invalidSubject));
     }
 
     private ResultActions submit(long snapshot, String key, UsernamePasswordAuthenticationToken actor) throws Exception {

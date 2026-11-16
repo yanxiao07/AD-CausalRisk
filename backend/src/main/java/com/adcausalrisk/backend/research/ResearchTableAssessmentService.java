@@ -73,6 +73,8 @@ class ResearchTableAssessmentService {
                      String taskStatus, String message) {}
     record BatchResult(List<BatchItem> items, int succeeded, int failed) {}
 
+    record MigrationResult(int migrated, int failed, List<Long> failedSnapshotIds) {}
+
     private record Snapshot(byte[] requestBytes, JsonNode request, JsonNode model, String requestDigest,
                             String inputDigest, String contextDigest) {}
     private record Submission(long taskId, Snapshot snapshot, String executionId) {}
@@ -707,6 +709,55 @@ class ResearchTableAssessmentService {
                 """, (row, index) -> mapTask(row, principal), subjectId, principal.userId());
     }
 
+    MigrationResult migrateLegacySnapshots(AppUserPrincipal principal) {
+        requireAdmin(principal);
+        List<Long> ids = jdbc.queryForList("""
+                SELECT id FROM research_table_snapshot
+                WHERE context_json IS NULL OR context_sha256 IS NULL
+                ORDER BY id
+                """, Long.class);
+        int migrated = 0;
+        List<Long> failed = new ArrayList<>();
+        for (Long id : ids) {
+            try {
+                String requestText = jdbc.queryForObject(
+                        "SELECT request_json FROM research_table_snapshot WHERE id=?", String.class, id);
+                String subjectCode = jdbc.queryForObject("""
+                        SELECT sub.subject_code
+                        FROM research_table_snapshot s
+                        JOIN subject sub ON sub.id=s.subject_id
+                        WHERE s.id=?
+                        """, String.class, id);
+                JsonNode raw = protocol.parse(requestText.getBytes(StandardCharsets.UTF_8));
+                JsonNode request = normalizedRequest(raw, subjectCode);
+                ObjectNode model = modelIdentity.identity();
+                protocol.validateRequest(request, model);
+                byte[] requestBytes = protocol.canonicalBytes(request);
+                JsonNode context = protocol.registrationContext(request, model);
+                jdbc.update("""
+                        UPDATE research_table_snapshot
+                        SET request_json=?,wire_sha256=?,request_sha256=?,model_json=?,context_json=?,
+                            context_sha256=?,input_sha256=?,host_sync_status='PENDING',
+                            bundle_json=NULL,host_synced_at=NULL
+                        WHERE id=?
+                        """, new String(requestBytes, StandardCharsets.UTF_8), protocol.digest(request),
+                        protocol.digest(request), model.toString(),
+                        context.toString(), protocol.digest(context),
+                        protocol.digest(protocol.admissionCore(request, model)), id);
+                audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_MIGRATED",
+                        "snapshotId=" + id);
+                migrated++;
+            } catch (Exception error) {
+                jdbc.update("UPDATE research_table_snapshot SET host_sync_status='MIGRATION_FAILED' WHERE id=?",
+                        id);
+                audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_MIGRATION_FAILED",
+                        "snapshotId=" + id);
+                failed.add(id);
+            }
+        }
+        return new MigrationResult(migrated, failed.size(), failed);
+    }
+
     List<Task> history(long subjectId, AppUserPrincipal principal) {
         requireResearchRole(principal);
         if (!access.canReadRawScores(principal, subjectId)) {
@@ -781,6 +832,12 @@ class ResearchTableAssessmentService {
     private static void requireReviewRole(AppUserPrincipal principal) {
         if (principal.roleCodes().contains("PATIENT")
                 || (!principal.roleCodes().contains("ADMIN") && !principal.roleCodes().contains("DOCTOR"))) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+    }
+
+    private static void requireAdmin(AppUserPrincipal principal) {
+        if (!principal.roleCodes().contains("ADMIN")) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
     }

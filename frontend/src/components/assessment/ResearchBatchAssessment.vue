@@ -46,6 +46,7 @@
             <el-radio-button value="SYNCED">已同步</el-radio-button>
             <el-radio-button value="PENDING">待同步</el-radio-button>
             <el-radio-button value="FAILED">同步失败</el-radio-button>
+            <el-radio-button value="MIGRATION_FAILED">迁移失败</el-radio-button>
           </el-radio-group>
         </div>
 
@@ -329,12 +330,13 @@ function formatCif(value) {
 function syncLabel(status) {
   if (status === 'SYNCED') return '已同步'
   if (status === 'FAILED') return '同步失败'
+  if (status === 'MIGRATION_FAILED') return '迁移失败'
   return '待同步'
 }
 
 function syncTag(status) {
   if (status === 'SYNCED') return 'success'
-  if (status === 'FAILED') return 'danger'
+  if (status === 'FAILED' || status === 'MIGRATION_FAILED') return 'danger'
   return 'warning'
 }
 

@@ -7320,7 +7320,8 @@
                             "enum": [
                               "PENDING",
                               "SYNCED",
-                              "FAILED"
+                              "FAILED",
+                              "MIGRATION_FAILED"
                             ],
                             "type": "string"
                           }
@@ -8016,7 +8017,8 @@
                           "enum": [
                             "PENDING",
                             "SYNCED",
-                            "FAILED"
+                            "FAILED",
+                            "MIGRATION_FAILED"
                           ],
                           "type": "string"
                         }
@@ -8140,7 +8142,8 @@
                           "enum": [
                             "PENDING",
                             "SYNCED",
-                            "FAILED"
+                            "FAILED",
+                            "MIGRATION_FAILED"
                           ],
                           "type": "string"
                         }
@@ -8986,6 +8989,62 @@
           }
         },
         "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+      }
+    },
+    "/api/research/table-assessment-tasks/snapshots/migrate": {
+      "post": {
+        "operationId": "migrateLegacyResearchSnapshots",
+        "summary": "为旧 PENDING 快照补全受控 context 并重算摘要；失败标记 MIGRATION_FAILED",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "迁移结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ResearchSnapshotMigrationResult"
+                    },
+                    "errorCode": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-state": "IMPLEMENTED_BY_BACKEND_OWNER"
       }
     }
   },
@@ -12174,7 +12233,8 @@
               "PENDING",
               "SYNCED",
               "FAILED",
-              null
+              null,
+              "MIGRATION_FAILED"
             ]
           },
           "taskId": {
@@ -12423,6 +12483,30 @@
           "comment"
         ],
         "additionalProperties": false
+      },
+      "ResearchSnapshotMigrationResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "migrated",
+          "failed",
+          "failedSnapshotIds"
+        ],
+        "properties": {
+          "migrated": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "failedSnapshotIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        }
       }
     },
     "securitySchemes": {

@@ -105,6 +105,11 @@ public class ResearchTableAssessmentController {
         return Envelope.success(service.summary((AppUserPrincipal) auth.getPrincipal()));
     }
 
+    @PostMapping("/snapshots/migrate")
+    public Envelope<?> migrateLegacySnapshots(Authentication auth) {
+        return Envelope.success(service.migrateLegacySnapshots((AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @PostMapping("/snapshots/{id}/sync")
     public Envelope<?> sync(@PathVariable long id, Authentication auth) {
         if (id <= 0) {
