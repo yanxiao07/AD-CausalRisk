@@ -67,7 +67,7 @@ class ResearchTableAssessmentService {
 
     private record Snapshot(byte[] requestBytes, JsonNode request, JsonNode model, String requestDigest,
                             String inputDigest, String contextDigest) {}
-    private record Submission(long taskId, Snapshot snapshot) {}
+    private record Submission(long taskId, Snapshot snapshot, String executionId) {}
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaction;
@@ -110,8 +110,9 @@ class ResearchTableAssessmentService {
         }
         long taskId = submission.taskId();
         if (submission.snapshot() != null) {
-            audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SUBMIT", "taskId=" + taskId);
-            execute(taskId, submission.snapshot());
+            audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SUBMIT",
+                    "taskId=" + taskId + " executionId=" + submission.executionId());
+            execute(taskId, submission.snapshot(), submission.executionId());
             Task task = find(taskId, principal);
             audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_RESULT",
                     "taskId=" + taskId + " status=" + task.status());
@@ -249,7 +250,9 @@ class ResearchTableAssessmentService {
         if (value == null) {
             features.putNull(name);
         } else {
-            features.put(name, value);
+            // Python parses JSON numbers as doubles; normalize JDBC BigDecimal here so a
+            // DECIMAL 24.00 and a JSON 24.0 produce the same canonical digest.
+            features.put(name, value.doubleValue());
         }
     }
 
@@ -260,7 +263,16 @@ class ResearchTableAssessmentService {
         List<Task> tasks = jdbc.query(TASK_QUERY + """
                  WHERE s.authorized_user_id=? AND t.created_at>=?
                  ORDER BY t.created_at DESC,t.id DESC
-                """, (row, index) -> mapTask(row, principal), principal.userId(), Timestamp.from(start));
+                """, (row, index) -> {
+                    try {
+                        return mapTask(row, principal);
+                    } catch (BusinessException denied) {
+                        if (denied.errorCode() == ErrorCode.ACCESS_DENIED) {
+                            return null;
+                        }
+                        throw denied;
+                    }
+                }, principal.userId(), Timestamp.from(start)).stream().filter(java.util.Objects::nonNull).toList();
         long completed = tasks.stream().filter(task -> "COMPLETED".equals(task.status())).count();
         long failed = tasks.stream().filter(task -> "FAILED".equals(task.status())
                 || OUTCOME_UNKNOWN.equals(task.status())).count();
@@ -500,7 +512,7 @@ class ResearchTableAssessmentService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
         Optional<Long> existing = replay(key, digest, principal);
         if (existing.isPresent()) {
-            return new Submission(existing.get(), null);
+            return new Submission(existing.get(), null, null);
         }
         String syncStatus = jdbc.queryForObject(
                 "SELECT host_sync_status FROM research_table_snapshot WHERE id=?", String.class, snapshotId);
@@ -515,22 +527,25 @@ class ResearchTableAssessmentService {
         client.requireConfigured();
         var keys = new GeneratedKeyHolder();
         Timestamp now = Timestamp.from(clock.instant());
+        String executionId = UUID.randomUUID().toString();
         jdbc.update(connection -> {
             var statement = connection.prepareStatement("""
-                    INSERT INTO research_table_task(snapshot_id,run_id,status,error_code,created_at,updated_at)
-                    VALUES(?,?,?,?,?,?)
+                    INSERT INTO research_table_task(snapshot_id,run_id,status,error_code,execution_id,
+                        created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?)
                     """, Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, snapshotId);
             statement.setString(2, snapshot.request().get("runId").textValue());
-            statement.setString(3, OUTCOME_UNKNOWN);
-            statement.setString(4, "RESEARCH_OUTCOME_UNKNOWN");
-            statement.setTimestamp(5, now);
+            statement.setString(3, "RUNNING");
+            statement.setString(4, null);
+            statement.setString(5, executionId);
             statement.setTimestamp(6, now);
+            statement.setTimestamp(7, now);
             return statement;
         }, keys);
         long id = keys.getKey().longValue();
         idempotency.saveAndFlush(new IdempotencyRecord(principal.userId(), OPERATION, key, digest, id));
-        return new Submission(id, snapshot);
+        return new Submission(id, snapshot, executionId);
     }
 
     private Optional<Long> replay(String key, String digest, AppUserPrincipal principal) {
@@ -571,7 +586,7 @@ class ResearchTableAssessmentService {
         }
     }
 
-    private void execute(long taskId, Snapshot snapshot) {
+    private void execute(long taskId, Snapshot snapshot, String executionId) {
         String status = OUTCOME_UNKNOWN;
         String code = "RESEARCH_OUTCOME_UNKNOWN";
         String result = null;
@@ -591,9 +606,12 @@ class ResearchTableAssessmentService {
         } catch (IllegalArgumentException invalid) {
             code = "RESEARCH_PROTOCOL_INVALID";
         }
+        // Only the execution that still owns the task may write its terminal state. A slow
+        // attempt that was overtaken by a retry must not overwrite the newer outcome.
         jdbc.update("""
-                UPDATE research_table_task SET status=?,error_code=?,result_json=?,updated_at=? WHERE id=?
-                """, status, code, result, Timestamp.from(clock.instant()), taskId);
+                UPDATE research_table_task SET status=?,error_code=?,result_json=?,updated_at=?
+                WHERE id=? AND status='RUNNING' AND execution_id=?
+                """, status, code, result, Timestamp.from(clock.instant()), taskId, executionId);
     }
 
     Task find(long id, AppUserPrincipal principal) {
@@ -640,11 +658,18 @@ class ResearchTableAssessmentService {
         Snapshot snapshot = jdbc.query("SELECT * FROM research_table_snapshot WHERE id=?",
                 (row, index) -> readSnapshot(row, principal), task.snapshotId()).stream().findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
-        jdbc.update("""
-                UPDATE research_table_task SET status=?,error_code=NULL,result_json=NULL,updated_at=? WHERE id=?
-                """, OUTCOME_UNKNOWN, Timestamp.from(clock.instant()), taskId);
-        audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_RETRY", "taskId=" + taskId);
-        execute(taskId, snapshot);
+        String executionId = UUID.randomUUID().toString();
+        int claimed = jdbc.update("""
+                UPDATE research_table_task SET status='RUNNING',execution_id=?,error_code=NULL,
+                    result_json=NULL,updated_at=?
+                WHERE id=? AND status IN ('FAILED','OUTCOME_UNKNOWN')
+                """, executionId, Timestamp.from(clock.instant()), taskId);
+        if (claimed == 0) {
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "任务状态已变化，请刷新后重试");
+        }
+        audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_RETRY",
+                "taskId=" + taskId + " executionId=" + executionId);
+        execute(taskId, snapshot, executionId);
         audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_RESULT",
                 "taskId=" + taskId + " status=" + find(taskId, principal).status());
         return find(taskId, principal);
@@ -654,9 +679,10 @@ class ResearchTableAssessmentService {
         long subjectId = row.getLong("subject_id");
         long ownerId = row.getLong("authorized_user_id");
         boolean owner = principal.userId() == ownerId;
-        boolean treatingDoctor = principal.roleCodes().contains("DOCTOR")
-                && access.canReadRawScores(principal, subjectId);
-        if (!owner && !treatingDoctor) {
+        boolean treatingDoctor = principal.roleCodes().contains("DOCTOR");
+        // Every read must be against the *current* archive permission. Ownership alone no
+        // longer grants access after a subject permission is revoked.
+        if (!access.canReadRawScores(principal, subjectId) || (!owner && !treatingDoctor)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
         String result = row.getString("result_json");

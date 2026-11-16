@@ -93,7 +93,8 @@ class SchemaMigrationTest {
         // gap, a re-ordering or a forgotten migration fails loudly instead of silently passing.
         assertThat(versions)
                 .containsExactly(
-                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17");
+                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17",
+                        "18");
     }
 
     /**

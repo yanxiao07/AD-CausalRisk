@@ -17,17 +17,14 @@
         @click="emit('open', item)"
         @keydown.enter="emit('open', item)"
       >
-        <div class="history-card__thumb">
-          <CausalGraph :graph="item.graph" :height="140" compact />
-        </div>
         <div class="history-card__body">
           <p class="history-card__title">评估 #{{ item.assessmentId }}</p>
           <p class="history-card__meta">
-            受试者 #{{ item.subjectId }} · {{ item.nodeCount }} 节点 · {{ item.edgeCount }} 关联
+            <span v-if="item.subjectId">受试者 #{{ item.subjectId }} · </span>打开时重新载入完整结果
           </p>
           <div class="history-card__foot">
-            <StatusTag :type="item.riskLevel || 'UNAVAILABLE'" />
-            <span>{{ formatTime(item.createdAt) }}</span>
+            <span>点击载入</span>
+            <span>{{ formatTime(item.createdAt || item.savedAt) }}</span>
           </div>
         </div>
       </article>
@@ -36,9 +33,6 @@
 </template>
 
 <script setup>
-import CausalGraph from '@/components/charts/CausalGraph.vue'
-import StatusTag from '@/components/common/StatusTag.vue'
-
 defineProps({
   history: { type: Array, default: () => [] },
   activeId: { type: Number, default: null }
@@ -123,20 +117,6 @@ function formatTime(value) {
 .history-card:focus-visible {
   outline: 2px solid var(--brand-600);
   outline-offset: 2px;
-}
-
-.history-card__thumb {
-  position: relative;
-  height: 140px;
-  overflow: hidden;
-  background: linear-gradient(160deg, #f2fbff 0%, #ffffff 100%);
-  border-bottom: 1px solid var(--line);
-  /* 缩略图只是预览，点击交给卡片 */
-  pointer-events: none;
-}
-
-.history-card__thumb :deep(.causal-graph) {
-  height: 140px;
 }
 
 .history-card__body {

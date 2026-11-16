@@ -226,6 +226,38 @@ class ResearchTableAssessmentTest {
                 .isEqualByComparingTo("0.5");
         assertThat(request.get("features").get("age_years").get("missingReason").asText())
                 .isEqualTo("NOT_COLLECTED");
+        assertThat(request.get("features").get("mmse").get("value").isDouble()).isTrue();
+        assertThat(request.get("features").get("mmse").get("value").asText()).isEqualTo("28.0");
+    }
+
+    @Test
+    void batchEvaluationSubmitsAndReadsBackTheCreatedTask() throws Exception {
+        String code = "DEMO-BE-" + UUID.randomUUID();
+        long subjectId = subject(code);
+        jdbc.update("""
+                INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb)
+                VALUES(?,?,?,?,?)
+                """, subjectId, "V-BATCH-EVAL", java.sql.Date.valueOf("2026-11-13"),
+                new java.math.BigDecimal("28.00"), new java.math.BigDecimal("0.50"));
+        reply(fixture("request-seven"), fixture("response-seven"), 200, false);
+
+        var payload = json.createObjectNode();
+        payload.putArray("subjectIds").add(subjectId);
+        payload.put("evaluate", true);
+
+        JsonNode created = body(mvc.perform(post(PATH + "/snapshots/batch")
+                .with(authentication(actor("admin", "ADMIN")))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(payload.toString())));
+        JsonNode item = created.get("data").get("items").get(0);
+        assertThat(item.get("hostSyncStatus").asText()).isEqualTo("SYNCED");
+        long taskId = item.get("taskId").longValue();
+        String status = item.get("taskStatus").asText();
+        assertThat(status).isIn("FAILED", "OUTCOME_UNKNOWN");
+        JsonNode task = body(mvc.perform(get(PATH + "/" + taskId)
+                .with(authentication(actor("admin", "ADMIN"))))).get("data");
+        assertThat(task.get("taskId").longValue()).isEqualTo(taskId);
+        assertThat(task.get("status").asText()).isEqualTo(status);
     }
 
     @Test
@@ -395,6 +427,28 @@ class ResearchTableAssessmentTest {
                 .with(authentication(doctor))).andExpect(status().isForbidden());
         mvc.perform(get(PATH + "/archive").param("subjectId", Long.toString(subjectId))
                 .with(authentication(actor("patient", "PATIENT")))).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void revokedDoctorLosesAccessToExistingResearchTasks() throws Exception {
+        var request = fixture("request-seven");
+        long snapshot = snapshot(request, fixture("response-seven"), "admin");
+        reply(request, fixture("response-seven"), 200, false);
+        JsonNode task = body(submit(snapshot, "revoked", actor("admin", "ADMIN"))).get("data");
+        long subjectId = task.get("subjectId").asLong();
+        long taskId = task.get("taskId").asLong();
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,?)",
+                subjectId, userId("doctor"), "VIEW");
+
+        var doctor = actor("doctor", "DOCTOR");
+        mvc.perform(get(PATH + "/" + taskId).with(authentication(doctor))).andExpect(status().isOk());
+
+        jdbc.update("DELETE FROM subject_permission WHERE subject_id=? AND user_id=?",
+                subjectId, userId("doctor"));
+
+        mvc.perform(get(PATH + "/" + taskId).with(authentication(doctor))).andExpect(status().isForbidden());
+        mvc.perform(get(PATH + "/archive").param("subjectId", Long.toString(subjectId))
+                .with(authentication(doctor))).andExpect(status().isForbidden());
     }
 
     @Test

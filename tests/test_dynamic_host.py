@@ -1,7 +1,10 @@
 """Dynamic host resolution tests; model deserialisation is replaced by a stub."""
 from hashlib import sha256
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import TestCase, mock
+import os
+import sys
 
 from research_runtime.dynamic_host import DynamicResearchHost
 from research_runtime.dynamic_snapshot import DynamicSnapshotError, bundle_from_parts, write_bundle
@@ -114,6 +117,50 @@ class DynamicHostTests(TestCase):
         with self.assertRaises(DynamicSnapshotError) as caught:
             host.register(conflicting)
         self.assertEqual(str(caught.exception), "RUN_ID_CONFLICT")
+
+
+class DynamicHostCliTests(TestCase):
+    def test_refuses_to_start_without_an_independent_manifest_digest(self):
+        from research_runtime import dynamic_host
+
+        with TemporaryDirectory() as directory:
+            manifest = Path(directory) / "manifest.json"
+            manifest.write_text("{}", encoding="utf-8")
+            with mock.patch.object(sys, "argv", [
+                    "dynamic_host", "--manifest", str(manifest), "--token", "token"]):
+                with self.assertRaises(SystemExit) as caught:
+                    dynamic_host.main()
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_refuses_non_loopback_binding_without_explicit_opt_in(self):
+        from research_runtime import dynamic_host
+
+        with TemporaryDirectory() as directory:
+            manifest = Path(directory) / "manifest.json"
+            manifest.write_text("{}", encoding="utf-8")
+            digest = sha256(manifest.read_bytes()).hexdigest()
+            with mock.patch.object(sys, "argv", [
+                    "dynamic_host", "--manifest", str(manifest),
+                    "--trusted-manifest-sha256", digest,
+                    "--token", "token", "--host", "0.0.0.0"]):
+                with self.assertRaises(SystemExit) as caught:
+                    dynamic_host.main()
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_refuses_to_start_without_a_token(self):
+        from research_runtime import dynamic_host
+
+        with TemporaryDirectory() as directory:
+            manifest = Path(directory) / "manifest.json"
+            manifest.write_text("{}", encoding="utf-8")
+            digest = sha256(manifest.read_bytes()).hexdigest()
+            with mock.patch.dict(os.environ, {"RESEARCH_TABLE_TEST_TOKEN": ""}), \
+                    mock.patch.object(sys, "argv", [
+                        "dynamic_host", "--manifest", str(manifest),
+                        "--trusted-manifest-sha256", digest]):
+                with self.assertRaises(SystemExit) as caught:
+                    dynamic_host.main()
+        self.assertEqual(caught.exception.code, 2)
 
 
 if __name__ == "__main__":

@@ -54,16 +54,20 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r research_runtime\requirements.lock
 ```
 
-启动动态宿主（模型文件由模型保管方提供，不进入 Git）：
+启动动态宿主（模型文件由模型保管方提供，不进入 Git）。宿主强制要求显式 Token 与独立的清单摘要，默认只监听 `127.0.0.1`：
 
 ```powershell
+$env:RESEARCH_TABLE_TEST_TOKEN = "请替换为团队约定的随机 Token"
 .\.venv\Scripts\python.exe -m research_runtime.dynamic_host `
   --port 16301 `
   --manifest "C:\controlled-model\Model_Manifest.json" `
   --artifact "C:\controlled-model\final__logistic.joblib" `
+  --trusted-manifest-sha256 "46ad244fe612306cc95a2a457c44ac234361db5ab70184c2ee2226527883a511" `
   --snapshot-dir runtime\dynamic-snapshots `
-  --token adcr-research-token
+  --token $env:RESEARCH_TABLE_TEST_TOKEN
 ```
+
+如需监听非环回地址，必须显式加 `--allow-public`；生产环境不应把该宿主直接暴露到公网。
 
 ### 3. 启动前端（5173）
 
@@ -80,7 +84,7 @@ Vite 的 `/api` 代理指向 `http://localhost:8080`。
 使用管理员登录后，在「系统控制台 → 研究宿主」填写：
 
 - 地址：`http://127.0.0.1:16301`
-- Bearer Token：`adcr-research-token`
+- Bearer Token：与启动宿主时的 `RESEARCH_TABLE_TEST_TOKEN` 一致
 - 读取超时：`120` 秒
 - 启用：开
 

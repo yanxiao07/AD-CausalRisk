@@ -135,26 +135,37 @@ def main():
                         help="Trusted Model_Manifest.json")
     parser.add_argument("--artifact", type=Path,
                         help="final__logistic.joblib (must match the manifest)")
-    parser.add_argument("--trusted-manifest-sha256",
-                        help="Expected manifest SHA-256; defaults to the local file digest")
+    parser.add_argument("--trusted-manifest-sha256", required=True,
+                        help="Independently obtained SHA-256 of the manifest; never derived locally")
     parser.add_argument("--snapshot-dir", type=Path,
                         default=Path("runtime/dynamic-snapshots"))
-    parser.add_argument("--token", default=os.environ.get("RESEARCH_TABLE_TEST_TOKEN"),
-                        help="Bearer token required by the host")
+    parser.add_argument("--token",
+                        help="Bearer token required by the host (or RESEARCH_TABLE_TEST_TOKEN)")
+    parser.add_argument("--allow-public", action="store_true",
+                        help="DANGER: allow binding to a non-loopback address")
     args = parser.parse_args()
 
     manifest = args.manifest.resolve()
     if not manifest.is_file():
         parser.exit(2, f"manifest not found: {manifest}\n")
-    trusted = (args.trusted_manifest_sha256 or
-               sha256(manifest.read_bytes()).hexdigest())
+    trusted = args.trusted_manifest_sha256.strip().lower()
+    if len(trusted) != 64 or any(character not in "0123456789abcdef" for character in trusted):
+        parser.exit(2, "trusted manifest SHA-256 must be 64 lowercase hex characters\n")
+    if sha256(manifest.read_bytes()).hexdigest() != trusted:
+        parser.exit(2, "manifest SHA-256 does not match --trusted-manifest-sha256\n")
     if args.artifact is not None:
         artifact = args.artifact.resolve()
         if not artifact.is_file():
             parser.exit(2, f"artifact not found: {artifact}\n")
+    host_address = args.host.strip()
+    loopback = host_address in {"127.0.0.1", "localhost", "::1"}
+    if not loopback and not args.allow_public:
+        parser.exit(2, "refusing to bind a non-loopback address without --allow-public\n")
     snapshot_dir = args.snapshot_dir.resolve()
     snapshot_dir.mkdir(parents=True, exist_ok=True)
-    token = args.token or "adcr-research-token"
+    token = (args.token or os.environ.get("RESEARCH_TABLE_TEST_TOKEN") or "").strip()
+    if not token:
+        parser.exit(2, "a Bearer token is required (--token or RESEARCH_TABLE_TEST_TOKEN)\n")
 
     try:
         host = DynamicResearchHost(manifest, trusted, snapshot_dir)

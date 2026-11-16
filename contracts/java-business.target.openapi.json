@@ -8849,6 +8849,7 @@
           },
           "status": {
             "enum": [
+              "RUNNING",
               "COMPLETED",
               "BLOCKED",
               "FAILED",

@@ -127,7 +127,7 @@ const graphKey = ref(0)
 const viewportHeight = ref(window.innerHeight)
 /** 载入失败的原文（null = 没有错误） */
 const loadError = ref('')
-/** 本地历史图谱（最多 12 张，含缩略图所需的 graph） */
+/** 本地历史图谱：只保存引用，打开时重新向后端请求完整结果。 */
 const history = ref([])
 
 // ---- 抽屉 ----
@@ -200,31 +200,45 @@ async function loadAssessment(id) {
   }
 }
 
-/** 读取本机历史图谱（仅当前账号）。 */
+/** 只保留引用字段；旧版本缓存里的图谱、风险等级和统计一并丢弃。 */
+function historyRef(item) {
+  const assessmentId = Number(item?.assessmentId)
+  if (!Number.isInteger(assessmentId) || assessmentId <= 0) return null
+  const subjectId = Number(item?.subjectId)
+  return {
+    assessmentId,
+    subjectId: Number.isInteger(subjectId) && subjectId > 0 ? subjectId : null,
+    createdAt: item?.createdAt || item?.savedAt || null,
+    savedAt: item?.savedAt || new Date().toISOString()
+  }
+}
+
+/** 读取本机历史引用（仅当前账号），顺手清理旧版敏感缓存。 */
 function readHistory() {
   try {
     const raw = window.localStorage.getItem(historyKey.value)
     const list = raw ? JSON.parse(raw) : []
-    return Array.isArray(list) ? list.filter((item) => item?.graph?.nodes?.length) : []
+    const refs = Array.isArray(list) ? list.map(historyRef).filter(Boolean).slice(0, HISTORY_LIMIT) : []
+    if (raw) {
+      window.localStorage.setItem(historyKey.value, JSON.stringify(refs))
+    }
+    return refs
   } catch {
     return []
   }
 }
 
-/** 记入历史（按评估 ID 去重、最新在前、最多 12 张）。 */
+/** 记入历史（按评估 ID 去重、最新在前、最多 12 条引用）。 */
 function rememberHistory(data) {
   const graphValue = data?.agentResult?.graph
   if (!graphValue?.nodes?.length) return
-  const entry = {
+  const entry = historyRef({
     assessmentId: data.assessmentId,
     subjectId: data.subjectId,
-    riskLevel: data.agentResult?.riskLevel || 'UNAVAILABLE',
     createdAt: data.createdAt,
-    nodeCount: graphValue.nodes.length,
-    edgeCount: (graphValue.edges || []).length,
-    graph: graphValue,
     savedAt: new Date().toISOString()
-  }
+  })
+  if (!entry) return
   const next = [
     entry,
     ...history.value.filter((item) => item.assessmentId !== entry.assessmentId)
