@@ -695,21 +695,8 @@ onMounted(async () => {
   const fromQuery = Number(route.query.assessmentId)
   if (Number.isInteger(fromQuery) && fromQuery > 0) {
     const row = items.value.find((item) => item.assessmentId === fromQuery)
-    if (row) {
-      openReview(row)
-    } else {
-      detailLoading.value = true
-      try {
-        current.value = await getAssessment(fromQuery)
-        comment.value = ''
-        drawerOpen.value = true
-        loadCurrentWindow()
-      } catch {
-        // 该评估不可读或不存在，保持列表视图
-      } finally {
-        detailLoading.value = false
-      }
-    }
+    // 深链和列表入口必须走同一段加载逻辑：详情、档案权限、URL 回写、窗口加载。
+    openReview(row ?? { assessmentId: fromQuery })
   }
 })
 </script>

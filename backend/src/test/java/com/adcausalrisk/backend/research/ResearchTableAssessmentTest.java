@@ -553,16 +553,37 @@ class ResearchTableAssessmentTest {
         JsonNode task = body(submit(snapshot, "dual-role", actor("admin", "ADMIN"))).get("data");
         long taskId = task.get("taskId").asLong();
 
-        jdbc.update("DELETE FROM subject_permission WHERE user_id=?", userId("doctor"));
-        jdbc.update("UPDATE sys_user SET data_scope='ALL' WHERE id=?", userId("doctor"));
+        long dualUserId = userId("research_doctor");
+        String originalScope = jdbc.queryForObject(
+                "SELECT data_scope FROM sys_user WHERE id=?", String.class, dualUserId);
+        jdbc.update("DELETE FROM subject_permission WHERE user_id=? AND subject_id=?",
+                dualUserId, task.get("subjectId").asLong());
+        jdbc.update("UPDATE sys_user SET data_scope='ALL' WHERE id=?", dualUserId);
+        try {
+            // The seeded account really holds DOCTOR + RESEARCHER in the database.
+            assertThat(jdbc.queryForList("""
+                    SELECT r.role_code FROM user_role ur
+                    JOIN sys_role r ON r.id=ur.role_id
+                    WHERE ur.user_id=?
+                    """, String.class, dualUserId))
+                    .containsExactlyInAnyOrder("DOCTOR", "RESEARCHER");
+            var dualRole = actor("research_doctor", "DOCTOR", "RESEARCHER");
 
-        var dualRole = actor("doctor", "DOCTOR", "RESEARCHER");
-        JsonNode queue = body(mvc.perform(get(PATH + "/reviews").with(authentication(dualRole)))).get("data");
-        assertThat(queue.get("total").asLong()).isZero();
-        mvc.perform(post(PATH + "/" + taskId + "/review")
-                        .with(authentication(dualRole)).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"CONFIRMED\",\"comment\":\"无档案授权不得复核\"}"))
-                .andExpect(status().isForbidden());
+            // Global read scope must still let the treating doctor read the task result.
+            mvc.perform(get(PATH + "/" + taskId).with(authentication(dualRole)))
+                    .andExpect(status().isOk());
+
+            // But review submission additionally needs an explicit subject grant.
+            JsonNode queue = body(mvc.perform(get(PATH + "/reviews")
+                    .with(authentication(dualRole)))).get("data");
+            assertThat(queue.get("total").asLong()).isZero();
+            mvc.perform(post(PATH + "/" + taskId + "/review")
+                            .with(authentication(dualRole)).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"decision\":\"CONFIRMED\",\"comment\":\"无档案授权不得复核\"}"))
+                    .andExpect(status().isForbidden());
+        } finally {
+            jdbc.update("UPDATE sys_user SET data_scope=? WHERE id=?", originalScope, dualUserId);
+        }
     }
 
     @Test
