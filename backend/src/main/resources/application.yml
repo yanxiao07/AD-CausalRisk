@@ -29,8 +29,10 @@ spring:
       # CSV import uploads. The importer itself caps the three tables at 30000 UTF-8 bytes;
       # these limits sit above that so an oversized upload is answered with a controlled 400
       # by GlobalExceptionHandler instead of the framework's 1 MB default.
-      max-file-size: 64KB
-      max-request-size: 128KB
+      # CSV import uploads remain capped at 30 KB by the importer; model artifacts
+      # need a larger transport limit and are separately capped in the service.
+      max-file-size: 16MB
+      max-request-size: 32MB
 
 server:
   port: 8080
@@ -46,6 +48,9 @@ app:
     # Browser sessions carry a CSRF cookie and echo it in X-CSRF-TOKEN. Keep this on in
     # production; only the test profile turns it off for the pre-existing MVC suites.
     csrf-enabled: ${APP_SECURITY_CSRF_ENABLED:true}
+  model-repository:
+    # Artifact bytes never enter Git. In production mount this directory as durable storage.
+    dir: ${ADCR_MODEL_REPOSITORY_DIR:runtime/model-repository}
 
 research:
   task:

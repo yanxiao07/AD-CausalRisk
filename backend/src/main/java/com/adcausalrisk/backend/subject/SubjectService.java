@@ -212,7 +212,7 @@ public class SubjectService {
         List<VisitResultView> visits =
                 accessPolicy.canReadRawScores(principal, subjectId)
                         ? visitRepository
-                                .findBySubjectIdOrderByVisitDateAscIdAsc(subjectId)
+                                .findBySubjectIdAndCurrentTrueOrderByVisitDateAscIdAsc(subjectId)
                                 .stream()
                                 .map(VisitMapper::toResultView)
                                 .toList()

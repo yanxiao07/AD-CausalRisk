@@ -512,7 +512,12 @@
             </div>
 
             <div class="drawer__section">
-              <VisitHistory :visits="visits" :loading="detailLoading" />
+              <VisitHistory
+                :visits="visits"
+                :loading="detailLoading"
+                :can-correct="canEditSubject"
+                @correct="openCorrection"
+              />
             </div>
 
             <div class="drawer__section">
@@ -648,6 +653,15 @@
       @saved="onRecordSaved"
     />
 
+    <!-- 追加访视更正：原版本保留，人工审计可追溯 -->
+    <VisitCorrectionDialog
+      v-if="selected"
+      v-model="correctionOpen"
+      :subject-id="selected.id"
+      :visit="correctionVisit"
+      @saved="onCorrectionSaved"
+    />
+
     <!-- 图谱对比 -->
     <GraphDiffDialog
       v-if="selected"
@@ -691,6 +705,7 @@ import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import AssessmentPanel from '@/components/doctor/AssessmentPanel.vue'
 import VisitHistory from '@/components/doctor/VisitHistory.vue'
+import VisitCorrectionDialog from '@/components/doctor/VisitCorrectionDialog.vue'
 import CausalGraph from '@/components/charts/CausalGraph.vue'
 import FollowUpDialog from '@/components/followup/FollowUpDialog.vue'
 import SubjectFormDialog from '@/components/subject/SubjectFormDialog.vue'
@@ -743,6 +758,8 @@ const featureDialogOpen = ref(false)
 const observationDialogOpen = ref(false)
 const graphDiffOpen = ref(false)
 const qualityCheckOpen = ref(false)
+const correctionOpen = ref(false)
+const correctionVisit = ref(null)
 const subjectCapabilities = ref(null)
 
 /**
@@ -792,6 +809,16 @@ async function onSubjectSaved({ mode, subject }) {
 
 /** 补录成功：重新拉一次 360 数据（访视、随访、评估）与来源面板 */
 function onRecordSaved() {
+  loadTimeline()
+}
+
+function openCorrection(visit) {
+  correctionVisit.value = visit
+  correctionOpen.value = true
+}
+
+/** 更正成功：刷新访视列表与时间线，原版本仍可在版本历史中查看。 */
+function onCorrectionSaved() {
   loadTimeline()
 }
 

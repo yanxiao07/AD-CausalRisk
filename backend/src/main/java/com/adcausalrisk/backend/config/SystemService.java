@@ -105,16 +105,6 @@ public class SystemService {
         }
     }
 
-    public void model(String version, boolean enabled, AppUserPrincipal user) {
-        BusinessQueries.admin(user);
-        if (jdbc.update(
-                        "UPDATE model_configuration SET enabled=?,updated_at=CURRENT_TIMESTAMP"
-                                + " WHERE model_version=?",
-                        enabled,
-                        version)
-                == 0) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "仅可配置已安装模型");
-    }
-
     public Map<String, Object> researchHost(AppUserPrincipal user) {
         BusinessQueries.admin(user);
         return researchHostView(settings.researchHost());

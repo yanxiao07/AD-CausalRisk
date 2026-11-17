@@ -3,6 +3,7 @@ package com.adcausalrisk.backend.visit.entity;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -86,12 +87,45 @@ public class Visit {
     @Column(name = "raw_cdr_sb", length = 64)
     private String rawCdrSb;
 
+    /** 1 for the original observation; +1 for every appended correction. */
+    @Column(name = "version_no", nullable = false)
+    private int versionNo = 1;
+
+    /** Only one row per (subject, visit_code) is current; superseded rows stay immutable. */
+    @Column(name = "is_current", nullable = false)
+    private boolean current = true;
+
+    /** The visit row this version corrects, null for the original. */
+    @Column(name = "replaces_id")
+    private Long replacesId;
+
+    @Column(name = "correction_reason", length = 500)
+    private String correctionReason;
+
+    @Column(name = "corrected_by")
+    private Long correctedBy;
+
+    @Column(name = "corrected_at")
+    private LocalDateTime correctedAt;
+
     protected Visit() {
         // for JPA
     }
 
     public Visit(Long subjectId, String visitCode, LocalDate visitDate,
                  BigDecimal mmse, BigDecimal moca, BigDecimal cdrSb) {
+        this(subjectId, visitCode, visitDate, mmse, moca, cdrSb,
+                1, null, null, null, null, true);
+    }
+
+    /**
+     * Appends one correction version. The original row is never mutated clinically; only its
+     * {@code current} flag is flipped. {@code replacesId} points at the row being superseded.
+     */
+    public Visit(Long subjectId, String visitCode, LocalDate visitDate,
+                 BigDecimal mmse, BigDecimal moca, BigDecimal cdrSb,
+                 int versionNo, Long replacesId, String correctionReason,
+                 Long correctedBy, LocalDateTime correctedAt, boolean current) {
         this.subjectId = subjectId;
         this.visitCode = visitCode;
         this.visitDate = visitDate;
@@ -103,6 +137,17 @@ public class Visit {
         this.mmse = storageScale(mmse);
         this.moca = storageScale(moca);
         this.cdrSb = storageScale(cdrSb);
+        this.versionNo = versionNo;
+        this.replacesId = replacesId;
+        this.correctionReason = correctionReason;
+        this.correctedBy = correctedBy;
+        this.correctedAt = correctedAt;
+        this.current = current;
+    }
+
+    /** Marks this version as superseded without touching any clinical cell. */
+    public void markSuperseded() {
+        this.current = false;
     }
 
     /** The exact submitted value as text; {@code null} stays {@code null}. */
@@ -153,5 +198,29 @@ public class Visit {
 
     public String getRawCdrSb() {
         return rawCdrSb;
+    }
+
+    public int getVersionNo() {
+        return versionNo;
+    }
+
+    public boolean isCurrent() {
+        return current;
+    }
+
+    public Long getReplacesId() {
+        return replacesId;
+    }
+
+    public String getCorrectionReason() {
+        return correctionReason;
+    }
+
+    public Long getCorrectedBy() {
+        return correctedBy;
+    }
+
+    public LocalDateTime getCorrectedAt() {
+        return correctedAt;
     }
 }

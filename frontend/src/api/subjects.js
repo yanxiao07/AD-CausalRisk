@@ -56,6 +56,19 @@ export function createSubjectVisit(subjectId, payload) {
   return request.post(`/subjects/${subjectId}/visits`, payload)
 }
 
+/**
+ * PATCH /api/subjects/{subjectId}/visits/{visitId} —— 追加更正版本。
+ * 原访视行保留在库中（is_current=false），body 不含 visitCode。
+ */
+export function correctSubjectVisit(subjectId, visitId, payload) {
+  return request.patch(`/subjects/${subjectId}/visits/${visitId}`, payload)
+}
+
+/** GET /api/subjects/{subjectId}/visits/{visitId}/history —— 原值 + 全部更正版本。 */
+export function getVisitHistory(subjectId, visitId) {
+  return request.get(`/subjects/${subjectId}/visits/${visitId}/history`)
+}
+
 /** POST /api/subjects/{subjectId}/features —— 补录结构化特征。 */
 export function createSubjectFeature(subjectId, payload) {
   return request.post(`/subjects/${subjectId}/features`, payload)

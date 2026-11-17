@@ -3,6 +3,7 @@ package com.adcausalrisk.backend.visit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -163,6 +164,101 @@ class VisitApiTest {
         assertThat(body.get("data").get("moca").asDouble()).isEqualTo(25.0);
         assertThat(body.get("data").get("cdrSb").asDouble()).isEqualTo(0.5);
         assertThat(ContractSchemas.validateResponse(body, VISITS_PATH, "post", 200)).isEmpty();
+    }
+
+    // ===================================================================
+    // PATCH /api/subjects/{subjectId}/visits/{visitId} - append correction
+    // ===================================================================
+
+    @Test
+    void correctionAppendsVersionAndKeepsOriginalInHistory() throws Exception {
+        MockHttpSession admin = login("admin");
+        Subject subject = seedSubject("DEMO-V-CORRECT");
+        Long originalId = bodyOf(mockMvc.perform(
+                        createVisit(subject.getId(), "BL", "2025-01-01", 28.0, 25.0, 0.5).session(admin))
+                .andExpect(status().isOk())
+                .andReturn()).get("data").get("id").asLong();
+
+        JsonNode corrected = bodyOf(mockMvc.perform(patch(
+                                "/api/subjects/" + subject.getId() + "/visits/" + originalId)
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "visitDate", "2025-02-02",
+                                "mmse", 29,
+                                "moca", 26,
+                                "cdrSb", 0.5,
+                                "reason", "复核原始量表后更正日期与分数"))))
+                .andExpect(status().isOk())
+                .andReturn());
+        assertThat(corrected.get("data").get("id").asLong()).isGreaterThan(originalId);
+        assertThat(corrected.get("data").get("mmse").asDouble()).isEqualTo(29.0);
+
+        Visit original = visitRepository.findById(originalId).orElseThrow();
+        assertThat(original.isCurrent()).isFalse();
+        assertThat(original.getVersionNo()).isEqualTo(1);
+        assertThat(original.getMmse()).isEqualByComparingTo("28.00");
+
+        JsonNode detailVisits = detailOf(subject.getId(), admin).get("data").get("visits");
+        assertThat(detailVisits.size()).isEqualTo(1);
+        assertThat(detailVisits.get(0).get("id").asLong())
+                .isEqualTo(corrected.get("data").get("id").asLong());
+
+        JsonNode history = bodyOf(mockMvc.perform(get("/api/subjects/" + subject.getId()
+                                + "/visits/" + originalId + "/history").session(admin))
+                .andExpect(status().isOk())
+                .andReturn()).get("data");
+        assertThat(history.size()).isEqualTo(2);
+        assertThat(history.get(0).get("version").asInt()).isEqualTo(1);
+        assertThat(history.get(0).get("current").asBoolean()).isFalse();
+        assertThat(history.get(0).get("reason").isNull()).isTrue();
+        assertThat(history.get(1).get("version").asInt()).isEqualTo(2);
+        assertThat(history.get(1).get("current").asBoolean()).isTrue();
+        assertThat(history.get(1).get("reason").asText()).contains("复核原始量表");
+    }
+
+    @Test
+    void correctionRequiresManagePermissionAndReason() throws Exception {
+        MockHttpSession admin = login("admin");
+        Subject subject = seedSubject("DEMO-V-CORRECT-PERM");
+        Long visitId = bodyOf(mockMvc.perform(
+                        createVisit(subject.getId(), "BL", "2025-01-01", 28.0, null, null).session(admin))
+                .andExpect(status().isOk())
+                .andReturn()).get("data").get("id").asLong();
+
+        Map<String, Object> missingReason = new LinkedHashMap<>();
+        missingReason.put("visitDate", "2025-02-02");
+        missingReason.put("mmse", 29);
+        mockMvc.perform(patch("/api/subjects/" + subject.getId() + "/visits/" + visitId)
+                        .session(admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(missingReason)))
+                .andExpect(status().isBadRequest());
+
+        MockHttpSession doctor = login("doctor");
+        JsonNode denied = bodyOf(mockMvc.perform(patch(
+                                "/api/subjects/" + subject.getId() + "/visits/" + visitId)
+                        .session(doctor)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "visitDate", "2025-02-02",
+                                "reason", "医生尝试更正"))))
+                .andExpect(status().isForbidden())
+                .andReturn());
+        assertThat(denied.get("errorCode").asText()).isEqualTo("ACCESS_DENIED");
+
+        subjectPermissionRepository.save(new SubjectPermission(
+                subject.getId(), userId("doctor"), PermissionType.MANAGE));
+        JsonNode allowed = bodyOf(mockMvc.perform(patch(
+                                "/api/subjects/" + subject.getId() + "/visits/" + visitId)
+                        .session(doctor)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "visitDate", "2025-02-02",
+                                "reason", "责任医生复核原始量表"))))
+                .andExpect(status().isOk())
+                .andReturn());
+        assertThat(allowed.get("data").get("mmse").isNull()).isTrue();
     }
 
     @Test

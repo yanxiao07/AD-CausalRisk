@@ -11,6 +11,15 @@ export function getPatientSummary() {
 }
 
 /**
+ * GET /api/patients/me/research-summary —— 研究验证结果的定性、脱敏摘要。
+ *
+ * 只返回状态与通俗结论；不含 CIF、模型权重、因果图或原始 resultJson。
+ */
+export function getResearchSummary() {
+  return request.get('/patients/me/research-summary')
+}
+
+/**
  * GET /api/patients/me/doctor —— 绑定的主治医生（name/department/phone/officeHours），
  * 未绑定或没有对应医生时返回 null。
  */

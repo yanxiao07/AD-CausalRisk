@@ -27,6 +27,9 @@ app:
     # Most MVC tests predate CSRF and would otherwise need a token on every POST/PATCH/DELETE.
     # CsrfProtectionTest overrides this property and exercises the real filter chain.
     csrf-enabled: false
+  model-repository:
+    # Ignored build output: tests must never write into the repository's runtime data.
+    dir: target/test-model-repository
 
 assessment:
   test-rule-enabled: true

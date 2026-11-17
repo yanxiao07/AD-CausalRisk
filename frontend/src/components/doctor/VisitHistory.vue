@@ -26,9 +26,16 @@
       <el-table-column label="CDR-SB" width="100">
         <template #default="{ row }">{{ formatScore(row.cdrSb) }}</template>
       </el-table-column>
+      <el-table-column v-if="canCorrect" label="操作" width="80" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" size="small" @click="emit('correct', row)">
+            更正
+          </el-button>
+        </template>
+      </el-table-column>
     </el-table>
     <p class="visits__note">
-      分数为缺失时显示「—」；系统不会用 0 或插值补全缺失的测量值。
+      分数为缺失时显示「—」；系统不会用 0 或插值补全缺失的测量值。更正会追加版本，不会覆盖原记录。
     </p>
   </section>
 </template>
@@ -40,8 +47,11 @@ import EmptyState from '@/components/common/EmptyState.vue'
 defineProps({
   /** VisitResult[]：{ id, subjectId, visitCode, visitDate, mmse, moca, cdrSb } */
   visits: { type: Array, default: () => [] },
-  loading: { type: Boolean, default: false }
+  loading: { type: Boolean, default: false },
+  canCorrect: { type: Boolean, default: false }
 })
+
+const emit = defineEmits(['correct'])
 
 function formatScore(value) {
   return typeof value === 'number' ? String(value) : '—'

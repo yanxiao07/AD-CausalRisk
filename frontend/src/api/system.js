@@ -31,6 +31,31 @@ export function updateModelConfig(version, enabled) {
 }
 
 /**
+ * GET /api/system/models —— 模型仓库（Manifest/Artifact 的 SHA-256 与启用状态）。
+ */
+export function getModelRepository() {
+  return request.get('/system/models')
+}
+
+/**
+ * POST /api/system/models —— 上传 Manifest + Artifact；artifactSha256 由浏览器计算。
+ */
+export function uploadModelRelease({ manifest, artifact, artifactSha256 }) {
+  const form = new FormData()
+  form.append('manifest', manifest)
+  form.append('artifact', artifact)
+  form.append('artifactSha256', artifactSha256)
+  return request.post('/system/models', form)
+}
+
+/**
+ * POST /api/system/models/{version}/rollback —— 停用其它版本并启用目标版本。
+ */
+export function rollbackModel(version) {
+  return request.post(`/system/models/${encodeURIComponent(version)}/rollback`)
+}
+
+/**
  * GET /api/system/research-host —— 研究宿主地址、超时、启用状态（Token 不回传）。
  */
 export function getResearchHost() {
