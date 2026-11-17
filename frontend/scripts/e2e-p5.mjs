@@ -151,6 +151,14 @@ try {
       captured.push({ url: path, body: JSON.parse(req.postData() || '{}') })
       return respond({ ...followUpList[0], status: 'COMPLETED' })
     }
+    // 360° 时间线会并发拉取评估历史、任务状态与复核记录
+    if (path === '/api/assessments' && method === 'GET') {
+      return respond({ items: [], page: 1, pageSize: 100, total: 0 })
+    }
+    if (path === '/api/assessment-tasks' && method === 'GET') {
+      return respond({ items: [], page: 1, pageSize: 100, total: 0 })
+    }
+    if (path.startsWith('/api/') && path.endsWith('/reviews') && method === 'GET') return respond([])
     return null
   })
 
@@ -163,6 +171,7 @@ try {
     btn?.click()
   })
   await d.page.waitForSelector('.el-dialog', { timeout: 10000 })
+  await d.page.waitForSelector('.el-dialog .el-date-editor input', { timeout: 10000 })
   const dateInput = await d.page.$('.el-dialog .el-date-editor input')
   await dateInput.click()
   await dateInput.type('2026-12-15 10:00')
@@ -275,30 +284,46 @@ try {
   await r.page.screenshot({ path: join(shotDir, 'p5-batch-progress.png') })
   await r.page.close()
 
-  // ---------- 3) 医生：待办复核 ----------
+  // ---------- 3) 医生：待办复核（列表 → 抽屉） ----------
   let reviewed = false
   const rv = await loginAs('doctor', (path, method, req, captured) => {
     const respond = (data) => req.respond({ status: 200, contentType: 'application/json', body: envelope(data) })
+    if (path === '/api/assessments' && method === 'GET') {
+      return respond({
+        items: [
+          {
+            assessmentId: 99,
+            subjectId: 1,
+            taskId: 7,
+            riskScore: 0.8304,
+            riskLevel: 'HIGH',
+            qualityStatus: 'PASS',
+            reviewStatus: 'PENDING',
+            createdAt: '2026-10-30T12:00:00Z'
+          }
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 1
+      })
+    }
     if (path === '/api/assessments/99' && method === 'GET') return respond(ASSESSMENT)
     if (path === '/api/assessments/99/review' && method === 'POST') {
       reviewed = true
       captured.push({ url: path, body: JSON.parse(req.postData() || '{}') })
       return respond({ id: 1, assessmentId: 99, decision: 'ACKNOWLEDGED', comment: '同意', reviewedAt: '2026-10-31T00:00:00Z' })
     }
+    if (path.startsWith('/api/') && path.endsWith('/reviews')) return respond([])
     return null
   })
 
   await rv.page.goto(`${BASE}/reviews`, { waitUntil: 'domcontentloaded' })
-  await rv.page.waitForSelector('.id-input input', { timeout: 15000 })
-  await rv.page.type('.id-input input', '99')
-  await rv.page.evaluate(() => {
-    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '载入')
-    btn?.click()
-  })
-  await rv.page.waitForFunction(() => document.querySelectorAll('.el-table__body .el-table__row').length === 1, {
-    timeout: 15000
-  })
-  check('按 ID 载入评估', true, 'row=1')
+  await rv.page.waitForSelector('.el-table__body .el-table__row', { timeout: 15000 })
+  check(
+    '评估列表加载（服务端）',
+    (await rv.page.evaluate(() => document.querySelectorAll('.el-table__body .el-table__row').length)) === 1,
+    ''
+  )
   await rv.page.evaluate(() => {
     const btn = [...document.querySelectorAll('.el-table__body button')].find((b) => b.textContent.includes('复核'))
     btn?.click()
@@ -315,12 +340,25 @@ try {
   await rv.page.screenshot({ path: join(shotDir, 'p5-review.png') })
   await rv.page.close()
 
-  // ---------- 4) 管理员：账号管理骨架 ----------
-  const a = await loginAs('admin', () => null)
+  // ---------- 4) 管理员：账号管理（真实接口） ----------
+  const a = await loginAs('admin', (path, method, req) => {
+    if (path === '/api/users' && method === 'GET') {
+      return req.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: envelope({ items: [], page: 1, pageSize: 20, total: 0 })
+      })
+    }
+    return null
+  })
   await a.page.goto(`${BASE}/admin/users`, { waitUntil: 'domcontentloaded' })
-  await a.page.waitForSelector('.users-page .el-table', { timeout: 15000 })
+  await a.page.waitForSelector('.users-page .el-table, .users-page .empty-state', { timeout: 15000 })
   const usersText = await a.page.evaluate(() => document.querySelector('.users-page')?.textContent.replace(/\s+/g, ' '))
-  check('账号管理页渲染骨架', /账号管理/.test(usersText || '') && /接口未接入/.test(usersText || ''), (usersText || '').slice(0, 50))
+  check(
+    '账号管理页接入真实接口',
+    /账号管理/.test(usersText || '') && !/接口未接入/.test(usersText || ''),
+    (usersText || '').slice(0, 50)
+  )
   await a.page.screenshot({ path: join(shotDir, 'p5-users.png') })
   await a.page.close()
 } finally {

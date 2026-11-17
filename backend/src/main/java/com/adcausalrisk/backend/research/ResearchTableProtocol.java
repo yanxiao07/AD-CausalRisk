@@ -1,9 +1,11 @@
 package com.adcausalrisk.backend.research;
 
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
@@ -15,7 +17,10 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 
@@ -26,6 +31,10 @@ final class ResearchTableProtocol {
     private static final double TOLERANCE = 1e-12;
     private static final List<String> IDENTITY = List.of("contractVersion", "runId", "modelKey",
             "subjectCode", "dataVersion", "indexDate", "availabilityPolicy", "predictionWindowMonths");
+    private static final List<String> SEVEN_FEATURES = List.of(
+            "age_years", "education_years", "mmse", "cdr_sb", "cdr_global", "adas__total13", "faq__faqtotal");
+    private static final List<String> INSTRUMENT_FEATURES = List.of(
+            "mmse", "cdr_sb", "cdr_global", "adas__total13", "faq__faqtotal");
 
     private final ObjectMapper json;
     private final JsonNode contract;
@@ -62,6 +71,153 @@ final class ResearchTableProtocol {
         require(body.length <= MAX_BYTES);
         var decoded = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(body));
         return json.readTree(decoded.toString());
+    }
+
+    /**
+     * Python 研究运行时用 canonical JSON（键排序、无空白）计算摘要；受控登记必须复现同一规则，
+     * 否则已登记快照在 Java 侧回读时 request/input/context 摘要无法与 Python 结果对齐。
+     */
+    String digest(JsonNode value) {
+        return sha256(canonicalBytes(value));
+    }
+
+    byte[] canonicalBytes(JsonNode value) {
+        StringBuilder out = new StringBuilder();
+        canonical(value, out);
+        return out.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 本地受控登记使用的离线准入核心。字段名与 research_runtime.examples.research_table_http
+     * 的 core 保持一致，供 input_sha256 使用；真实宿主仍以自身 trusted context 为准。
+     */
+    JsonNode admissionCore(JsonNode request, JsonNode model) {
+        ObjectNode core = json.createObjectNode();
+        core.put("schemaVersion", "research-real-input-admission-v1");
+        core.put("purpose", "OFFLINE_RESEARCH_ADMISSION");
+        core.put("dataVersion", request.path("dataVersion").asText());
+        core.put("indexDate", request.path("indexDate").asText());
+        core.put("availabilityPolicy", request.path("availabilityPolicy").asText());
+        core.put("predictionWindowMonths", 24);
+        core.set("model", model);
+        ArrayNode records = core.putArray("records");
+        ObjectNode record = records.addObject();
+        record.put("subjectCode", request.path("subjectCode").asText());
+        record.set("features", request.get("features"));
+        return core;
+    }
+
+    /**
+     * The trusted source mapping of the delivered seven-variable model. It is a
+     * property of the model package, not of the incoming request; its digest must
+     * equal {@code model.sourceMappingSha256} (2be25c0e...).
+     */
+    ObjectNode sourceMappings() {
+        ObjectNode mappings = json.createObjectNode();
+        for (String feature : SEVEN_FEATURES) {
+            ObjectNode row = mappings.putObject(feature);
+            boolean instrument = INSTRUMENT_FEATURES.contains(feature);
+            row.put("sourceId", "CONSTRUCTED-SRC-" + feature);
+            row.put("dataset", "CONSTRUCTED");
+            row.put("table", "CONSTRUCTED_TABLE");
+            row.put("field", feature);
+            row.put("release", "constructed-v1");
+            if (instrument) {
+                row.put("language", "en");
+                row.put("instrumentVersion", "constructed-v1");
+            } else {
+                row.putNull("language");
+                row.putNull("instrumentVersion");
+            }
+            row.putNull("processingVersion");
+        }
+        return mappings;
+    }
+
+    /**
+     * Trusted execution context for a controlled snapshot. The mapping and the
+     * evidence catalog are built from server-owned constants and the normalized
+     * request; they are never copied from a caller-supplied context.
+     */
+    JsonNode registrationContext(JsonNode request, JsonNode model) {
+        ObjectNode context = json.createObjectNode();
+        context.put("schemaVersion", "research-input-context-v1");
+        context.put("dataVersion", request.path("dataVersion").asText());
+        context.put("indexDate", request.path("indexDate").asText());
+        context.put("availabilityPolicy", request.path("availabilityPolicy").asText());
+        context.set("model", model);
+        context.set("sourceMappings", sourceMappings());
+        ObjectNode evidence = context.putObject("evidence");
+        JsonNode features = request.path("features");
+        for (String feature : SEVEN_FEATURES) {
+            JsonNode observation = features.get(feature);
+            if (observation == null || !observation.isObject()) {
+                throw new IllegalArgumentException("Missing normalized feature " + feature);
+            }
+            String ref = observation.path("evidenceRef").asText("");
+            if (ref.isBlank()) {
+                throw new IllegalArgumentException("Missing evidenceRef for " + feature);
+            }
+            ObjectNode row = evidence.putObject(ref);
+            row.put("subjectCode", request.path("subjectCode").asText());
+            row.put("feature", feature);
+            row.set("observation", observation.deepCopy());
+        }
+        return context;
+    }
+
+    private void canonical(JsonNode value, StringBuilder out) {
+        if (value == null || value.isNull()) {
+            out.append("null");
+            return;
+        }
+        if (value.isObject()) {
+            List<String> names = new ArrayList<>();
+            value.fieldNames().forEachRemaining(names::add);
+            names.sort(String::compareTo);
+            out.append('{');
+            for (int i = 0; i < names.size(); i++) {
+                if (i > 0) {
+                    out.append(',');
+                }
+                out.append(quote(names.get(i))).append(':');
+                canonical(value.get(names.get(i)), out);
+            }
+            out.append('}');
+            return;
+        }
+        if (value.isArray()) {
+            out.append('[');
+            for (int i = 0; i < value.size(); i++) {
+                if (i > 0) {
+                    out.append(',');
+                }
+                canonical(value.get(i), out);
+            }
+            out.append(']');
+            return;
+        }
+        if (value.isTextual()) {
+            out.append(quote(value.textValue()));
+            return;
+        }
+        out.append(value.toString());
+    }
+
+    private String quote(String text) {
+        try {
+            return json.writeValueAsString(text);
+        } catch (JsonProcessingException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    private static String sha256(byte[] value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
     }
 
     void validateRequest(JsonNode request, JsonNode model) {

@@ -128,6 +128,21 @@ export async function fetchCurrentUser() {
   return data
 }
 
+/** GET /api/me/profile —— 当前账号可维护的个人资料。 */
+export async function getMyProfile() {
+  return request.get('/me/profile')
+}
+
+/** PATCH /api/me/profile —— 只发送要修改的字段。 */
+export async function updateMyProfile(patch) {
+  return request.patch('/me/profile', patch)
+}
+
+/** POST /api/me/password —— 需要当前密码确认。 */
+export async function changeMyPassword({ currentPassword, newPassword }) {
+  return request.post('/me/password', { currentPassword, newPassword })
+}
+
 /** POST /api/auth/logout —— 无论后端是否成功，本地登录态都要清掉。 */
 export async function logout() {
   try {

@@ -2,11 +2,11 @@
 
 `python_service.prediction_evaluation`实现FR13的合成工程子集：声明的受试者划分预检、ROC-AUC、非插值AP、梯形PR面积、Brier、阈值混淆矩阵及固定分箱校准。输入必须为构造的24个月完整二分类概率与标签；不执行模型、不拟合/重校准、不读文件或网络，也不更新任何历史研究结果。
 
-原课程加性排序不是校准概率，禁止直接作为此工具输入。模块没有AgentResult适配器，不改变原四阶段、版本、HTTP或Java职责；调用方重标构造标签也不能建立来源真实性、许可或临床有效性。真实竞争风险、删失、多分类和NACC映射终点不在这个估计器范围。
+原研究加性排序不是校准概率，禁止直接作为此工具输入。模块没有AgentResult适配器，不改变原四阶段、版本、HTTP或Java职责；调用方重标构造标签也不能建立来源真实性、许可或临床有效性。真实竞争风险、删失、多分类和NACC映射终点不在这个估计器范围。
 
 ## 内存调用示例
 
-以下对象完全手工构造，不来源于课程fixtures或临床样本。
+以下对象完全手工构造，不来源于研究fixtures或临床样本。
 
 ```python
 from python_service.prediction_evaluation import evaluate_predictions, protocol_sha256

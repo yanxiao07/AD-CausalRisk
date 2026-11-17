@@ -65,6 +65,8 @@ class AssessmentServiceTest {
     private final ObjectMapper objectMapper = mock(ObjectMapper.class);
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final java.time.Clock clock = java.time.Clock.systemUTC();
+    private final com.adcausalrisk.backend.config.SystemSettingService settings =
+            mock(com.adcausalrisk.backend.config.SystemSettingService.class);
 
     private AssessmentService service;
     private AssessmentTask task;
@@ -104,8 +106,9 @@ class AssessmentServiceTest {
                         transactionManager,
                         qualityMock(),
                         org.mockito.Mockito.mock(
-                                com.adcausalrisk.backend.audit.AuditService.class));
-        org.springframework.test.util.ReflectionTestUtils.setField(service, "testRuleEnabled", true);
+                                com.adcausalrisk.backend.audit.AuditService.class),
+                        settings);
+        when(settings.testRuleEnabled()).thenReturn(true);
         when(objectMapper.writeValueAsString(any(AgentRequest.class))).thenReturn("{}");
         when(jdbc.update(
                         org.mockito.ArgumentMatchers.startsWith(

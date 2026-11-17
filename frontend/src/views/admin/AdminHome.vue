@@ -27,24 +27,24 @@
       <article class="panel chart">
         <header class="panel__head">
           <h2>近 7 天建档趋势</h2>
-          <span class="panel__tag">GET /api/subjects</span>
+          <span class="panel__tag">GET /api/dashboard/summary</span>
         </header>
-        <EChart v-if="hasSubjects" :option="trendOption" :height="240" />
+        <EChart v-if="hasSummary" :option="trendOption" :height="240" />
         <div v-else class="chart__empty">
           <el-icon><TrendCharts /></el-icon>
-          <p>{{ subjectsError || '暂无档案数据' }}</p>
+          <p>{{ summaryError || '暂无建档数据' }}</p>
         </div>
       </article>
 
       <article class="panel chart">
         <header class="panel__head">
           <h2>档案状态分布</h2>
-          <span class="panel__tag">实时</span>
+          <span class="panel__tag">服务端汇总</span>
         </header>
-        <EChart v-if="hasSubjects" :option="statusOption" :height="240" />
+        <EChart v-if="hasSummary" :option="statusOption" :height="240" />
         <div v-else class="chart__empty">
           <el-icon><PieChart /></el-icon>
-          <p>{{ subjectsError || '暂无档案数据' }}</p>
+          <p>{{ summaryError || '暂无档案数据' }}</p>
         </div>
       </article>
     </div>
@@ -63,11 +63,10 @@
     </article>
 
     <p class="admin-home__foot">
-      统计口径：档案数据取自 GET /api/subjects（按 total 循环拉取，最多
-      {{ MAX_SUBJECT_PAGES * PAGE_SIZE }} 条；超出部分未计入并会在指标上标注），
-      质控取自 GET /api/qc/stats，
-      审计取自 GET /api/audit-logs（无分页，全量返回，因此单独按 60 秒刷新，页面只展示最近 {{ AUDIT_LIMIT }} 条）；
-      指标每 {{ Math.round(REFRESH_MS / 1000) }} 秒刷新，也可点右上角手动刷新。
+      统计口径：档案数、待复核、高风险、随访等指标取自 GET /api/dashboard/summary
+      （服务端按当前账号的授权范围汇总，不在前端拉全量）；
+      审计取自 GET /api/audit-logs（无分页，全量返回，因此单独按 60 秒刷新，页面只展示最近
+      {{ AUDIT_LIMIT }} 条）；指标每 {{ Math.round(REFRESH_MS / 1000) }} 秒刷新，也可点右上角手动刷新。
     </p>
   </div>
 </template>
@@ -78,8 +77,7 @@ import { PieChart, Refresh, TrendCharts } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EChart from '@/components/charts/EChart.vue'
 import AuditStream from '@/components/admin/AuditStream.vue'
-import { listSubjects } from '@/api/subjects.js'
-import { getQcStats } from '@/api/qc.js'
+import { getDashboardSummary } from '@/api/dashboard.js'
 import { listAuditLogs } from '@/api/audit.js'
 
 const AUDIT_LIMIT = 8
@@ -87,17 +85,11 @@ const AUDIT_LIMIT = 8
 const REFRESH_MS = 15000
 /** 审计日志没有分页接口、每次全量返回，因此每 4 个 tick（≈60 秒）才拉一次。 */
 const AUDIT_REFRESH_EVERY = 4
-const PAGE_SIZE = 100
 
-const subjects = ref([])
-const total = ref(0)
-/** 是否因为页数上限只加载了部分档案（此时不能宣称"全量统计"） */
-const truncated = ref(false)
-const stats = ref(null)
+const summary = ref(null)
+const summaryError = ref('')
 const auditEvents = ref([])
 const loading = ref(true)
-const subjectsError = ref('')
-const statsError = ref('')
 const auditLoading = ref(true)
 const auditError = ref('')
 /** 手动刷新时的按钮 loading（自动刷新不闪按钮） */
@@ -117,44 +109,45 @@ const lastUpdatedText = computed(() => {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 })
 
-const hasSubjects = computed(() => subjects.value.length > 0)
+const hasSummary = computed(() => Boolean(summary.value))
+
+function number(value) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
 
 const metrics = computed(() => [
   {
-    key: 'total',
+    key: 'subjects',
     label: '档案总数',
-    value: loading.value ? null : total.value,
-    hint:
-      subjectsError.value ||
-      (truncated.value
-        ? `仅统计前 ${MAX_SUBJECT_PAGES * PAGE_SIZE} 条（共 ${total.value} 条）`
-        : '授权范围内全部档案'),
+    value: loading.value ? null : number(summary.value?.subjects),
+    hint: summaryError.value || '授权范围内的全部档案',
     tone: 'is-blue'
   },
   {
-    key: 'pending',
-    label: '待审质控',
-    value: statsError.value ? null : (stats.value?.pendingCount ?? null),
-    hint: statsError.value || `已通过 ${stats.value?.approvedCount ?? '—'}`,
+    key: 'pendingReview',
+    label: '待复核评估',
+    value: summaryError.value ? null : number(summary.value?.pendingReview),
+    hint: summaryError.value || '等待人工复核的风险评估',
     tone: 'is-amber'
   },
   {
-    key: 'rejected',
-    label: '质控拦截',
-    value: statsError.value ? null : (stats.value?.rejectedCount ?? null),
-    hint: statsError.value || '被质控拒绝的访视',
+    key: 'highRisk',
+    label: '高风险档案',
+    value: summaryError.value ? null : number(summary.value?.highRisk),
+    hint: summaryError.value || '风险等级为 HIGH 的档案',
     tone: 'is-red'
   },
   {
-    key: 'audit',
-    label: '审计事件',
-    value: auditError.value ? null : auditEvents.value.length,
-    hint: auditError.value || '最近一次读取到的条数',
+    key: 'todayFollowups',
+    label: '今日随访',
+    value: summaryError.value ? null : number(summary.value?.todayFollowups),
+    hint: summaryError.value || `逾期 ${number(summary.value?.overdueFollowups) ?? '—'} 条`,
     tone: 'is-green'
   }
 ])
 
-/** 近 7 天建档趋势：按 createdAt 的日期分组，全部来自真实档案。 */
+/** 近 7 天建档趋势：日期骨架本地生成，计数用 dashboard 的 trend（date→total）。 */
 const trendOption = computed(() => {
   const days = []
   const today = new Date()
@@ -164,9 +157,9 @@ const trendOption = computed(() => {
     days.push(day.toISOString().slice(0, 10))
   }
   const counts = new Map(days.map((day) => [day, 0]))
-  for (const subject of subjects.value) {
-    const day = String(subject.createdAt || '').slice(0, 10)
-    if (counts.has(day)) counts.set(day, counts.get(day) + 1)
+  for (const row of Array.isArray(summary.value?.trend) ? summary.value.trend : []) {
+    const day = String(row?.date || '').slice(0, 10)
+    if (counts.has(day)) counts.set(day, Number(row?.total) || 0)
   }
   return {
     backgroundColor: 'transparent',
@@ -211,10 +204,11 @@ const trendOption = computed(() => {
   }
 })
 
-/** 档案状态分布（ACTIVE / ARCHIVED）。 */
+/** 档案状态分布：直接用 dashboard 的 subjectStates（后端 GROUP BY status）。 */
 const statusOption = computed(() => {
-  const active = subjects.value.filter((row) => row.status === 'ACTIVE').length
-  const archived = subjects.value.filter((row) => row.status === 'ARCHIVED').length
+  const rows = Array.isArray(summary.value?.subjectStates) ? summary.value.subjectStates : []
+  const LABEL = { ACTIVE: '在组', ARCHIVED: '已归档' }
+  const COLOR = { ACTIVE: '#0a73ad', ARCHIVED: '#8ca5b3' }
   return {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'item' },
@@ -227,64 +221,24 @@ const statusOption = computed(() => {
         avoidLabelOverlap: true,
         itemStyle: { borderColor: '#ffffff', borderWidth: 2 },
         label: { color: '#11344b', fontSize: 11 },
-        data: [
-          { value: active, name: '在组', itemStyle: { color: '#0a73ad' } },
-          { value: archived, name: '已归档', itemStyle: { color: '#8ca5b3' } }
-        ]
+        data: rows.map((row) => ({
+          value: Number(row?.total) || 0,
+          name: LABEL[row?.status] || row?.status || '未知',
+          itemStyle: { color: COLOR[row?.status] || '#8ca5b3' }
+        }))
       }
     ]
   }
 })
 
-/**
- * 全量拉取受试者：列表接口单页上限 100，之前的实现只取第一页，
- * 大屏的"档案总数/趋势/分布"就只覆盖前 100 条。这里按 total 循环拉完，
- * 并留一个页数上限防止异常 total 把页面拖死。
- */
-const MAX_SUBJECT_PAGES = 20
-
-async function loadSubjects() {
-  subjectsError.value = ''
+async function loadSummary() {
+  summaryError.value = ''
   try {
-    const first = await listSubjects({ page: 1, pageSize: PAGE_SIZE })
-    const collected = Array.isArray(first?.items) ? [...first.items] : []
-    const totalCount = Number(first?.total ?? collected.length)
-    total.value = totalCount
-    const pages = Math.min(MAX_SUBJECT_PAGES, Math.ceil(totalCount / PAGE_SIZE))
-    let failedPages = 0
-    for (let nextPage = 2; nextPage <= pages; nextPage += 1) {
-      try {
-        const next = await listSubjects({ page: nextPage, pageSize: PAGE_SIZE })
-        if (Array.isArray(next?.items)) collected.push(...next.items)
-      } catch {
-        // 单页失败不影响已加载的部分：保留数据并提示统计不完整
-        failedPages += 1
-      }
-    }
-    subjects.value = collected
-    // 页数上限截断时明确标注，避免把"只统计了前 N 条"说成全量
-    truncated.value = collected.length < totalCount
-    if (failedPages > 0) {
-      subjectsError.value = `有 ${failedPages} 页档案加载失败，统计可能不完整`
-    }
+    summary.value = await getDashboardSummary()
     return true
   } catch (problem) {
-    subjects.value = []
-    total.value = 0
-    truncated.value = false
-    subjectsError.value = problem?.code === 403 ? '无权限读取档案' : '档案接口不可用'
-    return false
-  }
-}
-
-async function loadStats() {
-  statsError.value = ''
-  try {
-    stats.value = await getQcStats()
-    return true
-  } catch (problem) {
-    stats.value = null
-    statsError.value = problem?.code === 403 ? '无权限读取质控' : '质控接口不可用'
+    summary.value = null
+    summaryError.value = problem?.code === 403 ? '无权限读取运营汇总' : '汇总接口不可用'
     return false
   }
 }
@@ -310,9 +264,6 @@ async function loadAudit() {
  *
  * 审计接口没有分页参数，每次都是全量返回，而页面只展示 8 条；如果跟着 15 秒一起刷，
  * 等于把全量审计的请求频率提高 4 倍。这里按"指标快、审计慢"分开节奏。
- */
-/**
- * 刷新一轮。`includeAudit=false` 时只拉指标（审计全量返回，不能跟着 15 秒一起刷）。
  *
  * 慢请求保护：定时器每 15 秒触发一次，但上一轮可能还没结束。此时**不能直接丢掉这个 tick**，
  * 否则连续两次慢请求就会把审计的 60 秒窗口整段跳过。这里把它记成 pending，等当前这轮
@@ -327,12 +278,11 @@ async function loadAll({ includeAudit = true, fromTick = false } = {}) {
   loading.value = true
   try {
     const results = await Promise.all([
-      loadSubjects(),
-      loadStats(),
+      loadSummary(),
       includeAudit ? loadAudit() : Promise.resolve(false)
     ])
     // 审计真的拉成功了才重置计数，避免慢/失败时把下一次审计窗口推得更远
-    if (includeAudit && results[2]) ticksSinceAudit = 0
+    if (includeAudit && results[1]) ticksSinceAudit = 0
     // 全部失败时不更新"上次更新"，否则页面会显示一个并没有成功的刷新时间
     if (results.some(Boolean)) lastUpdated.value = new Date()
   } finally {
@@ -355,7 +305,7 @@ function runTick() {
   loadAll({ includeAudit: ticksSinceAudit >= AUDIT_REFRESH_EVERY, fromTick: true })
 }
 
-/** 手动刷新：三路都拉（含审计），按钮上给反馈，结束时间与自动刷新共用同一个时间戳。 */
+/** 手动刷新：两路都拉（含审计），按钮上给反馈，结束时间与自动刷新共用同一个时间戳。 */
 async function manualRefresh() {
   if (refreshing.value || inFlight) return
   refreshing.value = true

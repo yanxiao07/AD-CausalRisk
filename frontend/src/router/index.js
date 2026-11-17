@@ -95,7 +95,25 @@ const routes = [
     path: '/reports',
     name: 'ReportList',
     component: () => import('../views/doctor/ReportList.vue'),
-    meta: { title: '评估报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER'] }
+    meta: { title: '评估报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER', 'ADMIN'] }
+  },
+  {
+    path: '/reports/research/:taskId(\\d+)',
+    name: 'ResearchReportDetail',
+    component: () => import('../views/doctor/ResearchReportDetail.vue'),
+    meta: { title: '模型验证报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER', 'ADMIN'] }
+  },
+  {
+    path: '/reports/:assessmentId(\\d+)',
+    name: 'ReportDetail',
+    component: () => import('../views/doctor/ReportDetail.vue'),
+    meta: { title: '评估报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER', 'ADMIN'] }
+  },
+  {
+    path: '/settings/profile',
+    name: 'ProfileSettings',
+    component: () => import('../views/common/ProfileSettings.vue'),
+    meta: { title: '个人设置', layout: 'sidebar', roles: ['ADMIN', 'RESEARCHER', 'DOCTOR'] }
   },
   {
     path: '/graph',
@@ -122,6 +140,12 @@ const routes = [
     meta: { title: '评估任务', layout: 'sidebar', roles: ['RESEARCHER', 'DOCTOR', 'ADMIN'] }
   },
   {
+    path: '/research',
+    name: 'ResearchEvidence',
+    component: () => import('../views/researcher/ResearchEvidence.vue'),
+    meta: { title: '研究证据', layout: 'sidebar', roles: ['RESEARCHER', 'ADMIN'] }
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'Exception404',
     component: () => import('../views/exception/404.vue'),
@@ -132,7 +156,8 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior: () => ({ top: 0 })
+  // 浏览器后退时恢复原来的滚动位置；普通跳转回到顶部
+  scrollBehavior: (to, from, savedPosition) => savedPosition || { top: 0 }
 })
 
 router.beforeEach((to) => {

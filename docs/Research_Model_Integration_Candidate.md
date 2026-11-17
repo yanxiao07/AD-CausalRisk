@@ -2,13 +2,13 @@
 
 状态：Python内部候选，供调用方评审。本文不新增HTTP接口、共享DTO、生产适配器或模型部署。
 
-本任务支撑第1→3→4环节。现有七/十变量模型具备离线合成验收、输入声明校验与单次内存推理能力，业务8091仍执行课程规则。缺口是调用方尚不能直接把旧请求与旧返回套到新模型。候选复用现有API，终点为字段差异、调用责任和人工样例；不重新实现计算或宣称已接通真实模型/Java。
+本任务支撑第1→3→4环节。现有七/十变量模型具备离线合成验收、输入声明校验与单次内存推理能力，业务8091仍执行规则引擎。缺口是调用方尚不能直接把旧请求与旧返回套到新模型。候选复用现有API，终点为字段差异、调用责任和人工样例；不重新实现计算或宣称已接通真实模型/Java。
 
 ## 四个入口分别复用什么
 
 | 入口 | 已实现用途 | 与本候选的关系 |
 | --- | --- | --- |
-| 8091 / `deepagent-v1` | DEMO课程请求、加性排序、runId内存缓存、四阶段输出 | 保持现状；字段、模型版本、分数含义不能静默替换 |
+| 8091 / `deepagent-v1` | DEMO验证请求、加性排序、runId内存缓存、四阶段输出 | 保持现状；字段、模型版本、分数含义不能静默替换 |
 | `contracts/research-runtime.openapi.json` | `adni-v8-http-v1` / `adni-v8-research-v1`，旧V8本机合成图请求 | 已有专用通道，不是新七/十变量模型的HTTP契约 |
 | `python -m research_runtime` | `research-model-smoke-v1`，显式可信清单和最终参数的离线合成验收 | 复用严格JSON/最终模型加载语义；本候选不运行参数加载 |
 | `input_admission` + `inmemory_inference` | `research-real-input-admission-v1`输入与独立上下文、单次内存许可/回调 | 作为候选的直接调用基础；已有请求级调度，无需先造新控制器 |
@@ -29,22 +29,22 @@
 
 ## 请求差异与禁止隐式转换的项目
 
-| 项目 | 当前课程请求/输出 | 新模型候选沿用的已有规则 |
+| 项目 | 当前验证请求/输出 | 新模型候选沿用的已有规则 |
 | --- | --- | --- |
 | 请求结构 | `visits`及枚举`features`、`contractVersion`/`modelVersion` | 冻结索引下的`records[].features`、`schemaVersion`及完整`model`；不是旧JSON重命名 |
 | 七变量 | MMSE/MoCA/CDR-SB访视 | age_years、education_years、mmse、cdr_sb、cdr_global、adas__total13、faq__faqtotal；MoCA不自动替代缺失变量 |
 | 十变量新增 | APOE及演示海马值 | apoe4_count和左右海马mm3体积；保留原缺失 |
 | 单位 | 演示MRI为`normalized` | MRI严格`mm3`且正值；没有自动换算，`normalized`报FEATURE_UNIT |
 | APOE | count | 严格JSON整数0/1/2；1.0也拒绝，不舍入 |
-| 索引与时间 | 访视/记录日期及课程融合规则 | 明确indexDate、measuredDate、availableDate、dateBasis；来源首次可用未知保留未知 |
-| 时间政策 | 课程索引选择 | RETROSPECTIVE_SNAPSHOT与AS_OF_INDEX必须与独立上下文相同，来件不能自行降级 |
-| 元数据 | 课程DEMO来源 | 每项观测/缺失的sourceRef、qc、completion、missingReason、scanId、evidenceRef及独立来源映射 |
-| 窗口 | 请求允许6—60整数，当前演示非24月返回BLOCKED | 准入只接受严格整数24，其他值报ONLY_24_MONTH_WINDOW；不套课程200/BLOCKED语义 |
-| 模型选择 | 固定课程modelVersion | 显式family/specification/最终角色/有序特征和绑定摘要；不自动选模或接受外折角色 |
-| 输出 | riskScore/riskLevel及课程贡献、阶段 | 两原因ad_cif_24m / other_dementia_cif_24m，和不超过原容差上界；不补riskLevel或临床阈值 |
-| 输出策略 | 课程固定加性规则 | 固定raw_uncalibrated_24month_CIF；不因bundle内有校准参数自动应用校准 |
+| 索引与时间 | 访视/记录日期及研究融合规则 | 明确indexDate、measuredDate、availableDate、dateBasis；来源首次可用未知保留未知 |
+| 时间政策 | 研究索引选择 | RETROSPECTIVE_SNAPSHOT与AS_OF_INDEX必须与独立上下文相同，来件不能自行降级 |
+| 元数据 | 研究DEMO来源 | 每项观测/缺失的sourceRef、qc、completion、missingReason、scanId、evidenceRef及独立来源映射 |
+| 窗口 | 请求允许6—60整数，当前演示非24月返回BLOCKED | 准入只接受严格整数24，其他值报ONLY_24_MONTH_WINDOW；不套研究200/BLOCKED语义 |
+| 模型选择 | 固定研究modelVersion | 显式family/specification/最终角色/有序特征和绑定摘要；不自动选模或接受外折角色 |
+| 输出 | riskScore/riskLevel及研究贡献、阶段 | 两原因ad_cif_24m / other_dementia_cif_24m，和不超过原容差上界；不补riskLevel或临床阈值 |
+| 输出策略 | 研究固定加性规则 | 固定raw_uncalibrated_24month_CIF；不因bundle内有校准参数自动应用校准 |
 | 幂等 | Python runId易失缓存，Java业务幂等另管 | 同一内存permit只可用一次，无跨进程重放/缓存；不能冒充Java Idempotency-Key |
-| HTTP错误 | 冻结课程状态码和错误结构 | AdmissionError/InferenceError为现有Python固定码；本候选不分配HTTP状态码或套Java Envelope |
+| HTTP错误 | 冻结研究状态码和错误结构 | AdmissionError/InferenceError为现有Python固定码；本候选不分配HTTP状态码或套Java Envelope |
 
 七变量精确覆盖前七项、十变量精确覆盖全部十项。值可为有限数值或null；null须带原规定的缺失声明和证据，不能补零。MRI双侧需同扫描、日期和处理版本，维持365天窗口。量表临床界值、ICV/扫描仪支持及源字段映射不能由这些格式检查认证。
 
@@ -103,6 +103,6 @@ P1到本候选与样例为止；P2已完成来源映射，直接代用旧identit
 
 P3已完成[同一人工案例的预测/解释绑定候选](Prediction_Explanation_Binding_Candidate.md)，直接复用单次调度和精确分组Shapley，保留LIME未执行及真实宿主证据未核验。固定解析回调不是实际表格模型；该示例不构成生产报告API。
 
-需与Java/前端另行协调的事项包括新传输字段/版本、身份映射、权限来源、业务幂等与存储、错误状态映射、报告用途和受控参数交付。候选不修改contracts、不启动新服务、不切换8091。单次内存返回没有分组Shapley/LIME或课程四阶段DTO；解释输出须绑定同一输入/模型/参考，不能套用旧加性贡献。
+需与Java/前端另行协调的事项包括新传输字段/版本、身份映射、权限来源、业务幂等与存储、错误状态映射、报告用途和受控参数交付。候选不修改contracts、不启动新服务、不切换8091。单次内存返回没有分组Shapley/LIME或研究四阶段DTO；解释输出须绑定同一输入/模型/参考，不能套用旧加性贡献。
 
 这些是工程接入边界，不能关闭同一评估机会策略的行动/首次可用历史补证、真实监控双批、个人因果、独立或临床缺口。旧图阴性、结构不可估、CSF NO_GO、阈值SUPPRESSED与673/36研究拟合账本保持；不为候选开发重训旧研究。

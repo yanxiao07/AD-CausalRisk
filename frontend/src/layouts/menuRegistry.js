@@ -2,6 +2,7 @@ import {
   ChatLineSquare,
   Checked,
   Cpu,
+  DataAnalysis,
   Document,
   Postcard,
   Setting,
@@ -35,6 +36,7 @@ export const MENU_REGISTRY = {
   audit: { label: '审计日志', path: '/admin/audit', icon: Tickets, ready: true },
   users: { label: '账号管理', path: '/admin/users', icon: UserFilled, ready: true },
   system: { label: '系统设置', path: '/admin/system', icon: Setting, ready: true },
+  research: { label: '研究证据', path: '/research', icon: DataAnalysis, ready: true },
   summary: { label: '我的摘要', path: '/summary', icon: Postcard, ready: false }
 }
 

@@ -2,103 +2,246 @@
   <div class="research-home">
     <PageHeader
       title="研究员工作台"
-      subtitle="选择一条工作流开始：先把数据导进来，再对队列发起批量评估。"
+      subtitle="数据导入、质控与模型评估的日常入口；批量快照从已入库的访视数据生成。"
     >
       <template #extra>
-        <el-button :icon="Refresh" @click="refresh">刷新</el-button>
+        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>
     </PageHeader>
 
-    <div class="cards">
-      <article
-        v-for="card in cards"
-        :key="card.key"
-        class="card"
-        role="button"
-        tabindex="0"
-        :aria-label="card.title"
-        @click="go(card)"
-        @keydown.enter.prevent="go(card)"
-        @keydown.space.prevent="go(card)"
-      >
-        <div class="card__icon">
-          <el-icon :size="22"><component :is="card.icon" /></el-icon>
+    <el-alert
+      v-if="loadError"
+      :title="loadError"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="load-alert"
+    />
+
+    <div class="stats">
+      <DataCard v-for="stat in stats" :key="stat.key" hover>
+        <div class="stat">
+          <span class="stat__label">{{ stat.label }}</span>
+          <strong class="stat__value">{{ loading ? '…' : stat.value }}</strong>
+          <span class="stat__hint">{{ stat.hint }}</span>
         </div>
-
-        <h2 class="card__title">{{ card.title }}</h2>
-        <p class="card__desc">{{ card.description }}</p>
-
-        <ul class="card__points">
-          <li v-for="point in card.points" :key="point">{{ point }}</li>
-        </ul>
-
-        <span class="card__cta">
-          {{ card.cta }}
-          <el-icon><ArrowRight /></el-icon>
-        </span>
-      </article>
+      </DataCard>
     </div>
 
-    <p class="research-home__foot">
-      数据导入与批量评估需要研究员角色（ADMIN 亦可）；单条档案的发起与复核在「受试者档案」抽屉内完成。
-    </p>
+    <div class="grid">
+      <DataCard title="质控异常待办" subtitle="WARN 需关注、BLOCKED 阻断评估；处理后再生成快照。" padding="none">
+        <template #header-extra>
+          <el-button text type="primary" @click="router.push('/quality')">全部质控</el-button>
+        </template>
+
+        <el-skeleton v-if="loading" :rows="4" animated />
+        <EmptyState
+          v-else-if="qcItems.length === 0"
+          title="没有待处理质控"
+          description="当前没有 WARN 或 BLOCKED 的质控记录。"
+          :icon="Checked"
+        />
+        <div v-else class="qc-list">
+          <div v-for="item in qcItems" :key="item.id" class="qc-row">
+            <div class="qc-row__main">
+              <strong>{{ item.subjectAlias || item.subjectCode || `受试者 ${item.subjectId}` }}</strong>
+              <span>{{ item.subjectCode || '—' }} · {{ formatTime(item.checkedAt) }}</span>
+            </div>
+            <StatusTag :type="item.qualityStatus" />
+            <span class="qc-row__issue">{{ firstIssue(item) }}</span>
+          </div>
+        </div>
+      </DataCard>
+
+      <DataCard title="批量生成快照" subtitle="从最新一次访视生成七变量快照，并可直接提交模型。">
+        <div class="batch-card">
+          <div class="batch-card__point">
+            <el-icon><Files /></el-icon>
+            <span>MMSE、CDR-SB 取最新访视；缺失变量标记 <code>NOT_COLLECTED</code>，不补 0。</span>
+          </div>
+          <div class="batch-card__point">
+            <el-icon><Connection /></el-icon>
+            <span>登记后自动同步研究宿主；勾选“同时评估”会立即生成研究任务。</span>
+          </div>
+          <el-button type="primary" @click="router.push('/quality')">
+            去质控页选择受试者
+            <el-icon class="el-icon--right"><ArrowRight /></el-icon>
+          </el-button>
+          <p class="batch-card__hint">
+            也可以先到「数据导入」入库 CSV，再回质控页批量生成；单条补录入口在受试者档案抽屉。
+          </p>
+        </div>
+      </DataCard>
+    </div>
+
+    <DataCard title="最近研究任务" subtitle="来自后端的持久化任务历史，刷新页面不会丢失。" padding="none">
+      <template #header-extra>
+        <el-button text type="primary" @click="router.push('/tasks')">查看全部</el-button>
+      </template>
+
+      <el-skeleton v-if="loading" :rows="4" animated />
+      <EmptyState
+        v-else-if="recentTasks.length === 0"
+        title="还没有研究任务"
+        description="从质控页批量生成快照后，这里会出现模型任务与结果。"
+        :icon="Cpu"
+      />
+      <el-table v-else :data="recentTasks" class="task-table" row-key="taskId">
+        <el-table-column label="任务" width="90">
+          <template #default="{ row }">#{{ row.taskId }}</template>
+        </el-table-column>
+        <el-table-column label="快照" width="90">
+          <template #default="{ row }">#{{ row.snapshotId }}</template>
+        </el-table-column>
+        <el-table-column label="受试者" min-width="160">
+          <template #default="{ row }">#{{ row.subjectId }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="120">
+          <template #default="{ row }"><StatusTag :type="row.status" /></template>
+        </el-table-column>
+        <el-table-column label="AD 24 个月" width="120">
+          <template #default="{ row }">{{ formatCif(row.result?.prediction?.adCif24m) }}</template>
+        </el-table-column>
+        <el-table-column label="其他痴呆 24 个月" width="140">
+          <template #default="{ row }">{{ formatCif(row.result?.prediction?.otherDementiaCif24m) }}</template>
+        </el-table-column>
+        <el-table-column label="时间" width="160">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="110" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openTask(row)">查看报告</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </DataCard>
   </div>
 </template>
 
 <script setup>
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, Checked, Cpu, Refresh, UploadFilled, User } from '@element-plus/icons-vue'
+import { ArrowRight, Checked, Connection, Cpu, Files, Refresh } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import DataCard from '@/components/common/DataCard.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import StatusTag from '@/components/common/StatusTag.vue'
+import { listImportJobs } from '@/api/imports.js'
+import { listQualityChecks } from '@/api/qc.js'
+import { getResearchTaskSummary } from '@/api/research.js'
+import { formatDateTime } from '@/utils/datetime.js'
 
 const router = useRouter()
+const loading = ref(true)
+const loadError = ref('')
+const importToday = ref(null)
+const summary = ref(null)
+const qcItems = ref([])
+const qcPending = ref(null)
 
-/** 四个入口卡片：都跳到已经做好的真实页面，不再放禁用的占位拖拽区。 */
-const cards = [
-  {
-    key: 'imports',
-    title: '数据导入',
-    description: '把队列 CSV 拖进来，预检通过后再确认入库。',
-    points: ['支持 subjects / visits / features 三类模板', '逐行错误明细，可先修正再入库'],
-    cta: '去导入数据',
-    path: '/imports',
-    icon: UploadFilled
-  },
-  {
-    key: 'subjects',
-    title: '批量评估',
-    description: '在受试者档案里勾选多人，一次发起风险评估。',
-    points: ['多选后点「批量发起评估」', '右上角进度面板实时显示完成情况'],
-    cta: '去受试者档案',
-    path: '/subjects',
-    icon: User
-  },
-  {
-    key: 'quality',
-    title: '数据质控',
-    description: '审核导入后产生的异常项，通过或驳回。',
-    points: ['默认只看待审记录', '审核意见必填，处理完自动移出队列'],
-    cta: '去数据质控',
-    path: '/quality',
-    icon: Checked
-  },
-  {
-    key: 'tasks',
-    title: '评估任务',
-    description: '按任务 ID 查看四个阶段的耗时与结果。',
-    points: ['数据融合 / 因果图谱 / 预警模型 / 个体解释', '可跳转到报告或复核页'],
-    cta: '去评估任务',
-    path: '/tasks',
-    icon: Cpu
+const stats = computed(() => {
+  const data = summary.value || {}
+  return [
+    {
+      key: 'imports',
+      label: '今日数据导入',
+      value: importToday.value ?? '—',
+      hint: '今日创建的导入任务'
+    },
+    {
+      key: 'tasks',
+      label: '今日模型任务',
+      value: data.tasksToday ?? '—',
+      hint: `完成 ${data.completedToday ?? 0} · 失败 ${data.failedToday ?? 0}`
+    },
+    {
+      key: 'avg',
+      label: '平均耗时',
+      value: formatSeconds(data.averageSeconds),
+      hint: '今日已完成研究任务'
+    },
+    {
+      key: 'qc',
+      label: '质控异常待办',
+      value: qcPending.value ?? '—',
+      hint: 'WARN + BLOCKED'
+    }
+  ]
+})
+
+function todayKey() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date())
+}
+
+function formatSeconds(value) {
+  const seconds = Number(value)
+  if (!Number.isFinite(seconds) || seconds <= 0) return '—'
+  if (seconds < 60) return `${seconds.toFixed(1)}s`
+  return `${(seconds / 60).toFixed(1)}min`
+}
+
+function formatTime(value) {
+  if (!value) return '—'
+  return formatDateTime(value)
+}
+
+function formatCif(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return '—'
+  return `${(number * 100).toFixed(2)}%`
+}
+
+function issuesOf(row) {
+  const raw = row?.issues
+  if (Array.isArray(raw)) return raw.filter(Boolean)
+  if (typeof raw !== 'string' || !raw.trim()) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [raw]
+  } catch {
+    return [raw]
   }
-]
-
-function go(card) {
-  router.push(card.path)
 }
 
-function refresh() {
-  window.location.reload()
+function firstIssue(row) {
+  const issues = issuesOf(row)
+  return issues[0] || '无异常明细'
 }
+
+function openTask(row) {
+  if (row?.taskId) router.push(`/reports/research/${row.taskId}`)
+}
+
+async function load() {
+  loading.value = true
+  loadError.value = ''
+  const today = todayKey()
+  const [imports, taskSummary, warn, blocked] = await Promise.allSettled([
+    listImportJobs({ page: 1, pageSize: 1, from: today, to: today }),
+    getResearchTaskSummary(),
+    listQualityChecks({ status: 'WARN', page: 1, pageSize: 5 }),
+    listQualityChecks({ status: 'BLOCKED', page: 1, pageSize: 1 })
+  ])
+
+  const failed = [imports, taskSummary, warn, blocked].filter((item) => item.status === 'rejected')
+  if (failed.length === 4) {
+    loadError.value = '工作台数据读取失败，请稍后刷新重试。'
+  } else if (failed.length > 0) {
+    loadError.value = '部分数据读取失败，已展示可用的内容。'
+  }
+
+  if (imports.status === 'fulfilled') importToday.value = Number(imports.value?.total ?? 0)
+  if (taskSummary.status === 'fulfilled') summary.value = taskSummary.value || {}
+  if (warn.status === 'fulfilled') qcItems.value = Array.isArray(warn.value?.items) ? warn.value.items : []
+  const warnTotal = warn.status === 'fulfilled' ? Number(warn.value?.total ?? 0) : 0
+  const blockedTotal = blocked.status === 'fulfilled' ? Number(blocked.value?.total ?? 0) : 0
+  qcPending.value = warnTotal + blockedTotal
+  loading.value = false
+}
+
+const recentTasks = computed(() => (Array.isArray(summary.value?.recent) ? summary.value.recent : []))
+
+onMounted(load)
 </script>
 
 <style scoped>
@@ -108,91 +251,137 @@ function refresh() {
   gap: 18px;
 }
 
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
+.load-alert {
+  border-radius: var(--r-lg);
 }
 
-.card {
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.stat {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 22px 22px 18px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-card);
-  cursor: pointer;
-  transition:
-    transform var(--dur-base) var(--ease-out),
-    box-shadow var(--dur-base) var(--ease-out),
-    border-color var(--dur-base) var(--ease-out);
+  gap: 6px;
 }
 
-.card:hover,
-.card:focus-visible {
-  transform: translateY(-2px);
-  border-color: rgba(10, 115, 173, 0.3);
-  box-shadow: var(--shadow-hover);
+.stat__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
 }
 
-.card:focus-visible {
-  outline: 2px solid var(--brand-600);
-  outline-offset: 2px;
-}
-
-.card__icon {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--r-md);
-  color: var(--brand-700);
-  background: var(--brand-50);
-  border: 1px solid rgba(10, 115, 173, 0.16);
-}
-
-.card__title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 700;
+.stat__value {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1.1;
   color: var(--ink);
 }
 
-.card__desc {
-  margin: 0;
+.stat__hint {
+  font-size: 11px;
+  color: var(--soft);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.qc-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.qc-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 4px 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.qc-row:first-child {
+  border-top: 0;
+}
+
+.qc-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.qc-row__main strong {
   font-size: 13px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qc-row__main span {
+  font-size: 11px;
+  color: var(--soft);
+}
+
+.qc-row__issue {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.batch-card__point {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
   line-height: 1.7;
   color: var(--muted);
 }
 
-.card__points {
+.batch-card__point .el-icon {
+  margin-top: 3px;
+  color: var(--brand-600);
+}
+
+.batch-card__point code {
+  font-family: var(--font-display);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--brand-50);
+  color: var(--brand-700);
+}
+
+.batch-card__hint {
   margin: 0;
-  padding-left: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.6;
   color: var(--soft);
 }
 
-.card__cta {
-  margin-top: auto;
-  padding-top: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--brand-600);
+.task-table {
+  width: 100%;
 }
 
-.research-home__foot {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--soft);
+@media (max-width: 960px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

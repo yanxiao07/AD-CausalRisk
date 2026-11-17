@@ -55,7 +55,12 @@
             </button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="logout" :icon="SwitchButton">退出登录</el-dropdown-item>
+                <el-dropdown-item command="profile" :icon="User">账号信息</el-dropdown-item>
+                <el-dropdown-item command="account" :icon="EditPen">个人设置</el-dropdown-item>
+                <el-dropdown-item command="preferences" :icon="Setting">用户设置</el-dropdown-item>
+                <el-dropdown-item divided command="logout" :icon="SwitchButton">
+                  退出登录
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -66,16 +71,63 @@
         <slot />
       </main>
     </div>
+
+    <!-- 账号信息 -->
+    <el-dialog v-model="profileOpen" title="账号信息" width="420px" destroy-on-close>
+      <div class="profile">
+        <el-avatar :size="54" class="profile__avatar">{{ initial }}</el-avatar>
+        <div class="profile__meta">
+          <p class="profile__name">{{ userStore.username }}</p>
+          <div class="profile__tags">
+            <el-tag
+              v-for="role in userStore.roles"
+              :key="role"
+              size="small"
+              type="info"
+            >
+              {{ ROLE_LABELS[role] || role }}
+            </el-tag>
+          </div>
+        </div>
+      </div>
+      <el-descriptions :column="1" border size="small" class="profile__desc">
+        <el-descriptions-item label="账号 ID">{{ userStore.id ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="当前身份">{{ roleLabel }}</el-descriptions-item>
+        <el-descriptions-item label="可用菜单">
+          {{ (userStore.menus || []).length }} 项
+        </el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="profileOpen = false">关闭</el-button>
+        <el-button type="primary" @click="profileOpen = false; settingsOpen = true">
+          打开用户设置
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 用户设置（字号 / 密度 / 通知） -->
+    <UserSettingsDialog v-model="settingsOpen" />
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { ArrowDown, Expand, Fold, HomeFilled, SwitchButton } from '@element-plus/icons-vue'
+import {
+  ArrowDown,
+  EditPen,
+  Expand,
+  Fold,
+  HomeFilled,
+  Setting,
+  SwitchButton,
+  User
+} from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user.js'
 import { logout } from '@/api/auth.js'
+import UserSettingsDialog from '@/components/user/UserSettingsDialog.vue'
+import { applyPreferences, readLocalPreferences } from '@/utils/preferences.js'
 import { activeKeyOf, buildMenuItems } from './menuRegistry.js'
 
 const route = useRoute()
@@ -83,6 +135,8 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const collapsed = ref(false)
+const profileOpen = ref(false)
+const settingsOpen = ref(false)
 
 const ROLE_LABELS = { ADMIN: '管理员', RESEARCHER: '研究员', DOCTOR: '医生', PATIENT: '患者' }
 const roleLabel = computed(() => ROLE_LABELS[userStore.primaryRole] ?? '访客')
@@ -105,6 +159,18 @@ function onSelect(key) {
 }
 
 async function onCommand(command) {
+  if (command === 'profile') {
+    profileOpen.value = true
+    return
+  }
+  if (command === 'account') {
+    router.push('/settings/profile')
+    return
+  }
+  if (command === 'preferences') {
+    settingsOpen.value = true
+    return
+  }
   if (command !== 'logout') return
   try {
     await ElMessageBox.confirm('确定要退出登录吗？', '退出登录', {
@@ -116,10 +182,16 @@ async function onCommand(command) {
     return
   }
   await logout()
-  // 清空本地会话，并中止仍在轮询的批量评估（否则退出后还会继续打接口）
+  // 清空本地会话并回到登录页（旧批量评估轮询已退役）
   userStore.logout()
   router.replace('/login')
 }
+
+onMounted(() => {
+  // 首屏应用本机缓存的偏好，避免设置生效延迟
+  const local = readLocalPreferences()
+  if (local) applyPreferences(local)
+})
 </script>
 
 <style scoped>
@@ -318,5 +390,41 @@ async function onCommand(command) {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+/* ---- 账号信息弹窗 ---- */
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.profile__avatar {
+  background: var(--brand-600);
+  color: #fff;
+  font-weight: 700;
+}
+
+.profile__meta {
+  min-width: 0;
+}
+
+.profile__name {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.profile__tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.profile__desc :deep(.el-descriptions__label) {
+  width: 96px;
+  color: var(--muted);
 }
 </style>

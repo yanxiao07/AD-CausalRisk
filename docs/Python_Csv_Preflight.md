@@ -1,6 +1,6 @@
-# Python课程三表预检
+# Python三表预检
 
-本模块完成FR-DATA-03/04及FR-QUALITY-01/02/03的Python辅助部分：解析课程三表、定位错误行、检查关联与原质量门槛。Java仍负责导入任务、确认入库、幂等持久化、权限、质量记录保存及业务版本；当前模块没有实现这些业务API。它不读取真实研究数据，不运行预测或训练。
+本模块完成FR-DATA-03/04及FR-QUALITY-01/02/03的Python辅助部分：解析三表、定位错误行、检查关联与原质量门槛。Java仍负责导入任务、确认入库、幂等持久化、权限、质量记录保存及业务版本；当前模块没有实现这些业务API。它不读取真实研究数据，不运行预测或训练。
 
 ## 输入与使用
 
@@ -28,10 +28,10 @@ report, typed_requests = prepare_csv(payload)
 | 表 | 精确表头 | 核查 |
 | --- | --- | --- |
 | subjects | subjectCode,alias,status | DEMO编号；别名非空且不超过100字符；ACTIVE/ARCHIVED；编号唯一 |
-| visits | subjectCode,visitCode,visitDate,mmse,moca,cdrSb | 档案必须在本批subjects中；编号在档案内唯一；有效非未来日期；认知范围按原课程契约 |
+| visits | subjectCode,visitCode,visitDate,mmse,moca,cdrSb | 档案必须在本批subjects中；编号在档案内唯一；有效非未来日期；认知范围按原研究契约 |
 | features | subjectCode,featureName,featureValue,recordedAt,unit | 本批档案关联；三种原白名单特征；APOE整数计数0/1/2、单位count；MRI在[0,1]、单位normalized |
 
-数值空单元格表示None，字符串null/NaN/Infinity/布尔不是缺失值。0保持为0。课程原接口的MMSE/MoCA范围允许小数、CDR-SB范围为[0,18]；本模块保持它们，不把另一套研究接口的整数/离散门槛套到这里。APOE CSV非空计数必须写0、1或2，不将1.0/1e0静默改成整数。
+数值空单元格表示None，字符串null/NaN/Infinity/布尔不是缺失值。0保持为0。研究原接口的MMSE/MoCA范围允许小数、CDR-SB范围为[0,18]；本模块保持它们，不把另一套研究接口的整数/离散门槛套到这里。APOE CSV非空计数必须写0、1或2，不将1.0/1e0静默改成整数。
 
 三表合计最多30000 UTF-8字节；subjects/visits/features最多200/1000/2000条，每档案仍受原AgentRequest最多100访视/500特征限制。问题最多显示200条，`errorCount`/`issueCount`保留完整计数，`issuesTruncated`明确是否截断。字节/行上限按独立条件共同执行，不承诺所有行数上限能在字节上限内装下。
 
@@ -45,9 +45,9 @@ report, typed_requests = prepare_csv(payload)
 
 ## 现有演示系统的薄适配
 
-可选`demo_csv_adapter.py`把同一纯模块接入现有演示系统；`POST /api/system/course-csv-preview`是演示系统新增的独立路径，不是原8091课程契约或Java业务目标API的变更。它要求唯一同源Origin、JSON正文最多32768字节；GET返回405，非合成模式403，结构错误400，媒体415，正文超限413。有效HTTP200仍须检查status与质量结果。没有commit路由或模型调用。
+可选`demo_csv_adapter.py`把同一纯模块接入现有演示系统；`POST /api/system/course-csv-preview`是演示系统新增的独立路径，不是原8091研究契约或Java业务目标API的变更。它要求唯一同源Origin、JSON正文最多32768字节；GET返回405，非合成模式403，结构错误400，媒体415，正文超限413。有效HTTP200仍须检查status与质量结果。没有commit路由或模型调用。
 
-页面“课程三表关联预检”提供正常/错误构造例、错误物理行和字段、输入关联链接、质量原因。编辑输入清空旧结果，较早请求不能覆盖后来修改；请求失败不保留成功结果。原研究单表预检保留原路径、输入格式和行为，两个模板分别说明。
+页面“三表关联预检”提供正常/错误构造例、错误物理行和字段、输入关联链接、质量原因。编辑输入清空旧结果，较早请求不能覆盖后来修改；请求失败不保留成功结果。原研究单表预检保留原路径、输入格式和行为，两个模板分别说明。
 
 ## 验证
 

@@ -18,3 +18,15 @@ rpds-py==2026.9.1
 six==1.17.0
 typing_extensions==4.16.0
 urllib3==2.8.0
+# Research runtime: dynamic host and table assessment tests import these.
+numpy==2.4.6
+pandas==3.0.5
+scikit-learn==1.9.0
+scipy==1.17.1
+joblib==1.6.0
+threadpoolctl==3.6.0
+xgboost==3.2.0
+python-dateutil==2.9.0.post0
+tzdata==2026.3
+cloudpickle==3.1.2
+narwhals==2.25.0

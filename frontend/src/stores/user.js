@@ -1,6 +1,4 @@
 import { defineStore } from 'pinia'
-import { useBatchAssessmentStore } from './batch.js'
-import { clearAllAssessmentIntents } from '@/utils/assessmentIntent.js'
 
 /**
  * 登录用户。字段与 `POST /api/auth/login` 返回的 data 对齐：
@@ -58,11 +56,9 @@ export const useUserStore = defineStore('user', {
     /**
      * 清空登录态。
      *
-     * 顺带中止批量评估：否则退出登录后旧的轮询定时器仍在跑，
-     * 会用下一个人的会话继续打 /api/assessment-tasks（既浪费请求也会串数据）。
+     * 旧的批量评估轮询已随旧规则通道一起退役，这里不再需要中止后台定时器。
      */
     clear() {
-      this.abortBackgroundWork()
       this.id = null
       this.username = ''
       this.roles = []
@@ -73,16 +69,6 @@ export const useUserStore = defineStore('user', {
     /** 语义化别名：布局层退出登录时调用，等价于 clear()。 */
     logout() {
       this.clear()
-    },
-
-    abortBackgroundWork() {
-      try {
-        useBatchAssessmentStore().abort()
-      } catch {
-        // Pinia 尚未激活（例如单元测试直接调用 store）时忽略
-      }
-      // 幂等键也是"这个人的意图"，换人后不能继承
-      clearAllAssessmentIntents()
     }
   },
 

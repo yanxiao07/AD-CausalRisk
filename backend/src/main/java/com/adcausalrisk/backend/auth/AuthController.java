@@ -1,8 +1,12 @@
 package com.adcausalrisk.backend.auth;
 
+import com.adcausalrisk.backend.auth.dto.ChangePasswordRequest;
 import com.adcausalrisk.backend.auth.dto.CurrentUserView;
 import com.adcausalrisk.backend.auth.dto.LoginRequest;
+import com.adcausalrisk.backend.auth.dto.MyProfileView;
+import com.adcausalrisk.backend.auth.dto.UpdateProfileRequest;
 import com.adcausalrisk.backend.common.Envelope;
+import com.adcausalrisk.backend.security.AppUserPrincipal;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -10,6 +14,7 @@ import jakarta.validation.Valid;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -49,5 +54,32 @@ public class AuthController {
     @GetMapping({"/me", "/auth/me"})
     public Envelope<CurrentUserView> me(Authentication authentication) {
         return Envelope.success(authService.currentUser(authentication));
+    }
+
+    @GetMapping("/me/profile")
+    public Envelope<MyProfileView> profile(Authentication authentication) {
+        return Envelope.success(authService.profile(principal(authentication)));
+    }
+
+    @PatchMapping("/me/profile")
+    public Envelope<MyProfileView> updateProfile(
+            @RequestBody UpdateProfileRequest request, Authentication authentication) {
+        return Envelope.success(authService.updateProfile(request, principal(authentication)));
+    }
+
+    @PostMapping("/me/password")
+    public Envelope<Void> changePassword(
+            @RequestBody ChangePasswordRequest request,
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
+        authService.changePassword(request, principal(authentication), httpRequest);
+        return Envelope.success(null);
+    }
+
+    private static AppUserPrincipal principal(Authentication authentication) {
+        if (authentication != null
+                && authentication.getPrincipal() instanceof AppUserPrincipal value) return value;
+        throw new com.adcausalrisk.backend.common.BusinessException(
+                com.adcausalrisk.backend.common.ErrorCode.UNAUTHENTICATED);
     }
 }

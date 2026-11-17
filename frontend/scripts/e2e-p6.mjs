@@ -116,6 +116,12 @@ try {
     if (path === '/api/subjects/1') return respond({ subject: SUBJECT, visits: [], features: [] })
     if (path === '/api/reports/99') return respond(ASSESSMENT)
     if (path === '/api/assessments/99') return respond(ASSESSMENT)
+    if (path === '/api/assessments/99/reviews') return respond([])
+    if (/^\/api\/assessment-tasks\/\d+\/input$/.test(path)) {
+      return respond({ request: { predictionWindowMonths: 24 } })
+    }
+    // 报告页/图谱页还会读一些辅助接口；未桩时给空信封，避免落到真实后端触发 401 跳登录。
+    if (path.startsWith('/api/')) return respond(null)
     return req.continue()
   })
 
@@ -144,6 +150,12 @@ try {
   check('关键解释渲染', reportText.includes('APOE ε4 携带'), '')
   check('免责声明存在', reportText.includes('不构成诊断'), '')
 
+  // 报告页是独立路由，ECharts 异步初始化，给它一点时间再数 canvas
+  await page
+    .waitForFunction(() => document.querySelectorAll('.sheet .causal-graph canvas').length === 1, {
+      timeout: 10000
+    })
+    .catch(() => {})
   const canvas = await page.evaluate(() => document.querySelectorAll('.sheet .causal-graph canvas').length)
   check('报告内嵌因果图', canvas === 1, `canvas=${canvas}`)
 
@@ -153,7 +165,7 @@ try {
     window.print = () => {
       called = true
     }
-    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('打印报告'))
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('打印'))
     btn?.click()
     window.print = original
     return called
@@ -177,15 +189,16 @@ try {
   check('图谱页显示节点/边统计', stageText.includes('4 个节点') && stageText.includes('3 条关联'), stageText.slice(0, 60))
   check('图谱 canvas 渲染', true, 'canvas=1')
 
-  await page.evaluate(() => {
-    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('沉浸查看'))
-    btn?.click()
+  // 图谱现在以右侧抽屉打开：先断言抽屉内容，再关闭
+  const drawerOpened = await page.evaluate(() => Boolean(document.querySelector('.el-drawer .stage')))
+  check('图谱以抽屉打开', drawerOpened, '')
+  await page.evaluate(() => document.querySelector('.el-drawer__close-btn')?.click())
+  await sleep(700)
+  const drawerClosed = await page.evaluate(() => {
+    const overlay = document.querySelector('.el-overlay')
+    return !overlay || getComputedStyle(overlay).display === 'none'
   })
-  await sleep(600)
-  const immersive = await page.evaluate(() =>
-    document.querySelector('.stage')?.classList.contains('stage--immersive')
-  )
-  check('沉浸模式切换', immersive === true, '')
+  check('图谱抽屉可关闭', drawerClosed, '')
   await page.screenshot({ path: join(shotDir, 'p6-graph.png') })
 
   check('无页面异常', errors.length === 0, errors[0] || 'none')

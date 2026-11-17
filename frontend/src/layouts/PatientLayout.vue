@@ -6,7 +6,7 @@
         <span class="patient__mark" aria-hidden="true">AD</span>
         <div>
           <strong>我的健康档案</strong>
-          <small>{{ userStore.username }}</small>
+          <small>受试者视图</small>
         </div>
       </div>
 
@@ -28,11 +28,9 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { useUserStore } from '@/stores/user.js'
 import { logout } from '@/api/auth.js'
 
 const router = useRouter()
-const userStore = useUserStore()
 
 async function onLogout() {
   try {
@@ -114,7 +112,7 @@ async function onLogout() {
 .patient__main {
   flex: 1;
   width: 100%;
-  max-width: 720px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 28px clamp(20px, 5vw, 32px) 40px;
 }

@@ -91,6 +91,12 @@ public class BusinessQueries {
                         Object value = rs.getObject(i);
                         if (value instanceof Timestamp timestamp)
                             value = timestamp.toInstant().toString();
+                        else if (value instanceof LocalDateTime localDateTime)
+                            // MySQL Connector/J can surface DATETIME columns as LocalDateTime.
+                            // The JDBC URL uses connectionTimeZone=UTC, so attach UTC explicitly;
+                            // otherwise the JSON string loses its offset and browsers read it as
+                            // local time (eight hours early in Asia/Shanghai).
+                            value = localDateTime.toInstant(ZoneOffset.UTC).toString();
                         else if (value instanceof java.sql.Date date)
                             value = date.toLocalDate().toString();
                         else if (value instanceof Clob clob)

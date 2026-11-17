@@ -1,6 +1,6 @@
 # Java客户端故障验收与只读结果核对
 
-对应课程FR-AGENT-01/02、FR-WARN-02和FR-ASSESS-02的Python辅助部分。提供可导出的固定构造案例、本机HTTP故障工具和只读核对工具；不改变原三个课程操作，不实现Java业务任务、权限、数据库或审计。Java实际调用这些材料后才能记录Java接入验收完成。
+对应研究FR-AGENT-01/02、FR-WARN-02和FR-ASSESS-02的Python辅助部分。提供可导出的固定构造案例、本机HTTP故障工具和只读核对工具；不改变原三个研究操作，不实现Java业务任务、权限、数据库或审计。Java实际调用这些材料后才能记录Java接入验收完成。
 
 ## 固定案例包
 
@@ -14,7 +14,7 @@ python -B -m python_service.course_interop --export interop-pack.json
 
 Java测试可循环读取`cases`，将`request`作为原始AgentRequest提交。收到响应先按原OpenAPI校验，检查日期/单位、runId与版本、质量阻断、来源图、解释重构及真实非负耗时；仅比较`expectedCore`时移除`stages[*].durationMs`。同一请求重放和GET缓存结果必须保留第一次真实耗时，不能将时间归零后比较重放。
 
-`expectedCore`不是完整AgentResult：它专门省略耗时，不能直接当HTTP响应返回。核心由原课程工作流生成，比较只证明传输及语义一致，不是独立算法验证。包内`pythonClientCode`是参考Python客户端错误码，Java可沿用自己的业务错误映射，但不得将拒绝或故障保存成成功结果。
+`expectedCore`不是完整AgentResult：它专门省略耗时，不能直接当HTTP响应返回。核心由原研究工作流生成，比较只证明传输及语义一致，不是独立算法验证。包内`pythonClientCode`是参考Python客户端错误码，Java可沿用自己的业务错误映射，但不得将拒绝或故障保存成成功结果。
 
 ## 本机故障工具
 

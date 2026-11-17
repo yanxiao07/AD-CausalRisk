@@ -192,13 +192,16 @@ try {
     await page.screenshot({ path: join(shotDir, 'live2-doctor-report.png'), fullPage: true })
 
     await page.goto(`${BASE}/graph?assessmentId=${assessmentId ?? ''}`, { waitUntil: 'domcontentloaded' })
-    await page.waitForSelector('.stage', { timeout: 25000 })
-    await page.waitForFunction(() => document.querySelectorAll('.stage canvas').length === 1, { timeout: 20000 })
+    await page.waitForSelector('.el-drawer .causal-graph', { timeout: 25000 })
+    await page.waitForFunction(
+      () => document.querySelectorAll('.el-drawer .causal-graph canvas').length === 1,
+      { timeout: 20000 }
+    )
     const graphState = await page.evaluate(() => ({
-      meta: document.querySelector('.stage__meta')?.textContent?.replace(/\s+/g, ' ').trim() || '',
-      canvas: document.querySelectorAll('.stage canvas').length
+      meta: document.querySelector('.el-drawer')?.textContent?.replace(/\s+/g, ' ').trim() || '',
+      canvas: document.querySelectorAll('.el-drawer .causal-graph canvas').length
     }))
-    record('医生-因果图谱页', graphState.canvas === 1, `canvas=${graphState.canvas} meta="${graphState.meta.slice(0, 50)}"`)
+    record('医生-因果图谱抽屉', graphState.canvas === 1, `canvas=${graphState.canvas} meta="${graphState.meta.slice(0, 50)}"`)
     await page.screenshot({ path: join(shotDir, 'live2-doctor-graph.png') })
   })
   await phase('医生-随访', async () => {
@@ -262,24 +265,23 @@ try {
     await sleep(2000)
     const qc = await page.evaluate(() => ({
       rows: document.querySelectorAll('.qc-page .el-table__body .el-table__row').length,
-      text: document.querySelector('.qc-page .el-table__body')?.textContent?.replace(/\s+/g, ' ').trim() || ''
+      text:
+        document.querySelector('.qc-page .el-table__body')?.textContent?.replace(/\s+/g, ' ').trim() ||
+        document.querySelector('.qc-page')?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 160) ||
+        ''
     }))
-    record('研究员-质控列表', qc.rows >= 1, `rows=${qc.rows} :: ${qc.text.slice(0, 70)}`)
+    // 空池是正常状态：空态提示出现即说明接口与页面都正常。
+    const qcEmpty = /没有符合条件/.test(qc.text)
+    record('研究员-质控列表', qc.rows >= 1 || qcEmpty, `rows=${qc.rows} :: ${qc.text.slice(0, 70)}`)
     await page.screenshot({ path: join(shotDir, 'live2-qc.png') })
 
     if (qc.rows > 0) {
-      await clickByText(page, '.qc-page .el-table__body button', '通过')
-      await page.waitForSelector('.el-message-box__input textarea', { timeout: 10000 })
-      await page.type('.el-message-box__input textarea', '真实联调：已核对源数据，异常项确认无误。')
-      await sleep(900)
-      await clickByText(page, '.el-message-box__btns button', '确定')
-      await sleep(2500)
-      const after = await page.evaluate(() => ({
-        rows: document.querySelectorAll('.qc-page .el-table__body .el-table__row').length,
-        body: document.body.textContent
-      }))
-      record('研究员-质控通过', after.rows === qc.rows - 1, `剩余=${after.rows}（原 ${qc.rows}）`)
-      await page.screenshot({ path: join(shotDir, 'live2-qc-after.png') })
+      // 新版列表展示自动质控结果（PASS/WARN/BLOCKED + 问题明细），不再有人工「通过」按钮
+      const qcStatus = await page.evaluate(() => {
+        const first = document.querySelector('.qc-page .el-table__body .el-table__row')
+        return first ? first.textContent.replace(/\s+/g, ' ').trim().slice(0, 120) : ''
+      })
+      record('研究员-质控状态可见', /通过|需关注|被阻断/.test(qcStatus), qcStatus || '(empty)')
     }
     await page.close()
   })
@@ -335,7 +337,7 @@ try {
     }))
     record(
       '患者-布局与字号',
-      !state.sider && state.cards === 3,
+      !state.sider && state.cards >= 3,
       `sider=${state.sider} cards=${state.cards} 字号=${state.fontSize}`
     )
     record(

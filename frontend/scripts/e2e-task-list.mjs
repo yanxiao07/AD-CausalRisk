@@ -243,19 +243,14 @@ try {
     )
     button?.click()
   })
-  // 等路由真正切到 /reports 再断言，否则紧随其后的 goto('/tasks') 会和这次导航打架
+  // 等路由真正切到 /reports/22 再断言，否则紧随其后的 goto('/tasks') 会和这次导航打架
   await page
-    .waitForFunction(
-      () =>
-        location.pathname === '/reports' &&
-        new URLSearchParams(location.search).get('assessmentId') === '22',
-      { timeout: 10000 }
-    )
+    .waitForFunction(() => location.pathname === '/reports/22', { timeout: 10000 })
     .catch(() => {})
   const url = new URL(page.url())
   check(
-    '查看报告跳转到 assessmentId=22',
-    url.pathname === '/reports' && url.searchParams.get('assessmentId') === '22',
+    '查看报告跳转到 /reports/22',
+    url.pathname === '/reports/22',
     `${url.pathname}${url.search}`
   )
 

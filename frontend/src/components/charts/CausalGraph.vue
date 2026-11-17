@@ -6,12 +6,12 @@
       :style="{ height: `${height}px` }"
     />
 
-    <div class="causal-graph__legend">
+    <div v-if="!compact" class="causal-graph__legend">
       <span class="legend__item"><i class="dot dot--prior" />先验证据（PRIOR）</span>
       <span class="legend__item"><i class="dot dot--model" />模型证据（MODEL）</span>
       <span class="legend__item"><i class="dot dot--missing" />缺失数据</span>
     </div>
-    <p class="causal-graph__note">
+    <p v-if="!compact" class="causal-graph__note">
       连线表示<strong>条件性关联</strong>（direction = CONDITIONAL），不是病因证明；
       箭头方向用于解释模型输入，不代表临床因果结论。滚轮缩放、拖动查看，悬停连线看类型，
       <strong>双击复位</strong>。
@@ -33,7 +33,9 @@ const props = defineProps({
    * AgentResult.graph：{ nodes: [{id,label,status,evidenceLevel,observedAt}], edges: [{from,to,note,status,evidenceLevel,direction}] }
    */
   graph: { type: Object, default: null },
-  height: { type: Number, default: 380 }
+  height: { type: Number, default: 380 },
+  /** 缩略图模式：隐藏图例/说明/节点标签，关闭交互，供历史图谱卡片使用 */
+  compact: { type: Boolean, default: false }
 })
 
 const chartEl = ref(null)
@@ -84,15 +86,16 @@ function layoutScaleOf(height) {
 }
 
 function buildOption(graph) {
+  const compact = props.compact
   const layoutScale = layoutScaleOf(props.height)
   const rawEdges = graph?.edges ?? []
   // 边多的时候先不铺边标签，避免整张图被文字淹没；悬停仍能看到完整说明
-  const showEdgeLabels = rawEdges.length <= 12
+  const showEdgeLabels = !compact && rawEdges.length <= 12
 
   const nodes = (graph?.nodes ?? []).map((node) => ({
     id: node.id,
     name: node.label || node.id,
-    symbolSize: node.status === 'MISSING' ? 34 : 46,
+    symbolSize: compact ? (node.status === 'MISSING' ? 12 : 18) : node.status === 'MISSING' ? 34 : 46,
     ...nodeStyle(node),
     // tooltip 用
     value: node
@@ -141,20 +144,20 @@ function buildOption(graph) {
         // 画布越高，力参数同步放大，否则节点会缩在中间一小团
         type: 'graph',
         layout: 'force',
-        roam: true,
-        draggable: true,
+        roam: !compact,
+        draggable: !compact,
         scaleLimit: { min: 0.6, max: 3 },
         // 留足边距：节点标签放在下方，边距太小会被裁在卡片边缘
-        top: 36,
-        bottom: 36,
-        left: 36,
-        right: 36,
+        top: compact ? 6 : 36,
+        bottom: compact ? 6 : 36,
+        left: compact ? 6 : 36,
+        right: compact ? 6 : 36,
         symbol: 'circle',
         edgeSymbol: ['none', 'arrow'],
-        edgeSymbolSize: 7,
+        edgeSymbolSize: compact ? 4 : 7,
         // 节点名放节点下方，并让 ECharts 自动隐藏互相重叠的标签
         label: {
-          show: true,
+          show: !compact,
           position: 'bottom',
           distance: 8,
           fontSize: 11,
@@ -184,9 +187,10 @@ function buildOption(graph) {
         force: {
           // 斥力要够大才不挤在一起，但太大会把边缘节点挤出画布。
           // 这里按画布高度缩放：380px 时是 900 / 110~170，560px 约 1.47 倍，最大 1.8 倍。
-          repulsion: 900 * layoutScale,
-          edgeLength: [110 * layoutScale, 170 * layoutScale],
-          gravity: 0.09,
+          // 缩略图模式用更小的斥力与边长，保证小画布里也完整可见。
+          repulsion: compact ? 160 : 900 * layoutScale,
+          edgeLength: compact ? [36, 64] : [110 * layoutScale, 170 * layoutScale],
+          gravity: compact ? 0.18 : 0.09,
           friction: 0.2,
           // 力布局动画保留：这是"丝滑"的来源，不要为了稳定把它关掉
           layoutAnimation: true

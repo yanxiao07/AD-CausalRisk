@@ -29,27 +29,38 @@
       <el-button v-if="state === 'degraded'" class="hcard__retry" @click="load">重新加载</el-button>
     </section>
 
-    <!-- 卡片 2：下次复诊 -->
-    <section class="hcard" aria-labelledby="visit-title">
-      <p id="visit-title" class="hcard__label">下次复诊</p>
-      <p class="hcard__value" :class="{ 'is-empty': !summary?.followUpSummary }">
-        {{ followUpText }}
-      </p>
-      <p class="hcard__note">
-        {{
-          state === 'loading'
-            ? '正在读取随访安排…'
-            : '复诊安排以医院通知为准；如有变化请电话确认。'
-        }}
-      </p>
-    </section>
+    <!-- 卡片 2/3：桌面并排，手机单列 -->
+    <div class="patient-grid">
+      <!-- 卡片 2：下次复诊 -->
+      <section class="hcard" aria-labelledby="visit-title">
+        <p id="visit-title" class="hcard__label">下次复诊</p>
+        <p class="hcard__value" :class="{ 'is-empty': !followUp?.next && !summary?.followUpSummary }">
+          {{ followUpText }}
+        </p>
+        <p class="hcard__note">{{ followUpNote }}</p>
+      </section>
 
-    <!-- 卡片 3：联系医生 -->
-    <section class="hcard hcard--help">
-      <p class="hcard__label">需要帮助？</p>
-      <el-button type="primary" class="help-button" @click="askHelp">联系医生</el-button>
-      <p class="hcard__note">工作时间内医生会尽快回复；紧急情况请直接拨打 120。</p>
-    </section>
+      <!-- 卡片 3：我的主治医生（GET /api/patients/me/doctor） -->
+      <section class="hcard" aria-labelledby="doctor-title">
+        <p id="doctor-title" class="hcard__label">我的主治医生</p>
+        <template v-if="doctor">
+          <p class="hcard__value">{{ doctorName }}</p>
+          <p class="hcard__note">
+            {{ doctor.department || '科室未填写' }}
+            <span v-if="doctor.phone"> · 联系电话 {{ doctor.phone }}</span>
+            <span v-if="doctor.officeHours"> · {{ doctor.officeHours }}</span>
+          </p>
+        </template>
+        <p v-else class="hcard__value is-empty">尚未分配主治医生</p>
+      </section>
+
+      <!-- 卡片 4：联系医生 -->
+      <section class="hcard hcard--help" aria-labelledby="help-title">
+        <p id="help-title" class="hcard__label">需要帮助？</p>
+        <el-button type="primary" class="help-button" @click="askHelp">联系医生</el-button>
+        <p class="hcard__note">工作时间内医生会尽快回复；紧急情况请直接拨打 120。</p>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -57,7 +68,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { Printer } from '@element-plus/icons-vue'
-import { getPatientSummary } from '@/api/patients.js'
+import { getMyDoctor, getMyFollowUp, getPatientSummary } from '@/api/patients.js'
+import { formatDateTime } from '@/utils/datetime.js'
 
 /**
  * 患者首页只呈现三件事：复核对结论、下次复诊、联系医生。
@@ -67,6 +79,8 @@ import { getPatientSummary } from '@/api/patients.js'
  */
 const state = ref('loading') // loading | ready | degraded
 const summary = ref(null)
+const doctor = ref(null)
+const followUp = ref(null)
 const degradeReason = ref('')
 
 const statusText = computed(() => {
@@ -78,8 +92,28 @@ const statusText = computed(() => {
 const followUpText = computed(() => {
   if (state.value === 'loading') return '正在读取…'
   if (state.value === 'degraded') return '暂时无法读取'
+  if (followUp.value?.next?.scheduledAt) {
+    return formatFollowUp(followUp.value.next.scheduledAt)
+  }
   return summary.value?.followUpSummary || '目前没有已安排的复诊'
 })
+
+const followUpNote = computed(() => {
+  if (state.value === 'loading') return '正在读取随访安排…'
+  const overdue = Number(followUp.value?.overdueCount ?? 0)
+  if (overdue > 0) return `另有 ${overdue} 条复诊已逾期，请联系医生确认。`
+  return '复诊安排以医院通知为准；如有变化请电话确认。'
+})
+
+const doctorName = computed(() => {
+  if (!doctor.value) return ''
+  return doctor.value.name || '主治医生'
+})
+
+function formatFollowUp(value) {
+  if (!value) return '—'
+  return formatDateTime(value)
+}
 
 async function load() {
   state.value = 'loading'
@@ -94,14 +128,24 @@ async function load() {
     else if (problem?.errorCode === 'NETWORK_ERROR') degradeReason.value = '网络连接异常，请稍后重试'
     else degradeReason.value = '档案读取失败，请稍后重试'
   }
+
+  // 主治医生与随访安排单独取：接口失败不影响摘要主体
+  const [doctorResult, followUpResult] = await Promise.allSettled([
+    getMyDoctor(),
+    getMyFollowUp()
+  ])
+  doctor.value = doctorResult.status === 'fulfilled' ? doctorResult.value : null
+  followUp.value = followUpResult.status === 'fulfilled' ? followUpResult.value : null
 }
 
 async function askHelp() {
-  const contact = summary.value?.subjectCode
-    ? `您的档案：${summary.value.alias || '—'}（${summary.value.subjectCode}）。`
-    : '您的档案尚未绑定。'
+  const contact = doctor.value?.name
+    ? `您的主治医生：${doctor.value.name}${doctor.value.department ? `（${doctor.value.department}）` : ''}${doctor.value.phone ? `，联系电话 ${doctor.value.phone}` : ''}。`
+    : summary.value?.subjectCode
+      ? `您的档案：${summary.value.alias || '—'}（${summary.value.subjectCode}）。`
+      : '您的档案尚未绑定。'
   await ElMessageBox.alert(
-    `${contact}请联系您的主治医生；联系方式将在账号与档案绑定后显示在本页。紧急情况请拨打 120。`,
+    `${contact}工作时间内医生会尽快回复；紧急情况请拨打 120。`,
     '联系医生',
     { confirmButtonText: '我知道了', type: 'info' }
   )
@@ -120,6 +164,27 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.print-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.patient-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+@media (min-width: 900px) {
+  .patient-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hcard--help {
+    grid-column: 1 / -1;
+  }
 }
 
 .hcard {

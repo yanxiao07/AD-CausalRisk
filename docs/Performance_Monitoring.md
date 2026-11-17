@@ -70,7 +70,7 @@ report = evaluate_performance_monitor(
 # 人工示例，非真实监控结论；总体Brier为0.01，固定分箱ECE为0.1。
 ```
 
-29项人工检查通过，含81组Brier/ECE及27组成对差的独立补全枚举、1024个公开调用补全真值、边界0/1、早截尾/cause2、空/单类、绑定、排序及五类隐私挑战。验收启用受控文件/网络/预测模块导入拒绝，0真实临床/OOF/模型/CIF/优化或校准拟合；不声称真实模型监控、全课程CI或临床验收完成。
+29项人工检查通过，含81组Brier/ECE及27组成对差的独立补全枚举、1024个公开调用补全真值、边界0/1、早截尾/cause2、空/单类、绑定、排序及五类隐私挑战。验收启用受控文件/网络/预测模块导入拒绝，0真实临床/OOF/模型/CIF/优化或校准拟合；不声称真实模型监控、全研究CI或临床验收完成。
 
 ```powershell
 python -B -m unittest research_runtime.tests.test_performance_monitor -v

@@ -84,6 +84,9 @@ try {
       if (url.includes('/api/me')) {
         return req.respond({ status: 200, contentType: 'application/json', body: envelope(user) })
       }
+      // 未桩的业务接口直接中断（等价于后端未启动），避免真实后端 401 把会话踢回登录页。
+      // 注意用 pathname 判断：/src/api/*.js 是前端源码，不能被当成接口。
+      if (new URL(url).pathname.startsWith('/api/')) return req.abort()
       return req.continue()
     })
 

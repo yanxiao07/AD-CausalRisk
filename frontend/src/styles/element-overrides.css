@@ -147,4 +147,20 @@
   outline-offset: -2px;
   background: var(--brand-50);
 }
+/* ---- 用户偏好：字号 / 密度 ---- */
+body {
+  font-size: var(--user-font-size, 15px);
+}
 
+html[data-density='compact'] .shell__main {
+  padding-top: 18px;
+}
+
+html[data-density='compact'] .el-table td.el-table__cell,
+html[data-density='compact'] .el-table th.el-table__cell {
+  padding: 4px 0;
+}
+
+html[data-density='compact'] .data-card__body {
+  padding-top: 12px;
+}

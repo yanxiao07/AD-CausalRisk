@@ -2,6 +2,7 @@ package com.adcausalrisk.backend.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -58,6 +59,8 @@ class AuthApiTest {
     @Autowired private ObjectMapper objectMapper;
 
     @Autowired private SysRoleRepository sysRoleRepository;
+
+    @Autowired private jakarta.persistence.EntityManager entityManager;
 
     @Test
     void loginReturnsTheCurrentUserTheContractDeclares() throws Exception {
@@ -277,6 +280,106 @@ class AuthApiTest {
                         "subjects",
                         "tasks");
         assertThat(MenuCatalog.menusFor(List.of("NOT_A_CONTRACT_ROLE"))).isEmpty();
+    }
+
+    @Test
+    void doctorCanReadAndUpdateOwnProfile() throws Exception {
+        MockHttpSession session = login("doctor", DEMO_PASSWORD);
+
+        JsonNode before =
+                bodyOf(
+                        mockMvc.perform(get("/api/me/profile").session(session))
+                                .andExpect(status().isOk())
+                                .andReturn());
+        assertThat(before.get("data").get("username").asText()).isEqualTo("doctor");
+        assertThat(
+                        ContractSchemas.validateResponse(
+                                before, "/api/me/profile", "get", 200))
+                .isEmpty();
+
+        MvcResult updateResult =
+                mockMvc.perform(
+                                patch("/api/me/profile")
+                                        .session(session)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                objectMapper.writeValueAsString(
+                                                        Map.of(
+                                                                "displayName",
+                                                                "张医生",
+                                                                "department",
+                                                                "记忆门诊",
+                                                                "phone",
+                                                                "13800000000",
+                                                                "officeHours",
+                                                                "周一上午"))))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        JsonNode updated = bodyOf(updateResult);
+        assertThat(updated.get("data").get("displayName").asText()).isEqualTo("张医生");
+        assertThat(updated.get("data").get("department").asText()).isEqualTo("记忆门诊");
+        assertThat(updated.get("data").get("phone").asText()).isEqualTo("13800000000");
+        assertThat(updated.get("data").get("officeHours").asText()).isEqualTo("周一上午");
+        assertThat(
+                        ContractSchemas.validateResponse(
+                                updated, "/api/me/profile", "patch", 200))
+                .isEmpty();
+    }
+
+    @Test
+    void researcherCannotSetOfficeHours() throws Exception {
+        MockHttpSession session = login("researcher", DEMO_PASSWORD);
+        JsonNode body =
+                bodyOf(
+                        mockMvc.perform(
+                                        patch("/api/me/profile")
+                                                .session(session)
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        "{\"officeHours\":\"周一上午\"}"))
+                                .andExpect(status().isBadRequest())
+                                .andReturn());
+        assertThat(body.get("errorCode").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(body.get("message").asText()).contains("仅医生");
+    }
+
+    @Test
+    void changingPasswordRequiresTheCurrentOneAndReplacesTheOldLogin() throws Exception {
+        MockHttpSession session = login("admin", DEMO_PASSWORD);
+
+        mockMvc.perform(
+                        post("/api/me/password")
+                                .session(session)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        objectMapper.writeValueAsString(
+                                                Map.of(
+                                                        "currentPassword",
+                                                        "wrong-password",
+                                                        "newPassword",
+                                                        "NewPass!2026"))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(
+                        post("/api/me/password")
+                                .session(session)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        objectMapper.writeValueAsString(
+                                                Map.of(
+                                                        "currentPassword",
+                                                        DEMO_PASSWORD,
+                                                        "newPassword",
+                                                        "NewPass!2026"))))
+                .andExpect(status().isOk());
+
+        // JdbcTemplate updated the hash, but the test transaction's JPA first-level cache still
+        // holds the SysUser loaded by the earlier login. A real request has a fresh persistence
+        // context, so clear it before asserting the next login.
+        entityManager.clear();
+        mockMvc.perform(loginRequest("admin", DEMO_PASSWORD))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(loginRequest("admin", "NewPass!2026")).andExpect(status().isOk());
     }
 
     private RequestBuilder loginRequest(String username, String password) throws Exception {

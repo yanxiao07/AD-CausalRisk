@@ -48,6 +48,11 @@ function isLoginRequest(config) {
   return String(config?.url || '').includes('/auth/login')
 }
 
+/** 静默请求：错误由页面自行渲染，拦截器不再弹全局消息（避免同一错误弹两次）。 */
+function isSilent(config) {
+  return Boolean(config?.silent)
+}
+
 request.interceptors.response.use(
   response => {
     const payload = response.data
@@ -70,7 +75,7 @@ request.interceptors.response.use(
       if (isLoginRequest(response.config)) {
         return Promise.reject({ ...failure, message: payload.message || '账号或密码错误' })
       }
-      ElMessage.error(failure.message)
+      if (!isSilent(response.config)) ElMessage.error(failure.message)
       return Promise.reject(failure)
     }
     // 非 Envelope（例如静态文件）原样返回
@@ -79,7 +84,7 @@ request.interceptors.response.use(
   async error => {
     if (!error.response) {
       // 登录/登出/会话复核这类"探测型"请求自己会解释失败，不再弹全局提示
-      if (!isLoginRequest(error.config)) {
+      if (!isLoginRequest(error.config) && !isSilent(error.config)) {
         ElMessage.error('无法连接服务器，请确认后端已启动（默认 http://localhost:8080）')
       }
       return Promise.reject({
@@ -105,7 +110,7 @@ request.interceptors.response.use(
         })
       }
       await redirectToLogin()
-      ElMessage.error(body.message || '登录已过期，请重新登录')
+      if (!isSilent(error.config)) ElMessage.error(body.message || '登录已过期，请重新登录')
       return Promise.reject({
         code: 401,
         errorCode: body.errorCode || 'UNAUTHENTICATED',
@@ -115,7 +120,7 @@ request.interceptors.response.use(
     }
 
     if (status === 403) {
-      if (!quiet) ElMessage.error(body.message || '无权限访问该资源')
+      if (!quiet && !isSilent(error.config)) ElMessage.error(body.message || '无权限访问该资源')
       return Promise.reject({
         code: 403,
         errorCode: body.errorCode || 'ACCESS_DENIED',
@@ -124,7 +129,7 @@ request.interceptors.response.use(
       })
     }
 
-    if (!quiet) ElMessage.error(body.message || error.message || '请求失败')
+    if (!quiet && !isSilent(error.config)) ElMessage.error(body.message || error.message || '请求失败')
     return Promise.reject({
       code: body.code || status,
       errorCode: body.errorCode,

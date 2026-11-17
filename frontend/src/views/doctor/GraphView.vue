@@ -1,6 +1,10 @@
 <template>
   <div class="graph-page">
-    <PageHeader back title="因果图谱" subtitle="在更大的画布上查看个体因果网络；支持拖拽节点与滚轮缩放。">
+    <PageHeader
+      back
+      title="因果图谱"
+      subtitle="历史图谱集中在这里；点击卡片以抽屉查看，支持拖拽节点与滚轮缩放。"
+    >
       <template #extra>
         <el-input
           v-model="inputId"
@@ -10,9 +14,6 @@
           @keyup.enter="load"
         />
         <el-button type="primary" :loading="loading" @click="load">载入图谱</el-button>
-        <el-button :icon="FullScreen" :disabled="!graph" @click="toggleImmersive">
-          {{ immersive ? '退出沉浸' : '沉浸查看' }}
-        </el-button>
       </template>
     </PageHeader>
 
@@ -25,74 +26,119 @@
       @action="load"
     />
 
-    <EmptyState
-      v-else-if="!graph"
-      :icon="Share"
-      title="还没有载入图谱"
-      description="输入评估 ID 后载入该受试者的个体因果网络；也可以从「待办复核」或「评估报告」跳转过来。"
-      action-text="去待办复核页找报告"
-      @action="goReviews"
-    />
-
-    <section v-else class="stage" :class="{ 'stage--immersive': immersive }">
-      <!-- 沉浸模式是全屏 fixed，必须有一个显眼的出口 -->
-      <button
-        v-if="immersive"
-        type="button"
-        class="stage__exit"
-        aria-label="退出沉浸模式"
-        @click="toggleImmersive"
-      >
-        <el-icon><Close /></el-icon>
-        <span>退出沉浸模式</span>
-      </button>
-
-      <header class="stage__head">
-        <div class="stage__meta">
-          <strong>评估 #{{ assessment?.assessmentId }}</strong>
-          <span>受试者 #{{ assessment?.subjectId }}</span>
-          <span>{{ nodes.length }} 个节点 · {{ edges.length }} 条关联</span>
+    <template v-else>
+      <section class="graph-intro">
+        <div class="graph-intro__text">
+          <p class="graph-intro__title">图谱档案</p>
+          <p class="graph-intro__desc">
+            输入评估 ID 或点击下方历史卡片；图谱从右侧抽屉打开，关闭后回到这里，刷新页面也会保留记录。
+          </p>
         </div>
-        <div class="stage__actions">
-          <StatusTag :type="assessment?.agentResult?.riskLevel || 'UNAVAILABLE'" />
-          <el-button text :icon="RefreshRight" @click="relayout">重新排布</el-button>
-        </div>
-      </header>
+        <el-button :icon="Share" @click="goReviews">去待办复核页找报告</el-button>
+      </section>
 
-      <CausalGraph :key="graphKey" :graph="graph" :height="canvasHeight" />
+      <GraphHistoryWall
+        v-if="history.length"
+        :history="history"
+        :active-id="assessment?.assessmentId ?? null"
+        @open="openHistory"
+        @clear="clearHistory"
+      />
 
-      <footer class="stage__foot">
-        <span>
-          缺失节点用虚线圆表示；实线箭头为已观测条件性关联，虚线为数据缺失导致的待补关联。
-        </span>
-        <span>runId {{ assessment?.agentResult?.runId || '—' }}</span>
-      </footer>
-    </section>
+      <EmptyState
+        v-else
+        :icon="Share"
+        title="还没有历史图谱"
+        description="在上方输入评估 ID 载入一张图谱，之后会自动汇总到这里，方便随时回看。"
+      />
+    </template>
+
+    <!-- 图谱抽屉：无论从输入框载入还是点历史卡片，都用同一套滑入/抽回动画 -->
+    <el-drawer
+      v-model="graphDrawerOpen"
+      :title="drawerTitle"
+      direction="rtl"
+      :size="drawerWidth"
+      class="graph-drawer"
+      destroy-on-close
+      @keydown.esc="graphDrawerOpen = false"
+    >
+      <section v-if="assessment" class="stage">
+        <header class="stage__head">
+          <div class="stage__meta">
+            <strong>评估 #{{ assessment.assessmentId }}</strong>
+            <span>受试者 #{{ assessment.subjectId }}</span>
+            <span>{{ nodes.length }} 个节点 · {{ edges.length }} 条关联</span>
+          </div>
+          <div class="stage__actions">
+            <StatusTag :type="assessment.agentResult?.riskLevel || 'UNAVAILABLE'" />
+            <el-button text :icon="RefreshRight" @click="relayout">重新排布</el-button>
+          </div>
+        </header>
+
+        <CausalGraph :key="graphKey" :graph="graph" :height="canvasHeight" />
+
+        <footer class="stage__foot">
+          <span>
+            缺失节点用虚线圆表示；实线箭头为已观测条件性关联，虚线为数据缺失导致的待补关联。
+          </span>
+          <span>runId {{ assessment.agentResult?.runId || '—' }}</span>
+        </footer>
+      </section>
+
+      <el-skeleton v-else :rows="8" animated />
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Close, FullScreen, RefreshRight, Share, WarningFilled } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { RefreshRight, Share, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import CausalGraph from '@/components/charts/CausalGraph.vue'
+import GraphHistoryWall from '@/components/charts/GraphHistoryWall.vue'
 import { getAssessment } from '@/api/assessments.js'
+import { useUserStore } from '@/stores/user.js'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
+
+const HISTORY_PREFIX = 'adc-causalrisk:graph-history'
+const HISTORY_LIMIT = 12
+
+/**
+ * 历史图谱按当前账号隔离：同一浏览器切换账号/角色后，
+ * 只能看到自己打开过的图谱，不会串到别人的数据。
+ */
+const historyKey = computed(() => {
+  const identity = userStore.id ?? userStore.username ?? 'anonymous'
+  return `${HISTORY_PREFIX}:${identity}`
+})
 
 const inputId = ref('')
 const loading = ref(false)
 const assessment = ref(null)
-const immersive = ref(false)
 const graphKey = ref(0)
 const viewportHeight = ref(window.innerHeight)
 /** 载入失败的原文（null = 没有错误） */
 const loadError = ref('')
+/** 本地历史图谱：只保存引用，打开时重新向后端请求完整结果。 */
+const history = ref([])
+
+// ---- 抽屉 ----
+const graphDrawerOpen = ref(false)
+const isNarrow = ref(false)
+const drawerWidth = computed(() => (isNarrow.value ? '100%' : '1040px'))
+const drawerTitle = computed(() =>
+  assessment.value
+    ? `个体因果网络 · 评估 #${assessment.value.assessmentId}`
+    : '个体因果网络'
+)
 
 /** 请求序号守卫：只让最新的载入请求写状态 */
 let requestSeq = 0
@@ -101,26 +147,16 @@ const graph = computed(() => assessment.value?.agentResult?.graph || null)
 const nodes = computed(() => graph.value?.nodes || [])
 const edges = computed(() => graph.value?.edges || [])
 
-const canvasHeight = computed(() =>
-  immersive.value ? Math.max(360, viewportHeight.value - 200) : 560
-)
+const canvasHeight = computed(() => Math.max(420, viewportHeight.value - 330))
 
 function onResize() {
   viewportHeight.value = window.innerHeight
-}
-
-function toggleImmersive() {
-  immersive.value = !immersive.value
+  isNarrow.value = window.innerWidth < 1200
 }
 
 /** 空态里的引导：没有评估 ID 的人，最可能从待办复核页开始。 */
 function goReviews() {
   router.push('/reviews')
-}
-
-/** 沉浸模式再按 Esc 也能退出（全屏时用户的第一反应通常是 Esc）。 */
-function onKeydown(event) {
-  if (event.key === 'Escape' && immersive.value) toggleImmersive()
 }
 
 /** 重新排布：换 key 让图重新跑一次力导向布局 */
@@ -134,6 +170,11 @@ async function load() {
     ElMessage.warning('请输入有效的评估 ID')
     return
   }
+  await loadAssessment(id)
+}
+
+/** 载入一张图谱：成功则打开抽屉、写入历史并把 URL 同步为 ?assessmentId=。 */
+async function loadAssessment(id) {
   // 请求序号：连续载入两个 ID 时，只有最后一次的响应能写入页面
   const seq = ++requestSeq
   loading.value = true
@@ -142,6 +183,10 @@ async function load() {
     const data = await getAssessment(id)
     if (seq !== requestSeq) return
     assessment.value = data
+    inputId.value = String(id)
+    rememberHistory(data)
+    router.replace({ query: { ...route.query, assessmentId: String(id) } })
+    graphDrawerOpen.value = true
     if (!data?.agentResult?.graph?.nodes?.length) {
       ElMessage.warning('这次评估没有返回因果图（可能被 BLOCKED）')
     }
@@ -155,6 +200,91 @@ async function load() {
   }
 }
 
+/** 只保留引用字段；旧版本缓存里的图谱、风险等级和统计一并丢弃。 */
+function historyRef(item) {
+  const assessmentId = Number(item?.assessmentId)
+  if (!Number.isInteger(assessmentId) || assessmentId <= 0) return null
+  const subjectId = Number(item?.subjectId)
+  return {
+    assessmentId,
+    subjectId: Number.isInteger(subjectId) && subjectId > 0 ? subjectId : null,
+    createdAt: item?.createdAt || item?.savedAt || null,
+    savedAt: item?.savedAt || new Date().toISOString()
+  }
+}
+
+/** 读取本机历史引用（仅当前账号），顺手清理旧版敏感缓存。 */
+function readHistory() {
+  try {
+    const raw = window.localStorage.getItem(historyKey.value)
+    const list = raw ? JSON.parse(raw) : []
+    const refs = Array.isArray(list) ? list.map(historyRef).filter(Boolean).slice(0, HISTORY_LIMIT) : []
+    if (raw) {
+      window.localStorage.setItem(historyKey.value, JSON.stringify(refs))
+    }
+    return refs
+  } catch {
+    return []
+  }
+}
+
+/** 记入历史（按评估 ID 去重、最新在前、最多 12 条引用）。 */
+function rememberHistory(data) {
+  const graphValue = data?.agentResult?.graph
+  if (!graphValue?.nodes?.length) return
+  const entry = historyRef({
+    assessmentId: data.assessmentId,
+    subjectId: data.subjectId,
+    createdAt: data.createdAt,
+    savedAt: new Date().toISOString()
+  })
+  if (!entry) return
+  const next = [
+    entry,
+    ...history.value.filter((item) => item.assessmentId !== entry.assessmentId)
+  ].slice(0, HISTORY_LIMIT)
+  history.value = next
+  try {
+    window.localStorage.setItem(historyKey.value, JSON.stringify(next))
+  } catch {
+    // 配额不足：只保留最近几张，避免整页不可用
+    try {
+      window.localStorage.setItem(historyKey.value, JSON.stringify(next.slice(0, 6)))
+    } catch {
+      // 忽略
+    }
+  }
+}
+
+/** 从历史卡片打开：与输入框载入完全同一条路径（同一抽屉动画）。 */
+function openHistory(item) {
+  if (!item?.assessmentId) return
+  loadAssessment(item.assessmentId)
+}
+
+async function clearHistory() {
+  try {
+    await ElMessageBox.confirm(
+      '清空后只影响本机浏览历史，不影响评估数据。确定清空吗？',
+      '清空历史图谱',
+      {
+        confirmButtonText: '清空',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch {
+    return
+  }
+  history.value = []
+  try {
+    window.localStorage.removeItem(historyKey.value)
+  } catch {
+    // 忽略
+  }
+  ElMessage.success('已清空历史图谱')
+}
+
 /** 把后端的 400/403/404/网络错误翻译成页面上的可读提示。 */
 function describeLoadError(problem, id) {
   if (!problem) return `评估 #${id} 载入失败，请稍后重试。`
@@ -165,18 +295,24 @@ function describeLoadError(problem, id) {
 }
 
 onMounted(() => {
+  isNarrow.value = window.innerWidth < 1200
   window.addEventListener('resize', onResize)
-  window.addEventListener('keydown', onKeydown)
+  // 清理旧版本的共享 key：它没有账号隔离，不能再读取/保留
+  try {
+    window.localStorage.removeItem(HISTORY_PREFIX)
+  } catch {
+    // 忽略
+  }
+  history.value = readHistory()
   const fromQuery = route.query.assessmentId
   if (fromQuery) {
     inputId.value = String(fromQuery)
-    load()
+    loadAssessment(Number(fromQuery))
   }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
-  window.removeEventListener('keydown', onKeydown)
 })
 </script>
 
@@ -191,64 +327,40 @@ onBeforeUnmount(() => {
   width: 180px;
 }
 
-.stage {
-  padding: 16px 18px 14px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--r-xl);
-  box-shadow: var(--shadow-card);
-}
-
-.stage--immersive {
-  position: fixed;
-  inset: 0;
-  z-index: 3000;
-  border-radius: 0;
-  padding: 16px 20px;
+/* ---- 历史图谱引导条 ---- */
+.graph-intro {
   display: flex;
-  flex-direction: column;
-  overflow: auto;
-}
-
-/* 沉浸模式的退出按钮：与「重新排布」同一套极简风格——无底色、灰字，hover 才变色 */
-.stage__exit {
-  position: fixed;
-  top: 16px;
-  right: 20px;
-  z-index: 3001;
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--muted, #637f91);
-  background: transparent;
-  border: none;
-  border-radius: var(--r-sm, 10px);
-  cursor: pointer;
-  transition:
-    color var(--dur-fast, 120ms) var(--ease-out, ease-out),
-    background-color var(--dur-fast, 120ms) var(--ease-out, ease-out);
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: rgba(255, 255, 255, 0.72);
 }
 
-.stage__exit:hover {
-  color: var(--brand-600, #0a73ad);
-  background: var(--brand-50, #e7f4fb);
+.graph-intro__text {
+  min-width: 0;
 }
 
-.stage__exit:focus-visible {
-  outline: 2px solid var(--brand-600, #0a73ad);
-  outline-offset: 2px;
+.graph-intro__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
 }
 
-.stage__exit .el-icon {
-  font-size: 16px;
+.graph-intro__desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
 }
 
-/* 退出按钮固定在右上角，沉浸时让标题栏右侧让出空间，避免压住风险标签 */
-.stage--immersive .stage__head {
-  padding-right: 180px;
+/* ---- 抽屉里的图谱卡片 ---- */
+.stage {
+  padding: 4px 2px 0;
 }
 
 .stage__head {
@@ -257,12 +369,14 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .stage__meta {
   display: flex;
   align-items: baseline;
   gap: 14px;
+  flex-wrap: wrap;
   font-size: 13px;
   color: var(--muted);
 }
@@ -283,6 +397,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
   margin-top: 10px;
   font-size: 12px;
   color: var(--soft);

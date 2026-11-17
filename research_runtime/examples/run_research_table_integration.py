@@ -211,7 +211,7 @@ def main():
                 results = verify_sessions(root, ready, bindings, trained)
     rows = [json.loads(line) for line in (output / "python.jsonl").read_text(encoding="utf-8").splitlines()]
     if trained:
-        require(len(rows) == 1 and rows[0]["runId"] == "run-trained-demo-seven"
+        require(len(rows) == 1 and rows[0]["runId"] == bindings["cases"]["seven"]["request"]["runId"]
                 and rows[0]["status"] == "COMPLETED" and rows[0]["directCifCalls"] == 1
                 and rows[0]["explanationCifCalls"] >= 2, "Unexpected trained-model execution count")
     else:

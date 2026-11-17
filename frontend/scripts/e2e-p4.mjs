@@ -61,6 +61,27 @@ const ADMIN_SUBJECTS = {
 
 const QC_STATS = { pendingCount: 3, approvedCount: 18, rejectedCount: 2 }
 
+/** GET /api/dashboard/summary 的形状（与 BusinessQueries.dashboard 一致）。 */
+const DASHBOARD = {
+  subjects: 42,
+  pendingReview: 3,
+  highRisk: 2,
+  todayFollowups: 5,
+  overdueFollowups: 1,
+  followupPreviewLimit: 100,
+  subjectStates: [
+    { status: 'ACTIVE', total: 5 },
+    { status: 'ARCHIVED', total: 1 }
+  ],
+  trend: [
+    { date: daysAgo(0).slice(0, 10), total: 1 },
+    { date: daysAgo(1).slice(0, 10), total: 2 },
+    { date: daysAgo(3).slice(0, 10), total: 1 },
+    { date: daysAgo(5).slice(0, 10), total: 1 }
+  ],
+  followups: []
+}
+
 const AUDIT = [
   { id: 9, actorId: 4, eventType: 'ASSESSMENT_REVIEW', traceId: 'trace-9', summary: '记录人工业务复核', timestamp: daysAgo(0) },
   { id: 8, actorId: 1, eventType: 'ASSESSMENT_REVIEW', traceId: 'trace-8', summary: '记录人工业务复核', timestamp: daysAgo(0) },
@@ -102,6 +123,11 @@ async function loginAs(role, handler) {
     if (path === '/api/auth/login' || path === '/api/me') {
       return req.respond({ status: 200, contentType: 'application/json', body: envelope(USERS[role]) })
     }
+    // 未桩的业务接口：后端 8080 在线时若放行会拿到 401 → request.js 跳登录，断言全部失效。
+    // 这里统一回 403（有权限提示、不跳登录），与本套件的桩策略一致。
+    if (path.startsWith('/api/')) {
+      return req.respond({ status: 403, contentType: 'application/json', body: envelope(null) })
+    }
     return req.continue()
   })
 
@@ -123,6 +149,7 @@ async function loginAs(role, handler) {
 try {
   // ---------------- 管理员大屏 ----------------
   const { page, errors } = await loginAs('admin', (path) => {
+    if (path === '/api/dashboard/summary') return { body: DASHBOARD }
     if (path === '/api/subjects') return { body: ADMIN_SUBJECTS }
     if (path === '/api/qc/stats') return { body: QC_STATS }
     if (path === '/api/audit-logs') return { body: AUDIT }
@@ -137,15 +164,15 @@ try {
   const metricValues = await page.evaluate(() =>
     [...document.querySelectorAll('.metric__value')].map((n) => n.textContent.trim())
   )
-  check('四个指标来自真实接口', metricValues.join(',') === '42,3,2,5', metricValues.join(','))
+  check('四个指标来自 dashboard summary', metricValues.join(',') === '42,3,2,5', metricValues.join(','))
   check('两个 ECharts 图表渲染', true, 'canvas=2')
   const auditRows = await page.evaluate(() => document.querySelectorAll('.audit .el-table__row').length)
   check('审计流渲染（上限 8 条）', auditRows === 5, `rows=${auditRows}`)
   await page.screenshot({ path: join(shotDir, 'p4-admin.png'), fullPage: true })
 
-  // 大屏导航：审计日志
+  // 侧边栏导航：审计日志
   await page.evaluate(() => {
-    const item = [...document.querySelectorAll('.screen__nav-item')].find((n) =>
+    const item = [...document.querySelectorAll('.el-menu-item')].find((n) =>
       n.textContent.includes('审计日志')
     )
     item?.click()
@@ -163,7 +190,16 @@ try {
 
   // ---------------- 患者：A 未绑定档案 ----------------
   const a = await loginAs('patient', (path) => {
-    if (path === '/api/subjects') return { body: { items: [], page: 1, pageSize: 1, total: 0 } }
+    if (path === '/api/patients/me/summary') {
+      return {
+        body: {
+          subjectId: null,
+          summary: '您的账号还没有绑定健康档案，绑定后这里会显示医生复核过的结论。',
+          followUpSummary: '绑定档案后，这里会显示医生安排的复诊时间。',
+          limitations: ['如需绑定，请联系您的主治医生。']
+        }
+      }
+    }
     return null
   })
   await a.page.waitForSelector('.hcard__status', { timeout: 20000 })
@@ -172,29 +208,35 @@ try {
     { timeout: 15000 }
   )
   const aText = await a.page.evaluate(() => document.querySelector('.patient-home')?.textContent.replace(/\s+/g, ' '))
-  check('患者未绑定 → 等待复核文案', aText.includes('您的报告正在等待医生复核'), aText.slice(0, 40))
+  check('患者未绑定 → 绑定提示文案', aText.includes('还没有绑定健康档案'), aText.slice(0, 40))
   check('患者未绑定 → 无侧边栏', !(await a.page.evaluate(() => !!document.querySelector('aside.shell__aside'))), '')
   await a.page.screenshot({ path: join(shotDir, 'p4-patient-unbound.png'), fullPage: true })
   await a.page.close()
 
   // ---------------- 患者：B 已绑定 + 有复诊 ----------------
   const b = await loginAs('patient', (path) => {
-    if (path === '/api/subjects') {
+    if (path === '/api/patients/me/summary') {
       return {
         body: {
-          items: [{ id: 1, subjectCode: 'DEMO-001', alias: '张样本', status: 'ACTIVE', dataVersion: 'demo', createdAt: daysAgo(3) }],
-          page: 1,
-          pageSize: 1,
-          total: 1
+          subjectId: 1,
+          subjectCode: 'DEMO-001',
+          alias: '张样本',
+          summary: '医生已复核课程演示结果：演示排序较低。它不能判断您的真实患病风险，请按医嘱随访。',
+          followUpSummary: '下次复诊：2026-12-15 09:00',
+          limitations: ['课程演示结果，不构成诊断。']
         }
       }
     }
-    if (path === '/api/subjects/1/follow-ups') {
+    if (path === '/api/patients/me/follow-up') {
       return {
-        body: [
-          { id: 1, subjectId: 1, scheduledAt: '2026-12-15T01:00:00Z', purpose: '认知量表复查 + 影像', status: 'PLANNED' }
-        ]
+        body: {
+          next: { id: 1, scheduledAt: '2026-12-15T01:00:00Z', purpose: '认知量表复查 + 影像', status: 'PLANNED' },
+          overdueCount: 0
+        }
       }
+    }
+    if (path === '/api/patients/me/doctor') {
+      return { body: { name: '李医生', department: '神经内科', phone: '010-0000' } }
     }
     return null
   })
@@ -206,7 +248,7 @@ try {
 
   // ---------------- 患者：C 403 降级 ----------------
   const c = await loginAs('patient', (path) => {
-    if (path === '/api/subjects') return { status: 403, body: null }
+    if (path === '/api/patients/me/summary') return { status: 403, body: null }
     return null
   })
   await c.page.waitForFunction(
@@ -216,7 +258,7 @@ try {
   const cText = await c.page.evaluate(() => document.querySelector('.hcard__note')?.textContent.trim())
   check('患者 403 → 优雅降级', /暂时无法查看您的档案/.test(cText || ''), (cText || '').slice(0, 40))
   const cStatus = await c.page.evaluate(() => document.querySelector('.hcard__status')?.textContent.trim())
-  check('患者 403 → 仍显示等待复核', /等待医生复核/.test(cStatus || ''), cStatus || '')
+  check('患者 403 → 状态文案一致', /暂时无法查看您的档案/.test(cStatus || ''), cStatus || '')
   await c.page.screenshot({ path: join(shotDir, 'p4-patient-403.png'), fullPage: true })
   await c.page.close()
 } finally {

@@ -7,6 +7,9 @@
  * ============================================================ */
 
   button{cursor:pointer}
+  /* 登录页根节点必须是单元素，<Transition> 才能做页面切换动画；
+     display:contents 让它不产生额外盒子，原布局不受影响。 */
+  .login-shell{display:contents}
   .screen{
     position:relative;min-height:100vh;min-height:100svh;overflow:hidden;display:flex;flex-direction:column;
     --role-accent:#0a73ad;

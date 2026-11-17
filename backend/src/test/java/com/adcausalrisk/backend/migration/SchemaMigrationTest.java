@@ -42,7 +42,8 @@ class SchemaMigrationTest {
 
     /**
      * Application tables. Starts from the 15 baseline tables (Design_Guide.md section 3) and grows
-     * as follow-up migrations land new domains. V7 added {@code qc_audit_record}.
+     * as follow-up migrations land new domains. V7 added {@code qc_audit_record}; V14 added
+     * {@code system_setting}.
      */
     private static final List<String> BASELINE_TABLES =
             List.of(
@@ -66,7 +67,8 @@ class SchemaMigrationTest {
                     "user_preferences",
                     "model_configuration",
                     "research_table_snapshot",
-                    "research_table_task");
+                    "research_table_task",
+                    "system_setting");
 
     /** Flyway's own bookkeeping table; created by Flyway, not by V1. */
     private static final String FLYWAY_HISTORY_TABLE = "flyway_schema_history";
@@ -90,7 +92,9 @@ class SchemaMigrationTest {
         // Every new migration file must be appended here; the list is deliberately explicit so a
         // gap, a re-ordering or a forgotten migration fails loudly instead of silently passing.
         assertThat(versions)
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
+                .containsExactly(
+                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17",
+                        "18", "19");
     }
 
     /**
@@ -191,7 +195,7 @@ class SchemaMigrationTest {
 
     @Test
     void baselineDefinesExactlyTheExpectedTables() throws SQLException {
-        assertThat(BASELINE_TABLES).hasSize(21).doesNotHaveDuplicates();
+        assertThat(BASELINE_TABLES).hasSize(22).doesNotHaveDuplicates();
 
         assertThat(applicationTables())
                 .containsExactlyInAnyOrderElementsOf(
@@ -226,6 +230,24 @@ class SchemaMigrationTest {
                         "patient:PATIENT",
                         "research_doctor:RESEARCHER",
                         "research_doctor:DOCTOR");
+    }
+
+    @Test
+    void seededPatientUsesAssignedDataScope() {
+        String scope =
+                jdbc.queryForObject(
+                        """
+                        SELECT u.data_scope
+                        FROM sys_user u
+                        JOIN user_role ur ON ur.user_id = u.id
+                        JOIN sys_role r ON r.id = ur.role_id
+                        WHERE u.username = 'patient' AND r.role_code = 'PATIENT'
+                        """,
+                        String.class);
+
+        assertThat(scope)
+                .as("patients only read their own summary, never the full cohort")
+                .isEqualTo("ASSIGNED");
     }
 
     @Test

@@ -93,6 +93,11 @@ const props = defineProps({
 
 defineEmits(['close'])
 
+// 诊断日志只在开发环境输出：生产构建控制台保持干净（降级已由 UI 状态提示）。
+const devWarn = (...args) => {
+  if (import.meta.env.DEV) console.warn(...args)
+}
+
 // --- lifecycle scaffolding -------------------------------------------------
 const listenerDisposers = []
 const pendingTimeouts = new Set()
@@ -141,7 +146,8 @@ const MODEL_URLS = [
   'https://cdn.jsdelivr.net/gh/itayinbarr/brainproject@2929e94f521a8ddceab26bc100a98dc06b0da060/brain-atlas/models/brain.glb',
   'https://raw.githubusercontent.com/itayinbarr/brainproject/2929e94f521a8ddceab26bc100a98dc06b0da060/brain-atlas/models/brain.glb'
 ];
-const DRACO_PATH = 'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/libs/draco/';
+// Draco 解码器随 public/draco 一起发布：内网/离线环境不再依赖 jsDelivr CDN。
+const DRACO_PATH = `${import.meta.env.BASE_URL}draco/`;
 const ANATOMY_CATEGORIES = new Set(['cortex', 'cerebellum', 'brainstem']);
 const PREFERS_REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const MOBILE_QUERY = window.matchMedia('(max-width: 767px)');
@@ -170,7 +176,33 @@ if (window.matchMedia('(pointer: coarse)').matches) {
   if (hintCopy) hintCopy.textContent = '单指拖动 · 轻触标签查看详情';
 }
 
-const clock = new THREE.Clock();
+// three r16x 起弃用 THREE.Clock；这里用等价实现，保留 getDelta/start/stop/elapsedTime 语义。
+const clock = {
+  startTime: performance.now(),
+  oldTime: performance.now(),
+  elapsedTime: 0,
+  running: true,
+  start() {
+    this.startTime = performance.now();
+    this.oldTime = this.startTime;
+    this.elapsedTime = 0;
+    this.running = true;
+    return this;
+  },
+  stop() {
+    this.getDelta();
+    this.running = false;
+    return this;
+  },
+  getDelta() {
+    if (!this.running) return 0;
+    const now = performance.now();
+    const diff = (now - this.oldTime) / 1000;
+    this.oldTime = now;
+    this.elapsedTime += diff;
+    return diff;
+  },
+};
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
 const root = new THREE.Group();
@@ -270,7 +302,7 @@ function init(){
   try{
     scene.environment = createCoolEnvironment(renderer);
   }catch(error){
-    console.warn('[Crystal Brain] environment unavailable', error);
+    devWarn('[Crystal Brain] environment unavailable', error);
   }
 
   setupLights();
@@ -486,7 +518,7 @@ function preloadBrain(){
   try {
     renderer.render(scene, camera);
   } catch (error) {
-    console.warn('[Crystal Brain] preload render failed', error);
+    devWarn('[Crystal Brain] preload render failed', error);
   }
 
   // Every device gets the real atlas as a progressive upgrade over the local
@@ -579,14 +611,14 @@ async function loadAnatomy(){
     watchdog = trackTimeout(() => {
       if (settled || state.ready) return;
       settled = true;
-      console.warn('[Crystal Brain] anatomy transfer stalled; using procedural fallback');
+      devWarn('[Crystal Brain] anatomy transfer stalled; using procedural fallback');
       buildFallbackBrain();
       finishLoading(false);
     }, MODEL_LITE_QUERY.matches ? 45000 : 30000);
   };
 
   const failover = (error) => {
-    console.warn('[Crystal Brain] anatomy request failed', MODEL_URLS[urlIndex - 1], error && error.message || error);
+    devWarn('[Crystal Brain] anatomy request failed', MODEL_URLS[urlIndex - 1], error && error.message || error);
     if (settled) return;
     if (urlIndex < MODEL_URLS.length) {
       attempt(urlIndex++);
@@ -653,7 +685,7 @@ function buildRealBrain(gltf){
   });
 
   if (!pieces.length) {
-    console.warn('[Crystal Brain] no cortex geometry found in atlas; using procedural shape');
+    devWarn('[Crystal Brain] no cortex geometry found in atlas; using procedural shape');
     buildFallbackBrain();
     return false;
   }

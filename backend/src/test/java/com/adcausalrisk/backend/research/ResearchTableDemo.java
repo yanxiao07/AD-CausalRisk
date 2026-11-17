@@ -106,8 +106,8 @@ public final class ResearchTableDemo {
             jdbc.update(connection -> {
                 var statement = connection.prepareStatement("""
                     INSERT INTO research_table_snapshot(subject_id,authorized_user_id,request_json,wire_sha256,
-                        request_sha256,model_json,data_scope,input_sha256,context_sha256)
-                    VALUES(?,?,?,?,?,?,'CONSTRUCTED_VALIDATION',?,?)
+                        request_sha256,model_json,data_scope,input_sha256,context_sha256,host_sync_status,host_synced_at)
+                    VALUES(?,?,?,?,?,?,'CONSTRUCTED_VALIDATION',?,?,'SYNCED',CURRENT_TIMESTAMP)
                     """, Statement.RETURN_GENERATED_KEYS);
                 String wire = request.toString();
                 statement.setLong(1, subject);

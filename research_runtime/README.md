@@ -1,10 +1,10 @@
 # 离线研究计算、固定训练与图模型
 
-[表格研究通道](../docs/Research_Table_Agent_Contract.md)复用内存评估与语义校验。课程展示从受控目录核对清单和参数摘要，加载七变量 LR，再评估固定人工快照。[启动说明](../backend/README.md#本地研究任务联调)同时给出使用公开人工参数的契约回归方式。真实患者输入仍待独立准入。
+[表格研究通道](../docs/Research_Table_Agent_Contract.md)复用内存评估与语义校验。模型验证展示从受控目录核对清单和参数摘要，加载七变量 LR，再评估固定人工快照。[启动说明](../backend/README.md#本地研究任务联调)同时给出使用公开人工参数的契约回归方式。真实患者输入仍待独立准入。
 
 [统一表格评估入口](../docs/Table_Assessment_Integration.md)将原许可预测与保存参考SHAP连接成同一输入/模型状态的内存结果，保留来源准入、独立解释权限和失败无部分数值。它是后续真实业务接入的计算步骤，不读取真实数据/参数、不新增HTTP或更换默认服务。
 
-新七/十变量模型的[Python接入候选](../docs/Research_Model_Integration_Candidate.md)区分课程/旧V8 HTTP、离线CLI与现有内存API，提供字段差异和纯标准库人工请求/响应示例。候选不新增服务或共享契约；离线九组合与内存表格六组合的支持边界分别保留。
+新七/十变量模型的[Python接入候选](../docs/Research_Model_Integration_Candidate.md)区分规则引擎/旧V8 HTTP、离线CLI与现有内存API，提供字段差异和纯标准库人工请求/响应示例。候选不新增服务或共享契约；离线九组合与内存表格六组合的支持边界分别保留。
 
 同一人工解析案例的[预测/解释绑定候选](../docs/Prediction_Explanation_Binding_Candidate.md)复用原精确分组Shapley与单次调度，附固定JSON及16项错绑/数值检查；只需原锁NumPy。它不是实际研究模型运行或生产报告API，LIME与真实宿主证据保持未执行/未核验。
 
@@ -76,7 +76,7 @@ py -3.11 -m venv .venv-primitives
 
 发布前的本地验收从只含Git源码的副本，在新建Windows/Python 3.11.9和3.12.13环境分别通过35+123项检查，零跳过；数值环境除环境自带工具外只安装NumPy 2.4.6。工作流通过actionlint检查。该本地记录不包含Linux与GitHub托管环境结果；远端记录以对应提交的Actions为准。
 
-接入候选发布时将16项人工预测/解释绑定测试加入现有NumPy作业，没有新增依赖或执行真实模型。Windows/Python 3.11.9和3.12.13的Git源码副本各通过35+139项，零跳过；原35+123项记录保留为上一发布的范围。
+接入候选发布时将16项人工预测/解释绑定测试加入现有NumPy任务，没有新增依赖或执行真实模型。Windows/Python 3.11.9和3.12.13的Git源码副本各通过35+139项，零跳过；原35+123项记录保留为上一发布的范围。
 
 ## 既有研究与源码移植范围
 
@@ -102,7 +102,7 @@ py -3.11 -m venv .venv-research
 .venv-research/Scripts/python.exe -m unittest research_runtime.tests.test_runtime research_runtime.tests.test_training -v
 ```
 
-Linux/macOS将解释器路径换成`.venv-research/bin/python`。已验证的是Windows/Python 3.11；新机器仍需运行这些检查。锁文件与现有模型清单记录的版本相同，不修改课程服务依赖。14项原验收测试使用九次小型合成拟合及一次分类器状态拟合；13项新训练测试使用90人构造队列、42次基础/12次校准拟合验证两条路径，不扫描或加载真实交付目录。构造拟合不计入真实研究账本。
+Linux/macOS将解释器路径换成`.venv-research/bin/python`。已验证的是Windows/Python 3.11；新机器仍需运行这些检查。锁文件与现有模型清单记录的版本相同，不修改合成验证服务依赖。14项原验收测试使用九次小型合成拟合及一次分类器状态拟合；13项新训练测试使用90人构造队列、42次基础/12次校准拟合验证两条路径，不扫描或加载真实交付目录。构造拟合不计入真实研究账本。
 
 ## 图模块环境与检查
 
@@ -208,7 +208,7 @@ Python API：`run_nested(frame, output, specification, families, splits=..., exi
 .venv-research-graph/Scripts/python.exe -B -m research_runtime.examples.inmemory_constructed
 ```
 
-图/完整表格研究编排复用既有图聚合模块，因此使用图环境；单独表格参考/归因适配不依赖Torch。Linux、其他Python版本及未验收机器须另行核对，现有课程CI不会自动运行上述可选研究检查。真实输入/参数/私有折、宿主单次读取封装及内部授权不随源码发布；本地构造通过不等于真实业务接通或临床验证。
+图/完整表格研究编排复用既有图聚合模块，因此使用图环境；单独表格参考/归因适配不依赖Torch。Linux、其他Python版本及未验收机器须另行核对，现有Python 验证 CI不会自动运行上述可选研究检查。真实输入/参数/私有折、宿主单次读取封装及内部授权不随源码发布；本地构造通过不等于真实业务接通或临床验证。
 
 ## 训练扰动研究原语（2026-10-28）
 
