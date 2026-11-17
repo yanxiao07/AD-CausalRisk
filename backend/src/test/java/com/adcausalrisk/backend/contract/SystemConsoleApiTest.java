@@ -50,6 +50,25 @@ class SystemConsoleApiTest {
     }
 
     @Test
+    void systemInfoReportsResearchHostHealthWithoutLegacyAgentField() throws Exception {
+        MockHttpSession admin = login("admin");
+
+        MvcResult result =
+                mockMvc.perform(get("/api/system/info").session(admin))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        JsonNode body = bodyOf(result);
+        assertThat(ContractSchemas.validateResponse(body, "/api/system/info", "get", 200))
+                .isEmpty();
+
+        JsonNode data = body.get("data");
+        assertThat(data.has("researchHost")).isTrue();
+        assertThat(data.has("python")).isFalse();
+        assertThat(data.get("researchHost").isObject()).isTrue();
+        assertThat(data.get("researchHost").get("available").isBoolean()).isTrue();
+    }
+
+    @Test
     void researchHostCanBeConfiguredWithoutEchoingTheToken() throws Exception {
         MockHttpSession admin = login("admin");
 

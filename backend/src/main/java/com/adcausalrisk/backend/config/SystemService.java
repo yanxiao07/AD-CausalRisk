@@ -1,6 +1,5 @@
 package com.adcausalrisk.backend.config;
 
-import com.adcausalrisk.backend.agent.RestAgentClient;
 import com.adcausalrisk.backend.audit.AuditService;
 import com.adcausalrisk.backend.common.*;
 import com.adcausalrisk.backend.research.ResearchTableClient;
@@ -18,7 +17,6 @@ import java.util.*;
 public class SystemService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
-    private final RestAgentClient agent;
     private final String commit;
     private final SystemSettingService settings;
     private final AuditService audit;
@@ -27,14 +25,12 @@ public class SystemService {
     public SystemService(
             JdbcTemplate jdbc,
             ObjectMapper json,
-            RestAgentClient agent,
             @Value("${build.commit:UNKNOWN}") String commit,
             SystemSettingService settings,
             AuditService audit,
             ResearchTableClient researchClient) {
         this.jdbc = jdbc;
         this.json = json;
-        this.agent = agent;
         this.commit = commit;
         this.settings = settings;
         this.audit = audit;
@@ -48,20 +44,7 @@ public class SystemService {
         result.put("gitCommit", commit);
         result.put("javaVersion", System.getProperty("java.version"));
         result.put("contractVersion", "business-v1.0-20261115");
-        try {
-            long start = System.nanoTime();
-            result.put(
-                    "python",
-                    Map.of(
-                            "health",
-                            agent.health(),
-                            "latencyMs",
-                            (System.nanoTime() - start) / 1000000,
-                            "available",
-                            true));
-        } catch (Exception unavailable) {
-            result.put("python", Map.of("available", false, "message", "算法服务暂不可用"));
-        }
+        result.put("researchHost", researchClient.health());
         result.put(
                 "models",
                 jdbc.queryForList(

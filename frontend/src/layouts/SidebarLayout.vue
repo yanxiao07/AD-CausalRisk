@@ -1,10 +1,17 @@
 <template>
-  <div class="shell" :class="{ 'is-collapsed': collapsed }">
+  <div class="shell" :class="{ 'is-collapsed': collapsed, 'is-mobile-open': mobileOpen }">
+    <button
+      v-if="mobileOpen"
+      class="shell__scrim"
+      type="button"
+      aria-label="关闭导航菜单"
+      @click="closeMobile"
+    />
     <aside class="shell__aside">
       <div class="brand">
         <span class="brand__mark" aria-hidden="true">AD</span>
         <transition name="fade">
-          <span v-if="!collapsed" class="brand__text">
+          <span v-if="!isCollapsed" class="brand__text">
             <strong>CausalRisk</strong>
             <small>因果风险评估</small>
           </span>
@@ -13,7 +20,7 @@
 
       <el-menu
         :default-active="activeKey"
-        :collapse="collapsed"
+        :collapse="collapsed && !isNarrow"
         :collapse-transition="false"
         class="shell__menu"
         @select="onSelect"
@@ -38,6 +45,16 @@
     <div class="shell__body">
       <header class="topbar">
         <div class="topbar__left">
+          <el-button
+            class="topbar__menu"
+            text
+            aria-label="打开导航菜单"
+            @click="openMobile"
+          >
+            <span class="hamburger" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </span>
+          </el-button>
           <el-breadcrumb separator="/">
             <el-breadcrumb-item>{{ roleLabel }}</el-breadcrumb-item>
             <el-breadcrumb-item>{{ route.meta?.title || '工作台' }}</el-breadcrumb-item>
@@ -111,7 +128,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
@@ -135,8 +152,31 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const collapsed = ref(false)
+const mobileOpen = ref(false)
+const isNarrow = ref(typeof window !== 'undefined' && window.innerWidth < 1024)
 const profileOpen = ref(false)
 const settingsOpen = ref(false)
+
+/** 桌面可收起；窄屏始终显示完整菜单（抽屉内的图标列表难用）。 */
+const isCollapsed = computed(() => collapsed.value && !isNarrow.value)
+
+function openMobile() {
+  mobileOpen.value = true
+}
+
+function closeMobile() {
+  mobileOpen.value = false
+}
+
+function onResize() {
+  isNarrow.value = window.innerWidth < 1024
+  if (!isNarrow.value) mobileOpen.value = false
+}
+
+watch(
+  () => route.fullPath,
+  () => closeMobile()
+)
 
 const ROLE_LABELS = { ADMIN: '管理员', RESEARCHER: '研究员', DOCTOR: '医生', PATIENT: '患者' }
 const roleLabel = computed(() => ROLE_LABELS[userStore.primaryRole] ?? '访客')
@@ -156,6 +196,7 @@ const activeKey = computed(() => {
 function onSelect(key) {
   const item = items.value.find((entry) => entry.key === key)
   if (item?.ready && item.path) router.push(item.path)
+  closeMobile()
 }
 
 async function onCommand(command) {
@@ -191,6 +232,11 @@ onMounted(() => {
   // 首屏应用本机缓存的偏好，避免设置生效延迟
   const local = readLocalPreferences()
   if (local) applyPreferences(local)
+  window.addEventListener('resize', onResize, { passive: true })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize)
 })
 </script>
 
@@ -306,6 +352,42 @@ onMounted(() => {
   color: var(--soft);
 }
 
+.shell__scrim {
+  display: none;
+}
+
+.topbar__menu {
+  display: none;
+}
+
+.hamburger {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 18px;
+}
+
+.hamburger span {
+  display: block;
+  height: 2px;
+  width: 100%;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topbar__left :deep(.el-breadcrumb) {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .shell__body {
   display: flex;
   flex-direction: column;
@@ -380,6 +462,74 @@ onMounted(() => {
   flex: 1;
   min-width: 0;
   padding: clamp(20px, 3vw, 36px) clamp(16px, 3vw, 36px) 48px;
+}
+
+@media (max-width: 1023px) {
+  .shell__aside,
+  .shell.is-collapsed .shell__aside {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    width: 264px;
+    max-width: 86vw;
+    transform: translateX(-105%);
+    transition: transform var(--dur-base) var(--ease-out);
+    box-shadow: 18px 0 40px rgba(8, 31, 48, 0.18);
+  }
+
+  .shell.is-mobile-open .shell__aside {
+    transform: translateX(0);
+  }
+
+  .shell__scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    border: 0;
+    background: rgba(8, 31, 48, 0.38);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .topbar__menu {
+    display: inline-flex;
+    margin-left: -6px;
+  }
+
+  .topbar {
+    height: 56px;
+    padding: 0 12px;
+  }
+
+  .topbar__right {
+    gap: 4px;
+  }
+
+  .role-chip,
+  .user__name,
+  .shell__aside-foot {
+    display: none;
+  }
+
+  .shell__main {
+    padding: 16px 12px 40px;
+  }
+
+  .brand {
+    padding-bottom: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .topbar {
+    padding: 0 10px;
+  }
+
+  .shell__main {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
 }
 
 .fade-enter-active,

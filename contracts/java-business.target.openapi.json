@@ -5557,7 +5557,7 @@
                         "contractVersion": {
                           "type": "string"
                         },
-                        "python": {
+                        "researchHost": {
                           "type": "object",
                           "additionalProperties": true
                         },
@@ -5591,7 +5591,7 @@
                         "gitCommit",
                         "javaVersion",
                         "contractVersion",
-                        "python",
+                        "researchHost",
                         "models"
                       ],
                       "additionalProperties": false

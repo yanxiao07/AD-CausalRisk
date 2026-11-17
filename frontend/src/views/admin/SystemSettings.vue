@@ -44,6 +44,11 @@
               {{ hostState.label }}
             </strong>
             <span class="health-tile__meta">{{ host?.baseUrl || '尚未配置服务地址' }}</span>
+            <span class="health-tile__meta">
+              {{ hostHealth?.available
+                ? `响应 ${hostHealth.latencyMs ?? '—'} ms · HTTP ${hostHealth.httpStatus ?? '—'}`
+                : hostHealth?.message || '等待探测' }}
+            </span>
             <span class="health-tile__meta">动态快照 · 读取超时 {{ host?.readTimeoutSeconds ?? 120 }} 秒</span>
           </div>
 
@@ -265,10 +270,18 @@ const policySaving = ref(false)
 
 const host = ref(null)
 const hostSaving = ref(false)
+const hostHealth = computed(() => info.value?.researchHost || null)
 const hostState = computed(() => {
   if (!host.value) return { ok: false, label: '未配置' }
   if (!host.value.enabled) return { ok: false, label: '已停用' }
-  return host.value.configured ? { ok: true, label: '已配置' } : { ok: false, label: '待补全' }
+  if (!host.value.configured) return { ok: false, label: '待补全' }
+  const health = hostHealth.value
+  if (!health) return { ok: true, label: '已配置' }
+  if (health.available) {
+    const latency = Number(health.latencyMs)
+    return { ok: true, label: Number.isFinite(latency) ? `在线 · ${latency} ms` : '在线' }
+  }
+  return { ok: false, label: health.message || '不可达' }
 })
 const hostForm = reactive({
   baseUrl: '',
@@ -362,6 +375,7 @@ async function saveHost() {
     hostForm.bearerToken = ''
     hostForm.baseUrl = saved?.baseUrl || ''
     ElMessage.success('研究宿主已保存')
+    await loadInfo()
   } finally {
     hostSaving.value = false
   }

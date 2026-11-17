@@ -111,6 +111,29 @@ function goBack() {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
   flex-shrink: 0;
+}
+
+@media (max-width: 767px) {
+  .page-header {
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .page-header__title {
+    font-size: 24px;
+  }
+
+  .page-header__extra {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .page-header__extra :deep(.el-button) {
+    flex: 1 1 auto;
+    margin-left: 0;
+  }
 }
 </style>

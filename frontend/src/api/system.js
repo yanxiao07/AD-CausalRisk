@@ -1,7 +1,7 @@
 import request from './request.js'
 
 /**
- * GET /api/system/info —— 运行时版本 / Python 健康 / 模型开关（仅 ADMIN）。
+ * GET /api/system/info —— 运行时版本 / 研究宿主健康 / 模型开关（仅 ADMIN）。
  */
 export function getSystemInfo() {
   return request.get('/system/info')
