@@ -546,6 +546,26 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void dualRoleResearcherWithGlobalReadCannotReviewWithoutSubjectGrant() throws Exception {
+        var request = fixture("request-seven");
+        long snapshot = snapshot(request, fixture("response-seven"), "admin");
+        reply(request, fixture("response-seven"), 200, false);
+        JsonNode task = body(submit(snapshot, "dual-role", actor("admin", "ADMIN"))).get("data");
+        long taskId = task.get("taskId").asLong();
+
+        jdbc.update("DELETE FROM subject_permission WHERE user_id=?", userId("doctor"));
+        jdbc.update("UPDATE sys_user SET data_scope='ALL' WHERE id=?", userId("doctor"));
+
+        var dualRole = actor("doctor", "DOCTOR", "RESEARCHER");
+        JsonNode queue = body(mvc.perform(get(PATH + "/reviews").with(authentication(dualRole)))).get("data");
+        assertThat(queue.get("total").asLong()).isZero();
+        mvc.perform(post(PATH + "/" + taskId + "/review")
+                        .with(authentication(dualRole)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"CONFIRMED\",\"comment\":\"无档案授权不得复核\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void reviewQueueRejectsNonClinicalRoles() throws Exception {
         mvc.perform(get(PATH + "/reviews").with(authentication(actor("researcher", "RESEARCHER"))))
                 .andExpect(status().isForbidden());

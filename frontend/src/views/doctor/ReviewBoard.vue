@@ -245,7 +245,7 @@
 
         <CausalGraph v-if="current.agentResult?.graph" :graph="current.agentResult.graph" :height="360" />
 
-        <div v-if="current.reviewStatus === 'PENDING'" class="review-form">
+        <div v-if="current.reviewStatus === 'PENDING' && canReviewLegacy" class="review-form">
           <el-input
             v-model="comment"
             type="textarea"
@@ -270,6 +270,15 @@
             </el-button>
           </div>
         </div>
+
+        <el-alert
+          v-else-if="current.reviewStatus === 'PENDING'"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="当前账号没有该档案的临床复核授权"
+          description="可查看结果，但不能提交复核；请联系管理员授予该档案 VIEW 或 MANAGE 权限。"
+        />
 
         <el-alert
           v-else
@@ -381,6 +390,7 @@ import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import CausalGraph from '@/components/charts/CausalGraph.vue'
 import { getAssessment, getAssessmentTaskInput, listAssessments, reviewAssessment } from '@/api/assessments.js'
+import { getSubjectCapabilities } from '@/api/subjects.js'
 import { listResearchReviews, reviewResearchTask } from '@/api/research.js'
 import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
 import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
@@ -434,6 +444,8 @@ async function loadCurrentWindow() {
 const detailLoading = ref(false)
 const comment = ref('')
 const submitting = ref('')
+/** 旧规则复核同样要求档案级临床写权限；全局研究读取不能升级为复核权。 */
+const canReviewLegacy = ref(false)
 
 /** 列表请求序号：翻页/刷新竞态时只接受最新一次响应 */
 let requestSeq = 0
@@ -515,6 +527,13 @@ async function openReview(row) {
     const detail = await getAssessment(row.assessmentId)
     current.value = detail
     comment.value = ''
+    canReviewLegacy.value = false
+    try {
+      const caps = await getSubjectCapabilities(detail.subjectId ?? row.subjectId)
+      canReviewLegacy.value = Boolean(caps?.writeClinical)
+    } catch {
+      canReviewLegacy.value = false
+    }
     drawerOpen.value = true
     loadCurrentWindow()
     // 打开哪条复核就写到 URL：从报告页返回时能直接回到这个抽屉

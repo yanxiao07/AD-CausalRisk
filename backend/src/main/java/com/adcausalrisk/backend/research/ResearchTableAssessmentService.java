@@ -684,6 +684,9 @@ class ResearchTableAssessmentService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "复核意见必填且不能超过 2000 字");
         }
         Task task = find(taskId, principal);
+        if (!hasExplicitReviewGrant(principal.userId(), task.subjectId())) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
         if (!"COMPLETED".equals(task.status())) {
             throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "仅已完成的研究任务可复核");
         }
@@ -857,6 +860,15 @@ class ResearchTableAssessmentService {
         if (principal.userId() != owner || !access.canReadRawScores(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
+    }
+
+    /** Clinical review is narrower than research read: an explicit VIEW/MANAGE grant is required. */
+    private boolean hasExplicitReviewGrant(long userId, long subjectId) {
+        Long count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM subject_permission
+                WHERE subject_id=? AND user_id=? AND permission_type IN ('VIEW','MANAGE')
+                """, Long.class, subjectId, userId);
+        return count != null && count > 0;
     }
 
     private static void requireReviewRole(AppUserPrincipal principal) {
