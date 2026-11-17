@@ -5,7 +5,9 @@ import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,10 +18,13 @@ import java.io.IOException;
 public class ResearchTableAssessmentController {
     private final ResearchTableAssessmentService service;
     private final ResearchTableProtocol protocol;
+    private final ResearchReportExportService exports;
 
-    ResearchTableAssessmentController(ResearchTableAssessmentService service, ResearchTableProtocol protocol) {
+    ResearchTableAssessmentController(ResearchTableAssessmentService service, ResearchTableProtocol protocol,
+                                      ResearchReportExportService exports) {
         this.service = service;
         this.protocol = protocol;
+        this.exports = exports;
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -183,6 +188,21 @@ public class ResearchTableAssessmentController {
         }
         return Envelope.success(service.review(id, request.decision(), request.comment(),
                 (AppUserPrincipal) auth.getPrincipal()));
+    }
+
+    @GetMapping("/{id}/export")
+    public ResponseEntity<byte[]> export(@PathVariable long id,
+                                         @RequestParam(defaultValue = "pdf") String format,
+                                         Authentication auth) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        var export = exports.export(id, format, (AppUserPrincipal) auth.getPrincipal());
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(export.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + export.filename() + "\"")
+                .body(export.bytes());
     }
 
     @GetMapping("/{id}")

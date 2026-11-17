@@ -47,7 +47,7 @@
 - 新增 `GET /api/research/table-assessment-tasks/history?subjectId=`，按任务时间倒序返回最近 50 条。
 - 新增 `POST /api/research/table-assessment-tasks/{id}/retry`，仅允许 `FAILED`/`OUTCOME_UNKNOWN` 重试。
 - 前端增加同步状态筛选、任务历史表与失败任务重试；刷新页面后历史从后端重建。
-- OpenAPI 操作数增至 72，路径 61。
+- OpenAPI 操作数增至 83，路径 71。
 
 ### P5 产品化文案
 
@@ -76,7 +76,7 @@
 
 ## 验证记录
 
-- 后端：`.\mvnw.cmd -B -ntp clean verify` → 326 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
+- 后端：`.\mvnw.cmd -B -ntp clean verify` → 347 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
 - 前端：`npm run build` → 2388 modules，构建成功。
 - Python：`tests.test_contracts_and_fixture` 5/5；`tests.test_dynamic_host` 6/6。
 - CI：Python research primitives、Java backend、Python service 全部通过。

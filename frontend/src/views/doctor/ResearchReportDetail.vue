@@ -6,7 +6,19 @@
       :subtitle="task ? `研究任务 #${task.taskId} · 快照 #${task.snapshotId}` : '读取该受试者的研究验证结果'"
     >
       <template #extra>
-        <el-button :icon="Download" :disabled="!task" @click="exportReport">导出 JSON</el-button>
+        <el-dropdown :disabled="!task" @command="exportReport">
+          <el-button :icon="Download" :disabled="!task">
+            导出报告
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="pdf">PDF</el-dropdown-item>
+              <el-dropdown-item command="html">HTML</el-dropdown-item>
+              <el-dropdown-item command="json">JSON</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>
     </PageHeader>
@@ -148,7 +160,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Download, Refresh, WarningFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Download, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -191,19 +203,12 @@ const reviewLabel = computed(
     })[task.value?.reviewStatus] || '—'
 )
 
-function exportReport() {
+function exportReport(format) {
   if (!task.value) return
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    task: task.value
-  }
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `research-report-${task.value.taskId}.json`
-  anchor.click()
-  URL.revokeObjectURL(url)
+  window.open(
+    `/api/research/table-assessment-tasks/${task.value.taskId}/export?format=${encodeURIComponent(format)}`,
+    '_blank'
+  )
 }
 
 const statusTitle = computed(() => {
