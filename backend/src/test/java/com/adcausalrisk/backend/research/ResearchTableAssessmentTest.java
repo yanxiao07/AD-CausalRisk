@@ -67,6 +67,8 @@ class ResearchTableAssessmentTest {
     @Autowired ResearchTableProtocol protocol;
     @Autowired ResearchTableAssessmentService service;
     @Autowired ResearchTaskRecovery recovery;
+    @Autowired com.adcausalrisk.backend.config.SystemSettingService settings;
+    @Autowired ResearchTableClient client;
 
     private record Exchange(byte[] request, byte[] response, int status, boolean delay,
                             CountDownLatch started, AtomicReference<String> problem) {}
@@ -549,6 +551,8 @@ class ResearchTableAssessmentTest {
                 .andExpect(status().isForbidden());
         mvc.perform(get(PATH + "/reviews").with(authentication(actor("patient", "PATIENT"))))
                 .andExpect(status().isForbidden());
+        mvc.perform(get(PATH + "/reviews").with(authentication(actor("admin", "ADMIN"))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -671,6 +675,17 @@ class ResearchTableAssessmentTest {
                 """, invalidSubject, userId("admin"), invalid.toString(), "0".repeat(64), "0".repeat(64),
                 "{}", "CONSTRUCTED_VALIDATION", "0".repeat(64), "0".repeat(64));
 
+        ObjectNode controlled = fixture("request-seven");
+        String controlledCode = "DEMO-MIG-CTRL-" + UUID.randomUUID();
+        controlled.put("subjectCode", controlledCode);
+        long controlledSubject = subject(controlledCode);
+        jdbc.update("""
+                INSERT INTO research_table_snapshot(subject_id,authorized_user_id,request_json,wire_sha256,
+                    request_sha256,model_json,data_scope,input_sha256,context_sha256,host_sync_status)
+                VALUES(?,?,?,?,?,?,?,?,?, 'PENDING')
+                """, controlledSubject, userId("admin"), controlled.toString(), "0".repeat(64),
+                "0".repeat(64), "{}", "CONTROLLED_RESEARCH", "0".repeat(64), "0".repeat(64));
+
         JsonNode result = body(mvc.perform(post("/api/research/table-assessment-tasks/snapshots/migrate")
                 .with(authentication(actor("admin", "ADMIN"))))).get("data");
         assertEquals(1, result.get("migrated").asInt());
@@ -688,20 +703,54 @@ class ResearchTableAssessmentTest {
                 "SELECT host_sync_status FROM research_table_snapshot WHERE subject_id=?", String.class, referencedSubject));
         assertEquals("0".repeat(64), jdbc.queryForObject(
                 "SELECT request_sha256 FROM research_table_snapshot WHERE subject_id=?", String.class, referencedSubject));
+        assertEquals("PENDING", jdbc.queryForObject(
+                "SELECT host_sync_status FROM research_table_snapshot WHERE subject_id=?", String.class, controlledSubject));
+        assertEquals("0".repeat(64), jdbc.queryForObject(
+                "SELECT request_sha256 FROM research_table_snapshot WHERE subject_id=?", String.class, controlledSubject));
     }
 
     @Test
-    void adminReadsTheResearchReviewQueueWithoutOwningTheTask() throws Exception {
+    void adminCannotReadOrReviewResearchTasks() throws Exception {
         long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "researcher");
         jdbc.update("""
                 INSERT INTO research_table_task(snapshot_id,run_id,status,created_at,updated_at)
                 VALUES(?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
                 """, snapshot, "run-admin-review", "COMPLETED");
+        long taskId = jdbc.queryForObject(
+                "SELECT id FROM research_table_task WHERE run_id='run-admin-review'", Long.class);
 
-        JsonNode result = body(mvc.perform(get(PATH + "/reviews?status=PENDING")
-                .with(authentication(actor("admin", "ADMIN"))))).get("data");
-        assertEquals(1, result.get("total").asInt());
-        assertEquals("run-admin-review", result.get("items").get(0).get("runId").asText());
+        mvc.perform(get(PATH + "/reviews?status=PENDING")
+                .with(authentication(actor("admin", "ADMIN")))).andExpect(status().isForbidden());
+        mvc.perform(post(PATH + "/" + taskId + "/review")
+                        .with(authentication(actor("admin", "ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"decision\":\"CONFIRMED\",\"comment\":\"管理员不应能复核\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void retryWithoutConfiguredHostLeavesTaskRetryable() throws Exception {
+        var request = fixture("request-seven");
+        long snapshot = snapshot(request, fixture("response-seven"), "admin");
+        var actor = actor("admin", "ADMIN");
+        reply(request, fixture("response-seven"), 200, true);
+        JsonNode failed = body(submit(snapshot, "retry-no-host", actor)).get("data");
+        long taskId = failed.get("taskId").asLong();
+        assertThat(failed.get("status").asText()).isEqualTo("OUTCOME_UNKNOWN");
+
+        settings.saveResearchHost("", "", 120, false, userId("admin"));
+        client.refresh();
+        try {
+            mvc.perform(post(PATH + "/" + taskId + "/retry").with(authentication(actor)))
+                    .andExpect(status().isServiceUnavailable());
+            var row = jdbc.queryForMap(
+                    "SELECT status FROM research_table_task WHERE id=?", taskId);
+            assertThat(row.get("status")).isEqualTo("OUTCOME_UNKNOWN");
+        } finally {
+            // Remove the override so the test profile's 600ms host configuration applies again.
+            jdbc.update("DELETE FROM system_setting WHERE setting_key='research.host'");
+            client.refresh();
+        }
     }
 
     @Test

@@ -276,7 +276,7 @@ class ResearchTableAssessmentService {
                  ORDER BY t.created_at DESC,t.id DESC
                 """, (row, index) -> {
                     try {
-                        return mapTask(row, principal, false);
+                        return mapTask(row, principal);
                     } catch (BusinessException denied) {
                         if (denied.errorCode() == ErrorCode.ACCESS_DENIED) {
                             return null;
@@ -616,6 +616,16 @@ class ResearchTableAssessmentService {
             }
         } catch (IllegalArgumentException invalid) {
             code = "RESEARCH_PROTOCOL_INVALID";
+        } catch (BusinessException unavailable) {
+            if (unavailable.errorCode() == ErrorCode.RESEARCH_UNAVAILABLE) {
+                jdbc.update("""
+                        UPDATE research_table_task
+                        SET status='OUTCOME_UNKNOWN',error_code='RESEARCH_UNAVAILABLE',
+                            result_json=NULL,execution_id=NULL,updated_at=?
+                        WHERE id=? AND status='RUNNING' AND execution_id=?
+                        """, Timestamp.from(clock.instant()), taskId, executionId);
+            }
+            throw unavailable;
         }
         // Only the execution that still owns the task may write its terminal state. A slow
         // attempt that was overtaken by a retry must not overwrite the newer outcome.
@@ -626,12 +636,8 @@ class ResearchTableAssessmentService {
     }
 
     Task find(long id, AppUserPrincipal principal) {
-        return find(id, principal, false);
-    }
-
-    private Task find(long id, AppUserPrincipal principal, boolean allowAdmin) {
         requireArchiveRole(principal);
-        return jdbc.query(TASK_QUERY + " WHERE t.id=?", (row, index) -> mapTask(row, principal, allowAdmin),
+        return jdbc.query(TASK_QUERY + " WHERE t.id=?", (row, index) -> mapTask(row, principal),
                 id).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
     }
 
@@ -640,12 +646,10 @@ class ResearchTableAssessmentService {
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(100, pageSize));
         boolean all = status == null || status.isBlank() || "ALL".equalsIgnoreCase(status);
-        boolean doctor = principal.roleCodes().contains("DOCTOR");
         String reviewFilter = all ? "" : " AND t.review_status=?";
-        String permissionFilter = doctor
-                ? " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
-                        + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))"
-                : "";
+        String permissionFilter =
+                " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
+                        + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))";
         String from = """
                 FROM research_table_task t
                 JOIN research_table_snapshot s ON s.id=t.snapshot_id
@@ -654,7 +658,7 @@ class ResearchTableAssessmentService {
                 """ + reviewFilter + permissionFilter;
         List<Object> params = new ArrayList<>();
         if (!all) params.add(status.toUpperCase(Locale.ROOT));
-        if (doctor) params.add(principal.userId());
+        params.add(principal.userId());
 
         Long total = jdbc.queryForObject("SELECT COUNT(*) " + from, Long.class, params.toArray());
         String select = """
@@ -665,7 +669,7 @@ class ResearchTableAssessmentService {
         List<Object> pageParams = new ArrayList<>(params);
         pageParams.add(safeSize);
         pageParams.add((long) (safePage - 1) * safeSize);
-        List<Task> items = jdbc.query(select, (row, index) -> mapTask(row, principal, true), pageParams.toArray());
+        List<Task> items = jdbc.query(select, (row, index) -> mapTask(row, principal), pageParams.toArray());
         return new ReviewQueue(items, total == null ? 0 : total, safePage, safeSize);
     }
 
@@ -679,7 +683,7 @@ class ResearchTableAssessmentService {
         if (text.isEmpty() || text.length() > 2000) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "复核意见必填且不能超过 2000 字");
         }
-        Task task = find(taskId, principal, true);
+        Task task = find(taskId, principal);
         if (!"COMPLETED".equals(task.status())) {
             throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "仅已完成的研究任务可复核");
         }
@@ -693,7 +697,7 @@ class ResearchTableAssessmentService {
         }
         audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_REVIEW",
                 "taskId=" + taskId + " decision=" + normalized);
-        return find(taskId, principal, true);
+        return find(taskId, principal);
     }
 
     /** Research results that belong to one subject, readable by the treating doctor as well. */
@@ -706,12 +710,12 @@ class ResearchTableAssessmentService {
             return jdbc.query(TASK_QUERY + """
                      WHERE s.subject_id=?
                      ORDER BY t.created_at DESC,t.id DESC LIMIT 50
-                    """, (row, index) -> mapTask(row, principal, false), subjectId);
+                    """, (row, index) -> mapTask(row, principal), subjectId);
         }
         return jdbc.query(TASK_QUERY + """
                  WHERE s.subject_id=? AND s.authorized_user_id=?
                  ORDER BY t.created_at DESC,t.id DESC LIMIT 50
-                """, (row, index) -> mapTask(row, principal, false), subjectId, principal.userId());
+                """, (row, index) -> mapTask(row, principal), subjectId, principal.userId());
     }
 
     MigrationResult migrateLegacySnapshots(AppUserPrincipal principal) {
@@ -719,13 +723,15 @@ class ResearchTableAssessmentService {
         List<Long> ids = jdbc.queryForList("""
                 SELECT s.id FROM research_table_snapshot s
                 WHERE (s.context_json IS NULL OR s.context_sha256 IS NULL)
+                  AND s.data_scope='CONSTRUCTED_VALIDATION'
                   AND NOT EXISTS (SELECT 1 FROM research_table_task t WHERE t.snapshot_id=s.id)
                 ORDER BY s.id
                 """, Long.class);
         List<Long> referenced = jdbc.queryForList("""
                 SELECT DISTINCT s.id FROM research_table_snapshot s
                 JOIN research_table_task t ON t.snapshot_id=s.id
-                WHERE s.context_json IS NULL OR s.context_sha256 IS NULL
+                WHERE (s.context_json IS NULL OR s.context_sha256 IS NULL)
+                  AND s.data_scope='CONSTRUCTED_VALIDATION'
                 ORDER BY s.id
                 """, Long.class);
         int migrated = 0;
@@ -787,7 +793,7 @@ class ResearchTableAssessmentService {
         return jdbc.query(TASK_QUERY + """
                  WHERE s.subject_id=? AND s.authorized_user_id=?
                  ORDER BY t.created_at DESC,t.id DESC LIMIT 50
-                """, (row, index) -> mapTask(row, principal, false), subjectId, principal.userId());
+                """, (row, index) -> mapTask(row, principal), subjectId, principal.userId());
     }
 
     Task retry(long taskId, AppUserPrincipal principal) {
@@ -799,6 +805,9 @@ class ResearchTableAssessmentService {
         Snapshot snapshot = jdbc.query("SELECT * FROM research_table_snapshot WHERE id=?",
                 (row, index) -> readSnapshot(row, principal), task.snapshotId()).stream().findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+        // Refuse before claiming the task when the host is disabled; otherwise the retry
+        // would be left RUNNING without an executor.
+        client.requireConfigured();
         String executionId = UUID.randomUUID().toString();
         int claimed = jdbc.update("""
                 UPDATE research_table_task SET status='RUNNING',execution_id=?,error_code=NULL,
@@ -816,15 +825,14 @@ class ResearchTableAssessmentService {
         return find(taskId, principal);
     }
 
-    private Task mapTask(java.sql.ResultSet row, AppUserPrincipal principal, boolean allowAdmin) throws java.sql.SQLException {
+    private Task mapTask(java.sql.ResultSet row, AppUserPrincipal principal) throws java.sql.SQLException {
         long subjectId = row.getLong("subject_id");
         long ownerId = row.getLong("authorized_user_id");
-        boolean admin = allowAdmin && principal.roleCodes().contains("ADMIN");
         boolean owner = principal.userId() == ownerId;
         boolean treatingDoctor = principal.roleCodes().contains("DOCTOR");
-        // Admins can audit every research result. Everyone else needs a *current* archive
-        // permission; ownership alone no longer grants access after it is revoked.
-        if (!admin && (!access.canReadRawScores(principal, subjectId) || (!owner && !treatingDoctor))) {
+        // Every read requires a *current* archive permission; ownership alone no longer
+        // grants access after it is revoked.
+        if (!access.canReadRawScores(principal, subjectId) || (!owner && !treatingDoctor)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
         String result = row.getString("result_json");
@@ -852,8 +860,7 @@ class ResearchTableAssessmentService {
     }
 
     private static void requireReviewRole(AppUserPrincipal principal) {
-        if (principal.roleCodes().contains("PATIENT")
-                || (!principal.roleCodes().contains("ADMIN") && !principal.roleCodes().contains("DOCTOR"))) {
+        if (!principal.roleCodes().contains("DOCTOR") || principal.roleCodes().contains("PATIENT")) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
     }
