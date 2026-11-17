@@ -32,7 +32,7 @@ Python dynamic research host (16301)
 - JDK 21
 - Node.js 22.12+
 - Python 3.11/3.12
-- MySQL 8（本地库 `ad_causalrisk`，Flyway 自动迁移 V1–V16）
+- MySQL 8（本地库 `ad_causalrisk`，Flyway 自动迁移 V1–V20）
 
 ### 1. 启动 Java 后端（8080）
 
@@ -102,7 +102,7 @@ Vite 的 `/api` 代理指向 `http://localhost:8080`。
 ## 验证
 
 ```powershell
-# 后端（H2 MySQL 模式，326 测试）
+# 后端（H2 MySQL 模式，351 测试）
 cd backend
 .\mvnw.cmd -B -ntp clean verify
 

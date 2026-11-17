@@ -1,6 +1,14 @@
 # MySQL 8 专用测试库验收
 
-本页服务历史需求 V3.2 的数据库和历史恢复验收。仓库以 MySQL 8 为目标，默认 CI 使用 H2。下列步骤只面向专用 MySQL 8 测试实例和公开构造数据，**尚未在目标库执行**。不要使用现有业务库或将测试库地址提交进 Git。
+本页服务历史需求 V3.2 的数据库和历史恢复验收。仓库以 MySQL 8 为目标，默认 CI 使用 H2。下列步骤只面向专用 MySQL 8 测试实例和公开构造数据；**V1–V20 fresh 迁移与 V12→V20 升级已在隔离实例执行，备份恢复、任务耐久性回读与生产部署尚未执行**。不要使用现有业务库或将测试库地址提交进 Git。
+
+## 0. 本次执行结果（2026-11-17）
+
+- 隔离实例：MySQL **8.0.46**，临时 datadir，回环端口 13306；未连接现有 MySQL80 服务或业务库。
+- Fresh：`adcr_accept_fresh` 启动当前 jar，Flyway 成功应用 **V1–V20**，`flyway_schema_history` 全部 success，schema 版本 **v20**，共 **23 张表**，应用日志出现 `Started BackendApplication`。
+- Upgrade：`adcr_accept_upgrade` 先以 `SPRING_FLYWAY_TARGET=12`、`SPRING_JPA_HIBERNATE_DDL_AUTO=none`、`RESEARCH_TASK_RECOVERY_ENABLED=false` 应用到 **V1–V12**；再以当前 jar 正常启动，应用 **V13–V20（8 个迁移）**，schema 到 **v20**，Hibernate `validate` 通过，应用成功启动。
+- Schema 核对：`research_table_task.executor_id varchar(80) NULL`、`lease_expires_at datetime NULL` 均存在。
+- 未执行：`adcr_accept_restore` 备份恢复、旧规则任务/研究任务重启回读、生产部署。临时实例在验收后停止。
 
 ## 1. 核对实例，准备隔离库
 
@@ -17,7 +25,7 @@ CREATE DATABASE adcr_accept_restore CHARACTER SET utf8mb4;
 
 ## 2. 全新迁移与 V12 升级
 
-从仓库 `backend/` 目录运行，以下示例用 PowerShell。先对 `adcr_accept_fresh` 启动一次正常版本；等 Flyway 完成 V1–V13 和 Hibernate 验证，记录日志后正常关闭。
+从仓库 `backend/` 目录运行，以下示例用 PowerShell。先对 `adcr_accept_fresh` 启动一次正常版本；等 Flyway 完成 V1–V20 和 Hibernate 验证，记录日志后正常关闭。
 
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = 'local'
@@ -46,7 +54,7 @@ if ($LASTEXITCODE -ne 0) { throw 'MySQL restore failed' }
 Remove-Item Env:SPRING_FLYWAY_TARGET
 ```
 
-分别对原升级库和恢复库正常启动应用，检查 V13 只应用一次、研究表齐全，既有研究序列、任务回读、结果版本、授权和幂等行为与 V12 时一致。正常关闭再重启后重复只读核对。迁移或恢复失败保留首个错误及日志；不编辑历史迁移脚本或清理现有表规避失败。
+分别对原升级库和恢复库正常启动应用，检查 V13–V20 只应用一次、研究表齐全，既有研究序列、任务回读、结果版本、授权和幂等行为与 V12 时一致。正常关闭再重启后重复只读核对。迁移或恢复失败保留首个错误及日志；不编辑历史迁移脚本或清理现有表规避失败。
 
 ## 3. 研究任务耐久性
 

@@ -31,6 +31,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
@@ -67,6 +69,7 @@ class ResearchTableAssessmentTest {
     @Autowired ResearchTableProtocol protocol;
     @Autowired ResearchTableAssessmentService service;
     @Autowired ResearchTaskRecovery recovery;
+    @Autowired ResearchTaskLease lease;
     @Autowired com.adcausalrisk.backend.config.SystemSettingService settings;
     @Autowired ResearchTableClient client;
 
@@ -863,6 +866,106 @@ class ResearchTableAssessmentTest {
         assertThat(row.get("status")).isEqualTo("OUTCOME_UNKNOWN");
         assertThat(row.get("error_code")).isEqualTo(ResearchTaskRecovery.INTERRUPTED_CODE);
         assertThat(row.get("execution_id")).isNull();
+    }
+
+    @Test
+    void onlyOneExecutorClaimsARunningTask() throws Exception {
+        long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        String executionId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,execution_id,created_at,updated_at)
+                VALUES(?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, snapshot, "run-claim", "RUNNING", executionId);
+        long taskId = jdbc.queryForObject(
+                "SELECT id FROM research_table_task WHERE run_id='run-claim'", Long.class);
+
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> {
+                start.await();
+                return lease.claim(taskId, executionId, "executor-a");
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return lease.claim(taskId, executionId, "executor-b");
+            });
+            start.countDown();
+            assertThat(List.of(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
+        }
+        var row = jdbc.queryForMap(
+                "SELECT status,executor_id,lease_expires_at FROM research_table_task WHERE id=?", taskId);
+        assertThat(row.get("status")).isEqualTo("RUNNING");
+        assertThat(row.get("executor_id")).isIn("executor-a", "executor-b");
+        assertThat(row.get("lease_expires_at")).isNotNull();
+    }
+
+    @Test
+    void recoveryReclaimsOnlyExpiredLeases() throws Exception {
+        long activeSnapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        long expiredSnapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,execution_id,executor_id,
+                    lease_expires_at,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, activeSnapshot, "run-active", "RUNNING", UUID.randomUUID().toString(), "executor-live",
+                Timestamp.from(Instant.now().plusSeconds(300)));
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,execution_id,executor_id,
+                    lease_expires_at,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, expiredSnapshot, "run-expired", "RUNNING", UUID.randomUUID().toString(), "executor-dead",
+                Timestamp.from(Instant.now().minusSeconds(1)));
+
+        assertThat(recovery.recoverInterrupted()).isEqualTo(1);
+        var active = jdbc.queryForMap(
+                "SELECT status,executor_id,lease_expires_at FROM research_table_task WHERE run_id='run-active'");
+        assertThat(active.get("status")).isEqualTo("RUNNING");
+        assertThat(active.get("executor_id")).isEqualTo("executor-live");
+        assertThat(active.get("lease_expires_at")).isNotNull();
+
+        var expired = jdbc.queryForMap("""
+                SELECT status,error_code,execution_id,executor_id,lease_expires_at
+                FROM research_table_task WHERE run_id='run-expired'
+                """);
+        assertThat(expired.get("status")).isEqualTo("OUTCOME_UNKNOWN");
+        assertThat(expired.get("error_code")).isEqualTo(ResearchTaskRecovery.INTERRUPTED_CODE);
+        assertThat(expired.get("execution_id")).isNull();
+        assertThat(expired.get("executor_id")).isNull();
+        assertThat(expired.get("lease_expires_at")).isNull();
+    }
+
+    @Test
+    void metricsSeparateResearchTasksByRole() throws Exception {
+        long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        body(submit(snapshot, "metrics", actor("admin", "ADMIN")));
+
+        JsonNode admin = body(mvc.perform(get(PATH + "/metrics")
+                .with(authentication(actor("admin", "ADMIN"))))).get("data");
+        assertThat(admin.get("tasksToday").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(admin.get("completed").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(admin.get("syncedSnapshots").asLong()).isGreaterThanOrEqualTo(1);
+
+        JsonNode doctorWithoutGrant = body(mvc.perform(get(PATH + "/metrics")
+                .with(authentication(actor("doctor", "DOCTOR"))))).get("data");
+        assertThat(doctorWithoutGrant.get("tasksToday").asLong()).isZero();
+
+        jdbc.update("""
+                INSERT INTO subject_permission(subject_id,user_id,permission_type)
+                SELECT subject_id,?,'VIEW' FROM research_table_snapshot WHERE id=?
+                """, userId("doctor"), snapshot);
+        JsonNode doctorWithGrant = body(mvc.perform(get(PATH + "/metrics")
+                .with(authentication(actor("doctor", "DOCTOR"))))).get("data");
+        assertThat(doctorWithGrant.get("tasksToday").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(doctorWithGrant.get("completed").asLong()).isGreaterThanOrEqualTo(1);
+
+        JsonNode researcher = body(mvc.perform(get(PATH + "/metrics")
+                .with(authentication(actor("researcher", "RESEARCHER"))))).get("data");
+        assertThat(researcher.get("tasksToday").asLong()).isZero();
+        assertThat(researcher.get("syncedSnapshots").asLong()).isZero();
+
+        mvc.perform(get(PATH + "/metrics")
+                .with(authentication(actor("patient", "PATIENT")))).andExpect(status().isForbidden());
     }
 
     private ResultActions submit(long snapshot, String key, UsernamePasswordAuthenticationToken actor) throws Exception {

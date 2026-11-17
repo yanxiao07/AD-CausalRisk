@@ -140,6 +140,11 @@ export function getResearchTaskSummary() {
   return request.get('/research/table-assessment-tasks/summary', { silent: true })
 }
 
+/** GET /api/research/table-assessment-tasks/metrics — 研究验证指标，与旧规则评估分开统计。 */
+export function getResearchMetrics() {
+  return request.get('/research/table-assessment-tasks/metrics', { silent: true })
+}
+
 /**
  * POST /api/research/table-assessment-tasks/snapshots/batch
  * 按受试者最新一次访视批量生成七变量快照；缺失变量由后端标记 NOT_COLLECTED。

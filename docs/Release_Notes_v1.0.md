@@ -47,7 +47,7 @@
 - 新增 `GET /api/research/table-assessment-tasks/history?subjectId=`，按任务时间倒序返回最近 50 条。
 - 新增 `POST /api/research/table-assessment-tasks/{id}/retry`，仅允许 `FAILED`/`OUTCOME_UNKNOWN` 重试。
 - 前端增加同步状态筛选、任务历史表与失败任务重试；刷新页面后历史从后端重建。
-- OpenAPI 操作数增至 83，路径 71。
+- OpenAPI 操作数在 P3 时增至 83、路径 71；J1 后为 85 个操作、73 条路径。
 
 ### P5 产品化文案
 
@@ -55,6 +55,14 @@
 - 清理 docs/ 与前端 UI 的历史项目表述，统一为“医疗科研协作平台/受试者研究队列/模型验证环境”。
 - 保留历史文档文件名以兼容链接；保留 `SYNTHETIC_DEMO`、`CONSTRUCTED_VALIDATION` 数据标签与历史实验记录。
 - 新增本发布说明作为 v1.0 交付基线。
+
+### J1–J4 交付加固
+
+- J1：新增研究验证报告服务端导出（PDF/HTML/JSON），按任务读权限授权并写审计；前端报告页改为下载后端附件。
+- J2：新增 `GET /api/research/table-assessment-tasks/metrics`，管理员大屏与医生工作台按独立研究口径展示任务/复核/同步/耗时，不与旧规则混算。
+- J3：V20 为 `research_table_task` 增加 `executor_id`、`lease_expires_at` 与租约索引，原子领取、过期恢复和多实例防重复执行；并发/过期测试覆盖。
+- J4：启用 Cookie 会话 CSRF，登录豁免，`GET /api/auth/csrf` 发放 token，前端 axios 对写请求自动附加 `X-CSRF-TOKEN`。
+- OpenAPI 增至 85 个操作、73 条路径；V1–V20 已在隔离 MySQL 8.0.46 完成 fresh 迁移和 V12→V20 升级。
 
 ## 真实七变量闭环
 
@@ -76,9 +84,9 @@
 
 ## 验证记录
 
-- 后端：`.\mvnw.cmd -B -ntp clean verify` → 347 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
-- 前端：`npm run build` → 2388 modules，构建成功。
-- Python：`tests.test_contracts_and_fixture` 5/5；`tests.test_dynamic_host` 6/6。
+- 后端：`.\mvnw.cmd -B -ntp clean verify` → 351 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
+- 前端：`npm run build` → 2393 modules，构建成功。
+- Python：`tests.test_contracts_and_fixture` + `tests.test_lock_digest` 7/7；`tests.test_dynamic_host` 6/6。
 - CI：Python research primitives、Java backend、Python service 全部通过。
 
 ## 交付物
@@ -94,5 +102,5 @@
 - 不把研究模型输出表述为临床诊断、校准概率或个人因果效应。
 - 缺失值不补造；`BLOCKED` 不生成替代分数。
 - 患者主索引（跨 subject 合并）为远期规划，本版本不修改底层数据模型。
-- 真实患者数据接入、生产部署、多实例任务租约与完整临床验证仍需单独验收。
+- 真实患者数据接入、生产部署、备份恢复/任务耐久性与完整临床验证仍需单独验收。
 - 模型文件与受控数据不进入 Git；部署时由模型保管方提供 manifest、artifact 与可信 SHA-256。

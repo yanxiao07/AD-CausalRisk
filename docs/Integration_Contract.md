@@ -43,7 +43,7 @@ python_service/deepagent_contract.py负责输入校验和四阶段编排，demo_
 
 联调时从同一提交取得服务源码、契约和示例，避免混用不同版本。
 
-Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)：研究业务 83 个操作（含独立表格研究任务、复核与报告导出）。完整边界见[后端验收](Backend_Requirements_Acceptance.md)。患者结果必须选 PatientAssessmentSummary 并在后端过滤；仅隐藏前端按钮不足以防止接口泄露。成功 Envelope 和 Python AgentResult 格式不同，不能把 data.data 错当原 Agent 对象。
+Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)：研究业务 85 个操作（含独立表格研究任务、复核与报告导出）。完整边界见[后端验收](Backend_Requirements_Acceptance.md)。患者结果必须选 PatientAssessmentSummary 并在后端过滤；仅隐藏前端按钮不足以防止接口泄露。成功 Envelope 和 Python AgentResult 格式不同，不能把 data.data 错当原 Agent 对象。
 
 报告导出支持HTML/PDF/JSON是研究要求，当前保留JSON资源并新增download附件入口，媒体类型与下载参数已记录于同份OpenAPI。后续变更媒体类型、下载头、错误DTO或状态时继续同步契约、调用方和测试。
 

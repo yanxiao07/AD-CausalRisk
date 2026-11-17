@@ -22,9 +22,19 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+app:
+  security:
+    # Most MVC tests predate CSRF and would otherwise need a token on every POST/PATCH/DELETE.
+    # CsrfProtectionTest overrides this property and exercises the real filter chain.
+    csrf-enabled: false
+
 assessment:
   test-rule-enabled: true
 
 research:
   table:
     test-fixtures-enabled: true
+  task:
+    # Tests call recovery explicitly; a background pass would race with their fixtures.
+    recovery-enabled: false
+    lease-seconds: 60

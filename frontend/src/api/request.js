@@ -14,8 +14,60 @@ const request = axios.create({
   withCredentials: true // 会话（JSESSIONID）必须随请求带过去
 })
 
+const MUTATING_METHODS = new Set(['post', 'put', 'patch', 'delete'])
+let csrfToken = ''
+let csrfHeader = 'X-CSRF-TOKEN'
+let csrfPending = null
+
+function isMutation(config) {
+  return MUTATING_METHODS.has(String(config?.method || 'get').toLowerCase())
+}
+
+/**
+ * 取得（或复用）CSRF token。
+ *
+ * 后端在 Cookie 之外还通过 GET /api/auth/csrf 返回原始 token；这里把 token 放在内存里，
+ * 由请求拦截器写到 X-CSRF-TOKEN。登录接口在后端豁免 CSRF，前端也显式 skipCsrf，
+ * 登录成功后再补取一次，避免把“登录前没有会话”误判成 CSRF 失败。
+ */
+export function resetCsrfToken() {
+  csrfToken = ''
+  csrfPending = null
+}
+
+export async function ensureCsrfToken() {
+  if (csrfToken) return csrfToken
+  if (csrfPending) return csrfPending
+  csrfPending = request
+    .get('/auth/csrf', { skipAuthHandling: true, skipCsrf: true, silent: true })
+    .then(data => {
+      if (data?.token) {
+        csrfToken = data.token
+        csrfHeader = data.headerName || csrfHeader
+      }
+      return csrfToken
+    })
+    .catch(() => '')
+    .finally(() => {
+      csrfPending = null
+    })
+  return csrfPending
+}
+
 request.interceptors.request.use(
-  config => config,
+  async config => {
+    if (isMutation(config) && !config.skipCsrf) {
+      const token = await ensureCsrfToken()
+      if (token) {
+        if (config.headers && typeof config.headers.set === 'function') {
+          config.headers.set(csrfHeader, token)
+        } else {
+          config.headers = { ...(config.headers || {}), [csrfHeader]: token }
+        }
+      }
+    }
+    return config
+  },
   error => Promise.reject(error)
 )
 

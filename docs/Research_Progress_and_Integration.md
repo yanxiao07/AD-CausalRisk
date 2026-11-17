@@ -11,7 +11,7 @@
 ## 当前源码与业务边界
 
 - `research_runtime` 提供训练、解释、自然模态分层、固定阈值与 DCA 界限、结构稳定性和联合监测；见[运行说明](../research_runtime/README.md)。
-- Java 提供 62 个 API 操作，Vue 使用 Java API，患者使用白名单摘要。详见[后端](../backend/README.md)与[前端](../frontend/README.md)。
+- Java 提供 85 个 API 操作，Vue 使用 Java API，患者使用白名单摘要。详见[后端](../backend/README.md)与[前端](../frontend/README.md)。
 - 新评估使用七变量训练权重与人工快照。旧规则评分留作历史回读与契约回归。真实患者输入、监测双批和临床验证分别验收。
 - 图增益阴性、结构四折不可估/选边预测NO_GO、CSF NO_GO和真实阈值整表SUPPRESSED均保留，不重训求阳性或重放求可见结果。
 

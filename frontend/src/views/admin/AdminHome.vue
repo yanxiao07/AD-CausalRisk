@@ -23,6 +23,27 @@
       </article>
     </div>
 
+    <article class="panel research-metrics">
+      <header class="panel__head">
+        <div>
+          <h2>研究验证</h2>
+          <p>研究模型任务独立统计，不与旧规则评估混算。</p>
+        </div>
+        <span class="panel__tag">独立口径</span>
+      </header>
+      <div class="research-metrics__grid">
+        <div><span>今日任务</span><strong>{{ researchMetrics?.tasksToday ?? '—' }}</strong></div>
+        <div><span>已完成</span><strong>{{ researchMetrics?.completed ?? '—' }}</strong></div>
+        <div><span>待复核</span><strong>{{ researchMetrics?.pendingReview ?? '—' }}</strong></div>
+        <div><span>已同步快照</span><strong>{{ researchMetrics?.syncedSnapshots ?? '—' }}</strong></div>
+      </div>
+      <p v-if="researchMetrics" class="research-metrics__note">
+        阻断 {{ researchMetrics.blocked }} · 失败 {{ researchMetrics.failed }} · 运行中
+        {{ researchMetrics.running }} · 平均耗时 {{ researchMetrics.averageSeconds }} 秒
+      </p>
+      <p v-else class="research-metrics__note">研究指标暂不可用，请稍后刷新。</p>
+    </article>
+
     <div class="admin-grid admin-grid--charts">
       <article class="panel chart">
         <header class="panel__head">
@@ -78,6 +99,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import EChart from '@/components/charts/EChart.vue'
 import AuditStream from '@/components/admin/AuditStream.vue'
 import { getDashboardSummary } from '@/api/dashboard.js'
+import { getResearchMetrics } from '@/api/research.js'
 import { listAuditLogs } from '@/api/audit.js'
 
 const AUDIT_LIMIT = 8
@@ -87,6 +109,7 @@ const REFRESH_MS = 15000
 const AUDIT_REFRESH_EVERY = 4
 
 const summary = ref(null)
+const researchMetrics = ref(null)
 const summaryError = ref('')
 const auditEvents = ref([])
 const loading = ref(true)
@@ -234,7 +257,12 @@ const statusOption = computed(() => {
 async function loadSummary() {
   summaryError.value = ''
   try {
-    summary.value = await getDashboardSummary()
+    const [dashboard, research] = await Promise.all([
+      getDashboardSummary(),
+      getResearchMetrics().catch(() => null)
+    ])
+    summary.value = dashboard
+    researchMetrics.value = research
     return true
   } catch (problem) {
     summary.value = null
@@ -352,6 +380,46 @@ onBeforeUnmount(() => {
 
 .admin-grid--charts {
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+}
+
+.research-metrics__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.research-metrics__grid > div {
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: #f6f9fc;
+  border: 1px solid #e6eef6;
+}
+
+.research-metrics__grid span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.research-metrics__grid strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 24px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.research-metrics__note {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .research-metrics__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {

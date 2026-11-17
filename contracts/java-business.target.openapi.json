@@ -12,6 +12,68 @@
   ],
   "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
   "paths": {
+    "/api/auth/csrf": {
+      "get": {
+        "summary": "发放 CSRF token",
+        "operationId": "getApiAuthCsrf",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "token": {
+                          "type": "string"
+                        },
+                        "headerName": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "token",
+                        "headerName"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "summary": "登录",
@@ -9241,6 +9303,85 @@
           }
         ]
       }
+    },
+    "/api/research/table-assessment-tasks/metrics": {
+      "get": {
+        "operationId": "getResearchTaskMetrics",
+        "summary": "研究验证任务指标聚合（与旧规则评估分开统计）",
+        "responses": {
+          "200": {
+            "description": "今日研究任务、完成/阻断/失败/运行、待复核、宿主同步快照与平均耗时",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "data",
+                    "errorCode",
+                    "traceId",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "code": {
+                      "const": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ResearchTaskMetrics"
+                    },
+                    "errorCode": {
+                      "type": "null"
+                    },
+                    "traceId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+      }
     }
   },
   "components": {
@@ -12713,6 +12854,54 @@
               "type": "integer",
               "format": "int64"
             }
+          }
+        }
+      },
+      "ResearchTaskMetrics": {
+        "type": "object",
+        "required": [
+          "tasksToday",
+          "completed",
+          "blocked",
+          "failed",
+          "running",
+          "pendingReview",
+          "syncedSnapshots",
+          "averageSeconds"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "tasksToday": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "blocked": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "running": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pendingReview": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "syncedSnapshots": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "averageSeconds": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       }

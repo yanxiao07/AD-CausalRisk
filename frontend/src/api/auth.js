@@ -1,4 +1,4 @@
-import request from './request.js'
+import request, { ensureCsrfToken, resetCsrfToken } from './request.js'
 import { useUserStore } from '../stores/user.js'
 
 /** 登录页身份卡的 key → 后端角色码。 */
@@ -55,6 +55,7 @@ export function closeSessionAndVerify() {
     }
     return probeSession()
   })().finally(() => {
+    resetCsrfToken()
     closingSession = null
   })
   return closingSession
@@ -84,7 +85,8 @@ export async function login(username, password, expectedRoleKey) {
   }
 
   const data = await request.post('/auth/login', { username, password }, {
-    skipAuthHandling: true
+    skipAuthHandling: true,
+    skipCsrf: true
   })
 
   const expected = ROLE_CODES[expectedRoleKey]
@@ -118,6 +120,9 @@ export async function login(username, password, expectedRoleKey) {
   }
 
   useUserStore().setUser(data)
+  // 登录会轮换会话与 CSRF token；先丢弃登录前的缓存，再换取新 token。
+  resetCsrfToken()
+  await ensureCsrfToken()
   return data
 }
 
@@ -148,6 +153,7 @@ export async function logout() {
   try {
     await request.post('/auth/logout')
   } finally {
+    resetCsrfToken()
     useUserStore().clear()
   }
 }

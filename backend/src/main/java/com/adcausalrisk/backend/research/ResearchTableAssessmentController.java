@@ -110,6 +110,11 @@ public class ResearchTableAssessmentController {
         return Envelope.success(service.summary((AppUserPrincipal) auth.getPrincipal()));
     }
 
+    @GetMapping("/metrics")
+    public Envelope<?> metrics(Authentication auth) {
+        return Envelope.success(service.metrics((AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @PostMapping("/snapshots/migrate")
     public Envelope<?> migrateLegacySnapshots(Authentication auth) {
         return Envelope.success(service.migrateLegacySnapshots((AppUserPrincipal) auth.getPrincipal()));

@@ -3,6 +3,7 @@ package com.adcausalrisk.backend.config;
 import com.adcausalrisk.backend.security.RestAccessDeniedHandler;
 import com.adcausalrisk.backend.security.RestAuthenticationEntryPoint;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -19,6 +20,8 @@ import org.springframework.security.web.authentication.session.ChangeSessionIdAu
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 /**
  * Session-cookie security for the business API.
@@ -32,16 +35,33 @@ import org.springframework.security.web.context.SecurityContextRepository;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain apiSecurityFilterChain(HttpSecurity http,
-                                               RestAuthenticationEntryPoint authenticationEntryPoint,
-                                               RestAccessDeniedHandler accessDeniedHandler) throws Exception {
+    SecurityFilterChain apiSecurityFilterChain(
+            HttpSecurity http,
+            RestAuthenticationEntryPoint authenticationEntryPoint,
+            RestAccessDeniedHandler accessDeniedHandler,
+            @Value("${app.security.csrf-enabled:true}") boolean csrfEnabled)
+            throws Exception {
         http
-                // Decision D7 of this PR: the frozen contract exposes the session through a
-                // JSESSIONID cookie and declares no CSRF token field or endpoint, so the
-                // browser client has no way to obtain one. CSRF protection is therefore off and
-                // the residual risk is recorded in backend/README.md. Enabling it here without a
-                // contract change would refuse every state-changing request from the frontend.
-                .csrf(AbstractHttpConfigurer::disable)
+                .csrf(csrf -> {
+                    if (!csrfEnabled) {
+                        // The test profile disables CSRF so hundreds of pre-existing MVC tests
+                        // do not each need a token. CsrfProtectionTest enables it explicitly and
+                        // exercises the real filter chain, so production behaviour stays tested.
+                        csrf.disable();
+                        return;
+                    }
+                    CookieCsrfTokenRepository repository =
+                            CookieCsrfTokenRepository.withHttpOnlyFalse();
+                    repository.setCookieName("XSRF-TOKEN");
+                    repository.setHeaderName("X-CSRF-TOKEN");
+                    repository.setCookiePath("/");
+                    csrf.csrfTokenRepository(repository)
+                            // Accept the raw token from GET /api/auth/csrf in the header.
+                            // Spring's default XOR handler expects a masked value instead.
+                            .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                            // Login must succeed before a session can issue a CSRF token.
+                            .ignoringRequestMatchers("/api/auth/login");
+                })
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 // The contract defines POST /api/auth/logout. Spring's own /logout would be a
@@ -50,6 +70,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        // The token itself is not a credential; it must be obtainable before login
+                        // and after a page reload when only the session cookie survives.
+                        .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
                         // Container error dispatch. Without this, a failed request could answer
                         // 403 while trying to render its own error.
                         .requestMatchers("/error").permitAll()

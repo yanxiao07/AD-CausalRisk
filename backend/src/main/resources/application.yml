@@ -38,3 +38,18 @@ server:
     encoding:
       charset: UTF-8
       force: true
+
+# Research task leases. Each Java instance must set RESEARCH_TASK_EXECUTOR_ID when more than
+# one instance can run research tasks; the default is only a local-development fallback.
+app:
+  security:
+    # Browser sessions carry a CSRF cookie and echo it in X-CSRF-TOKEN. Keep this on in
+    # production; only the test profile turns it off for the pre-existing MVC suites.
+    csrf-enabled: ${APP_SECURITY_CSRF_ENABLED:true}
+
+research:
+  task:
+    executor-id: ${RESEARCH_TASK_EXECUTOR_ID:local}
+    lease-seconds: 300
+    recovery-enabled: true
+    recovery-interval-ms: 60000
