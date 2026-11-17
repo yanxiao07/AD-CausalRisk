@@ -119,6 +119,50 @@
       </div>
     </DataCard>
 
+    <DataCard v-if="canSeeResearchReports" padding="none" class="research-tasks">
+      <div class="research-tasks__head">
+        <div>
+          <h2>研究验证任务</h2>
+          <p>来自真实研究模型运行，按创建时间倒序。</p>
+        </div>
+        <el-button text type="primary" @click="router.push('/reports?tab=research')">
+          查看全部报告
+        </el-button>
+      </div>
+      <el-skeleton v-if="researchLoading" :rows="3" animated />
+      <EmptyState
+        v-else-if="researchTasks.length === 0"
+        title="还没有研究验证任务"
+        description="在受试者档案或研究证据页发起研究模型评估后，任务会出现在这里。"
+        :icon="Cpu"
+      />
+      <el-table v-else :data="researchTasks" size="small" row-key="taskId" @row-click="openResearchReport">
+        <el-table-column prop="taskId" label="任务" width="80" />
+        <el-table-column label="受试者" min-width="150">
+          <template #default="{ row }">
+            {{ row.subjectCode || `#${row.subjectId}` }}
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="110">
+          <template #default="{ row }"><StatusTag :type="row.status" /></template>
+        </el-table-column>
+        <el-table-column label="AD 24m" width="100">
+          <template #default="{ row }">{{ researchCif(row, 'adCif24m') }}</template>
+        </el-table-column>
+        <el-table-column label="复核" width="110">
+          <template #default="{ row }">{{ researchReviewLabel(row.reviewStatus) }}</template>
+        </el-table-column>
+        <el-table-column label="创建时间" min-width="150">
+          <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button text type="primary" @click.stop="openResearchReport(row)">报告</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </DataCard>
+
     <!-- 阶段详情：列表行不含 stages，打开时再拉单条 -->
     <el-drawer
       v-model="drawerOpen"
@@ -277,6 +321,7 @@ import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ResearchAssessmentPanel from '@/components/assessment/ResearchAssessmentPanel.vue'
 import { cancelAssessmentTask, getAssessmentTask, getAssessmentTaskInput, listAssessmentTasks } from '@/api/assessments.js'
+import { listResearchReports } from '@/api/research.js'
 import { downloadCsv } from '@/utils/csv.js'
 import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
 import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
@@ -313,6 +358,9 @@ const canCancel = computed(() => detail.value?.status === 'PENDING')
 
 // ---- 研究模型评估（POST /api/research/table-assessment-tasks） ----
 const canResearch = computed(() => userStore.hasRole(['ADMIN', 'RESEARCHER']))
+const canSeeResearchReports = computed(() => userStore.hasRole(['RESEARCHER']))
+const researchTasks = ref([])
+const researchLoading = ref(false)
 const submitOpen = ref(false)
 const submitSubjectId = ref('')
 const validSubmitSubjectId = computed(() => {
@@ -511,8 +559,37 @@ function goReview() {
   router.push({ path: '/reviews', query: { assessmentId: detail.value.assessmentId } })
 }
 
+function researchCif(row, key) {
+  const value = row?.result?.prediction?.[key]
+  return typeof value === 'number' ? `${(value * 100).toFixed(2)}%` : '—'
+}
+
+function researchReviewLabel(status) {
+  return (
+    { PENDING: '待复核', CONFIRMED: '已确认', NEEDS_DATA: '需补充', REJECTED: '已驳回' }[status] || '—'
+  )
+}
+
+function openResearchReport(row) {
+  router.push(`/reports/research/${row.taskId}`)
+}
+
+async function loadResearchTasks() {
+  if (!canSeeResearchReports.value) return
+  researchLoading.value = true
+  try {
+    const data = await listResearchReports({ status: 'ALL', page: 1, pageSize: 5 })
+    researchTasks.value = Array.isArray(data?.items) ? data.items : []
+  } catch {
+    researchTasks.value = []
+  } finally {
+    researchLoading.value = false
+  }
+}
+
 onMounted(async () => {
   await loadPage(1)
+  loadResearchTasks()
   // 深链：从批量面板/其他地方带 taskId 过来，直接打开详情
   const fromQuery = Number(route.query.taskId)
   if (Number.isInteger(fromQuery) && fromQuery > 0) {
@@ -526,6 +603,26 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.research-tasks__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.research-tasks__head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.research-tasks__head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .filter {

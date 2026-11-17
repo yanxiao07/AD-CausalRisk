@@ -18,6 +18,7 @@ from .dynamic_snapshot import (DATA_SCOPES, SnapshotDirectory,
                                DynamicSnapshotError, load_bundle, verify_bundle,
                                write_bundle)
 from .inference import load_final_model
+from .lock_digest import lock_sha256
 from .research_table_agent import ResearchAgentError, ResearchTableAgent
 from .research_table_protocol import digest
 from .runtime_source import runtime_source_sha256
@@ -31,8 +32,7 @@ class DynamicResearchHost:
         self._bundle = bundle
         self._verified = verified
         self._runtime_source_sha256 = runtime_source_sha256()
-        self._software_lock_sha256 = sha256(
-            (Path(__file__).resolve().parent / "requirements.lock").read_bytes()).hexdigest()
+        self._software_lock_sha256 = lock_sha256()
         self._snapshots = SnapshotDirectory(snapshot_directory)
         self._assessments = {}
 

@@ -124,6 +124,17 @@ export function reviewResearchTask(taskId, { decision, comment }) {
   )
 }
 
+/**
+ * GET /api/research/table-assessment-tasks/reports?status&page&pageSize
+ * 统一研究验证报告列表：医生按档案授权、研究员按本人任务。
+ */
+export function listResearchReports({ status = 'ALL', page = 1, pageSize = 20 } = {}) {
+  return request.get('/research/table-assessment-tasks/reports', {
+    params: { status, page, pageSize },
+    silent: true
+  })
+}
+
 /** GET /api/research/table-assessment-tasks/summary —— 当前研究员今日任务吞吐。 */
 export function getResearchTaskSummary() {
   return request.get('/research/table-assessment-tasks/summary', { silent: true })

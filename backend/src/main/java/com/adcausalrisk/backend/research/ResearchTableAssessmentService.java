@@ -217,14 +217,30 @@ class ResearchTableAssessmentService {
                     continue;
                 }
                 var visit = jdbc.query("""
-                        SELECT v.visit_date,v.mmse,v.cdr_sb,s.data_version
+                        SELECT v.visit_date,v.mmse,v.cdr_sb,
+                               COALESCE(v.data_version,s.data_version) AS data_version,
+                               (SELECT q.quality_status FROM quality_check q
+                                 WHERE q.subject_id=v.subject_id
+                                 ORDER BY q.checked_at DESC,q.id DESC LIMIT 1) AS quality_status,
+                               (SELECT q.checked_at FROM quality_check q
+                                 WHERE q.subject_id=v.subject_id
+                                 ORDER BY q.checked_at DESC,q.id DESC LIMIT 1) AS checked_at
                         FROM visit v JOIN subject s ON s.id=v.subject_id
                         WHERE v.subject_id=? ORDER BY v.visit_date DESC,v.id DESC LIMIT 1
                         """, (row, index) -> new Object[] {row.getDate("visit_date").toLocalDate().toString(),
-                        row.getBigDecimal("mmse"), row.getBigDecimal("cdr_sb"), row.getString("data_version")},
+                        row.getBigDecimal("mmse"), row.getBigDecimal("cdr_sb"), row.getString("data_version"),
+                        row.getString("quality_status"), row.getTimestamp("checked_at")},
                         subjectId).stream().findFirst().orElse(null);
                 if (visit == null) {
                     items.add(new BatchItem(subjectId, null, null, null, null, "没有可用于生成快照的访视数据"));
+                    continue;
+                }
+                String qualityStatus = (String) visit[4];
+                if (!"PASS".equals(qualityStatus)) {
+                    items.add(new BatchItem(subjectId, null, null, null, null,
+                            qualityStatus == null
+                                    ? "该受试者尚未完成质控，请先在质控页完成审核"
+                                    : "最新质控状态为 " + qualityStatus + "，请先处理质控异常"));
                     continue;
                 }
                 ObjectNode features = JsonNodeFactory.instance.objectNode();
@@ -673,6 +689,42 @@ class ResearchTableAssessmentService {
         return new ReviewQueue(items, total == null ? 0 : total, safePage, safeSize);
     }
 
+    ReviewQueue reports(String status, int page, int pageSize, AppUserPrincipal principal) {
+        requireReportRole(principal);
+        int safePage = Math.max(1, page);
+        int safeSize = Math.max(1, Math.min(100, pageSize));
+        boolean all = status == null || status.isBlank() || "ALL".equalsIgnoreCase(status);
+        String statusFilter = all ? " AND t.status<>'RUNNING'" : " AND t.status=?";
+        String scopeFilter;
+        List<Object> params = new ArrayList<>();
+        if (!all) params.add(status.toUpperCase(Locale.ROOT));
+        if (principal.roleCodes().contains("DOCTOR")) {
+            scopeFilter = " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
+                    + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))";
+            params.add(principal.userId());
+        } else {
+            scopeFilter = " AND s.authorized_user_id=?";
+            params.add(principal.userId());
+        }
+        String from = """
+                FROM research_table_task t
+                JOIN research_table_snapshot s ON s.id=t.snapshot_id
+                JOIN subject sub ON sub.id=s.subject_id
+                WHERE 1=1
+                """ + statusFilter + scopeFilter;
+        Long total = jdbc.queryForObject("SELECT COUNT(*) " + from, Long.class, params.toArray());
+        String select = """
+                SELECT t.id,t.snapshot_id,t.run_id,t.status,t.error_code,t.result_json,t.created_at,t.updated_at,
+                       t.review_status,t.reviewed_by,t.reviewed_at,t.review_comment,
+                       s.subject_id,s.authorized_user_id,sub.subject_code,sub.alias AS subject_alias
+                """ + from + " ORDER BY t.created_at DESC,t.id DESC LIMIT ? OFFSET ?";
+        List<Object> pageParams = new ArrayList<>(params);
+        pageParams.add(safeSize);
+        pageParams.add((long) (safePage - 1) * safeSize);
+        List<Task> items = jdbc.query(select, (row, index) -> mapTask(row, principal), pageParams.toArray());
+        return new ReviewQueue(items, total == null ? 0 : total, safePage, safeSize);
+    }
+
     Task review(long taskId, String decision, String comment, AppUserPrincipal principal) {
         requireReviewRole(principal);
         String normalized = decision == null ? "" : decision.trim().toUpperCase(Locale.ROOT);
@@ -869,6 +921,13 @@ class ResearchTableAssessmentService {
                 WHERE subject_id=? AND user_id=? AND permission_type IN ('VIEW','MANAGE')
                 """, Long.class, subjectId, userId);
         return count != null && count > 0;
+    }
+
+    private static void requireReportRole(AppUserPrincipal principal) {
+        if (principal.roleCodes().contains("PATIENT")
+                || (!principal.roleCodes().contains("DOCTOR") && !principal.roleCodes().contains("RESEARCHER"))) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
     }
 
     private static void requireReviewRole(AppUserPrincipal principal) {

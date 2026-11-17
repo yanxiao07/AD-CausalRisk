@@ -206,7 +206,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Refresh, WarningFilled } from '@element-plus/icons-vue'
@@ -263,6 +263,19 @@ const featureFields = [
 
 const registerFeatures = reactive(Object.fromEntries(featureFields.map((field) => [field.key, null])))
 
+function resetRegisterFeatures() {
+  for (const field of featureFields) {
+    registerFeatures[field.key] = null
+  }
+}
+
+watch(registerSubjectId, (next, previous) => {
+  if (previous !== null && next !== previous) {
+    resetRegisterFeatures()
+    registerError.value = ''
+  }
+})
+
 const validSubjectId = computed(() => {
   const value = Number(tableSubjectId.value)
   return Number.isInteger(value) && value > 0
@@ -312,6 +325,7 @@ async function refreshAll() {
 
 function openRegister() {
   registerError.value = ''
+  resetRegisterFeatures()
   registerOpen.value = true
   registerSubjectId.value = validSubjectId.value ? Number(tableSubjectId.value) : null
   if (!registerIndexDate.value) {

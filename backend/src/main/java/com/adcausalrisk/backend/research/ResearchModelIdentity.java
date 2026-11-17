@@ -41,23 +41,17 @@ class ResearchModelIdentity {
 
     ResearchModelIdentity(ObjectMapper json,
             @Value("${research.model.manifest-path:}") String manifestPath,
-            @Value("${research.model.trusted-manifest-sha256:}"
-                    + "46ad244fe612306cc95a2a457c44ac234361db5ab70184c2ee2226527883a511")
+            @Value("${research.model.trusted-manifest-sha256:46ad244fe612306cc95a2a457c44ac234361db5ab70184c2ee2226527883a511}")
             String trustedManifestSha256,
-            @Value("${research.model.artifact-sha256:}"
-                    + "66cfc25386ef9d90c9a6572ac13f673269426fce277d6604e7d1a355ff0a1fd5")
+            @Value("${research.model.artifact-sha256:66cfc25386ef9d90c9a6572ac13f673269426fce277d6604e7d1a355ff0a1fd5}")
             String artifactSha256,
-            @Value("${research.model.training-plan-sha256:}"
-                    + "47ae229df74070f56165ece9b828a1aebcbf1b316b2005439e3f76fa89b0d54e")
+            @Value("${research.model.training-plan-sha256:47ae229df74070f56165ece9b828a1aebcbf1b316b2005439e3f76fa89b0d54e}")
             String trainingPlanSha256,
-            @Value("${research.model.runtime-source-sha256:}"
-                    + "f69db2e64f0810d6abb18516e3e845067f69cad9c8422c4c09be5e4329b1450e")
+            @Value("${research.model.runtime-source-sha256:f69db2e64f0810d6abb18516e3e845067f69cad9c8422c4c09be5e4329b1450e}")
             String runtimeSourceSha256,
-            @Value("${research.model.software-lock-sha256:}"
-                    + "df6ed05f512953046fda442f5d553deee8c314db1496eb18ae43f455f5c77f68")
+            @Value("${research.model.software-lock-sha256:29236beb6079c25aee004819b5b6c2188517872ae06d49ca320b6cb2ae0db66c}")
             String softwareLockSha256,
-            @Value("${research.model.source-mapping-sha256:}"
-                    + "2be25c0e3176806765a4350185191640144a2370d6951d62c66a4fdcdfac488f")
+            @Value("${research.model.source-mapping-sha256:2be25c0e3176806765a4350185191640144a2370d6951d62c66a4fdcdfac488f}")
             String sourceMappingSha256) {
         this.json = json;
         this.manifestPath = manifestPath;

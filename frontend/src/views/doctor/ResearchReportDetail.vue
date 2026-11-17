@@ -6,6 +6,7 @@
       :subtitle="task ? `研究任务 #${task.taskId} · 快照 #${task.snapshotId}` : '读取该受试者的研究验证结果'"
     >
       <template #extra>
+        <el-button :icon="Download" :disabled="!task" @click="exportReport">导出 JSON</el-button>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>
     </PageHeader>
@@ -33,6 +34,10 @@
             </h2>
             <p class="report-note">
               该结果来自已登记冻结快照，由 Python 研究宿主计算；不是临床诊断，也不构成个体因果结论。
+            </p>
+            <p class="report-review">
+              复核状态：{{ reviewLabel }}
+              <template v-if="task.reviewComment"> · {{ task.reviewComment }}</template>
             </p>
           </div>
           <el-button type="primary" plain @click="goSubject">打开受试者档案</el-button>
@@ -143,7 +148,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Refresh, WarningFilled } from '@element-plus/icons-vue'
+import { Download, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -176,6 +181,30 @@ const subjectText = computed(() => {
   const subjectId = task.value?.subjectId
   return subjectId ? `受试者 #${subjectId}` : '研究验证结果'
 })
+const reviewLabel = computed(
+  () =>
+    ({
+      PENDING: '待复核',
+      CONFIRMED: '已确认',
+      NEEDS_DATA: '需补充数据',
+      REJECTED: '已驳回'
+    })[task.value?.reviewStatus] || '—'
+)
+
+function exportReport() {
+  if (!task.value) return
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    task: task.value
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `research-report-${task.value.taskId}.json`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
 
 const statusTitle = computed(() => {
   return {

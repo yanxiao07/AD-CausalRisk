@@ -212,6 +212,10 @@ class ResearchTableAssessmentTest {
                 VALUES(?,?,?,?,?)
                 """, subjectId, "V-BATCH", java.sql.Date.valueOf("2026-11-13"),
                 new java.math.BigDecimal("28.0"), new java.math.BigDecimal("0.5"));
+        jdbc.update("""
+                INSERT INTO quality_check(subject_id,quality_status,issues,checked_at,rule_version)
+                VALUES(?,?,?,?,?)
+                """, subjectId, "PASS", "[]", new java.sql.Timestamp(System.currentTimeMillis()), "qc-rules-demo-v2");
 
         var payload = json.createObjectNode();
         payload.putArray("subjectIds").add(subjectId);
@@ -237,6 +241,32 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void batchRefusesSubjectWhoseLatestQualityCheckIsNotPassing() throws Exception {
+        String code = "DEMO-BATCH-QC-" + UUID.randomUUID();
+        long subjectId = subject(code);
+        jdbc.update("""
+                INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb)
+                VALUES(?,?,?,?,?)
+                """, subjectId, "V-BATCH-QC", java.sql.Date.valueOf("2026-11-13"),
+                new java.math.BigDecimal("28.0"), new java.math.BigDecimal("0.5"));
+        jdbc.update("""
+                INSERT INTO quality_check(subject_id,quality_status,issues,checked_at,rule_version)
+                VALUES(?,?,?,?,?)
+                """, subjectId, "WARN", "[]", new java.sql.Timestamp(System.currentTimeMillis()), "qc-rules-demo-v2");
+
+        var payload = json.createObjectNode();
+        payload.putArray("subjectIds").add(subjectId);
+        payload.put("evaluate", false);
+        JsonNode created = body(mvc.perform(post(PATH + "/snapshots/batch")
+                .with(authentication(actor("admin", "ADMIN")))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(payload.toString())));
+        JsonNode item = created.get("data").get("items").get(0);
+        assertThat(item.get("snapshotId").isNull()).isTrue();
+        assertThat(item.get("message").asText()).contains("WARN");
+    }
+
+    @Test
     void batchEvaluationSubmitsAndReadsBackTheCreatedTask() throws Exception {
         String code = "DEMO-BE-" + UUID.randomUUID();
         long subjectId = subject(code);
@@ -245,6 +275,10 @@ class ResearchTableAssessmentTest {
                 VALUES(?,?,?,?,?)
                 """, subjectId, "V-BATCH-EVAL", java.sql.Date.valueOf("2026-11-13"),
                 new java.math.BigDecimal("28.00"), new java.math.BigDecimal("0.50"));
+        jdbc.update("""
+                INSERT INTO quality_check(subject_id,quality_status,issues,checked_at,rule_version)
+                VALUES(?,?,?,?,?)
+                """, subjectId, "PASS", "[]", new java.sql.Timestamp(System.currentTimeMillis()), "qc-rules-demo-v2");
 
         ResearchTableClient original = (ResearchTableClient) org.springframework.test.util.ReflectionTestUtils
                 .getField(service, "client");
@@ -543,6 +577,28 @@ class ResearchTableAssessmentTest {
                         .with(authentication(doctor)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decision\":\"REJECTED\",\"comment\":\"再次复核\"}"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void reportsRespectRoleAndSubjectGrant() throws Exception {
+        var request = fixture("request-seven");
+        long snapshot = snapshot(request, fixture("response-seven"), "admin");
+        reply(request, fixture("response-seven"), 200, false);
+        JsonNode task = body(submit(snapshot, "reports", actor("admin", "ADMIN"))).get("data");
+        long subjectId = task.get("subjectId").asLong();
+
+        mvc.perform(get(PATH + "/reports").with(authentication(actor("admin", "ADMIN"))))
+                .andExpect(status().isForbidden());
+
+        var doctor = actor("doctor", "DOCTOR");
+        JsonNode empty = body(mvc.perform(get(PATH + "/reports").with(authentication(doctor)))).get("data");
+        assertThat(empty.get("total").asLong()).isZero();
+
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,?)",
+                subjectId, userId("doctor"), "VIEW");
+        JsonNode visible = body(mvc.perform(get(PATH + "/reports").with(authentication(doctor)))).get("data");
+        assertThat(visible.get("total").asLong()).isEqualTo(1);
+        assertThat(visible.get("items").get(0).get("taskId").asLong()).isEqualTo(task.get("taskId").asLong());
     }
 
     @Test

@@ -7,7 +7,6 @@ in-process table, and the agent is rebuilt from the bundle for every request.
 
 import argparse
 from hmac import compare_digest
-from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
@@ -53,6 +52,7 @@ def cases(trained_manifest=None, trusted_sha256=None):
 def trained_case(manifest, trusted_sha256):
     from research_runtime.examples.input_admission_constructed import constructed_pair
     from research_runtime.inference import load_final_model
+    from research_runtime.lock_digest import lock_sha256
     from research_runtime.research_table_protocol import CONTRACT
     from research_runtime.runtime_source import runtime_source_sha256
     from research_runtime.table_assessment import TableAssessment
@@ -62,8 +62,7 @@ def trained_case(manifest, trusted_sha256):
     identity = context["model"]
     identity.update({name: verified[name] for name in ("manifestSha256", "artifactSha256", "trainingPlanSha256")})
     identity.update(runtimeSourceSha256=runtime_source_sha256(),
-                    softwareLockSha256=sha256((Path(__file__).resolve().parents[1]
-                                                / "requirements.lock").read_bytes()).hexdigest())
+                    softwareLockSha256=lock_sha256())
     record = fixture["records"][0]
     request = dict(contractVersion=CONTRACT, runId="",
                    modelKey="trained-seven-logistic", subjectCode=record["subjectCode"],

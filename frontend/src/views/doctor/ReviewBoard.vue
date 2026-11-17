@@ -686,6 +686,11 @@ watch(view, (value) => {
 })
 
 onMounted(async () => {
+  if (String(route.query.tab || '') === 'research') {
+    view.value = 'research'
+    await loadResearch(1)
+    return
+  }
   const statusFromQuery = String(route.query.status || '').toUpperCase()
   if (['PENDING', 'ACKNOWLEDGED'].includes(statusFromQuery)) {
     filter.value = statusFromQuery

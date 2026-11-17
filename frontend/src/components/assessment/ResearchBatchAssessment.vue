@@ -263,6 +263,8 @@ const snapshots = ref([])
 const loading = ref(false)
 const error = ref('')
 const hostUnavailable = ref(false)
+let snapshotRequestSeq = 0
+let historyRequestSeq = 0
 
 const tableRef = ref(null)
 const selected = ref([])
@@ -403,20 +405,24 @@ function historyProblem(problem) {
 }
 
 async function loadHistory() {
+  const seq = ++historyRequestSeq
   historyError.value = ''
   if (!validSubject.value) {
     historyRows.value = []
+    historyLoading.value = false
     return
   }
   historyLoading.value = true
   try {
     const data = await listResearchTaskHistory(Number(props.subjectId))
+    if (seq !== historyRequestSeq) return
     historyRows.value = Array.isArray(data) ? data : []
   } catch (problem) {
+    if (seq !== historyRequestSeq) return
     historyRows.value = []
     historyError.value = historyProblem(problem)
   } finally {
-    historyLoading.value = false
+    if (seq === historyRequestSeq) historyLoading.value = false
   }
 }
 
@@ -452,6 +458,7 @@ function handleSnapshotProblem(problem) {
 }
 
 async function loadSnapshots() {
+  const seq = ++snapshotRequestSeq
   const subjectId = Number(props.subjectId)
   error.value = ''
   hostUnavailable.value = false
@@ -459,17 +466,20 @@ async function loadSnapshots() {
   if (tableRef.value) tableRef.value.clearSelection()
   if (!Number.isInteger(subjectId) || subjectId <= 0) {
     snapshots.value = []
+    loading.value = false
     return
   }
   loading.value = true
   try {
     const data = await listResearchSnapshots(subjectId)
+    if (seq !== snapshotRequestSeq) return
     snapshots.value = Array.isArray(data) ? data : []
   } catch (problem) {
+    if (seq !== snapshotRequestSeq) return
     snapshots.value = []
     handleSnapshotProblem(problem)
   } finally {
-    loading.value = false
+    if (seq === snapshotRequestSeq) loading.value = false
   }
 }
 
@@ -553,6 +563,10 @@ watch(
   () => props.subjectId,
   () => {
     activeTab.value = 'snapshots'
+    snapshots.value = []
+    historyRows.value = []
+    error.value = ''
+    historyError.value = ''
     loadSnapshots()
     loadHistory()
   },

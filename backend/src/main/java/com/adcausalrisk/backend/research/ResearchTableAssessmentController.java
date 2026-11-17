@@ -158,6 +158,15 @@ public class ResearchTableAssessmentController {
 
     record ReviewRequest(String decision, String comment) {}
 
+    @GetMapping("/reports")
+    public Envelope<?> reports(@RequestParam(defaultValue = "ALL") String status,
+                               @RequestParam(defaultValue = "1") int page,
+                               @RequestParam(defaultValue = "20") int pageSize,
+                               Authentication auth) {
+        return Envelope.success(service.reports(status, page, pageSize,
+                (AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @GetMapping("/reviews")
     public Envelope<?> reviews(@RequestParam(defaultValue = "PENDING") String status,
                                @RequestParam(defaultValue = "1") int page,
