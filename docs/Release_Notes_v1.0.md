@@ -62,7 +62,7 @@
 - J2：新增 `GET /api/research/table-assessment-tasks/metrics`，管理员大屏与医生工作台按独立研究口径展示任务/复核/同步/耗时，不与旧规则混算。
 - J3：V20 为 `research_table_task` 增加 `executor_id`、`lease_expires_at` 与租约索引，原子领取、过期恢复和多实例防重复执行；并发/过期测试覆盖。
 - J4：启用 Cookie 会话 CSRF，登录豁免，`GET /api/auth/csrf` 发放 token，前端 axios 对写请求自动附加 `X-CSRF-TOKEN`。
-- OpenAPI 增至 91 个操作、78 条路径；V1–V20 已在隔离 MySQL 8.0.46 完成 fresh 迁移和 V12→V20 升级，V21–V22 的 MySQL 目标库复验待执行。
+- OpenAPI 增至 91 个操作、78 条路径；V1–V22 已在隔离 MySQL 8.0.46 完成 fresh 迁移、V12→V22 升级、备份恢复与租约恢复演练，生产部署与真实进程中断演练仍待执行。
 
 ### 产品化与医疗合规收尾
 
