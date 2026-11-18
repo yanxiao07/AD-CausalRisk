@@ -170,10 +170,13 @@ public class PatientResearchSummaryService {
         JsonNode result = parse(task.resultJson());
         Double cif = researchCif(result);
         if (cif == null || !predictionAllowed(result)) {
+            // The review itself is complete. Keep the reviewed state and explain the limitation
+            // instead of presenting the task as an unreviewed/unavailable result.
             return view(
                     task,
-                    "UNAVAILABLE",
-                    "医生已复核本次研究验证：当前数据不足，暂未形成可展示的研究结论。");
+                    "CONFIRMED",
+                    "医生已复核本次研究验证结果；当前输入尚不足以形成个人风险提示，"
+                            + "本次结论不用于临床决策，请按医嘱随访。");
         }
         String band =
                 cif >= CIF_HIGH_THRESHOLD

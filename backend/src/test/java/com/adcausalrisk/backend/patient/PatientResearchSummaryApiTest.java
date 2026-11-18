@@ -133,6 +133,28 @@ class PatientResearchSummaryApiTest {
     }
 
     @Test
+    void confirmedButNonPredictiveResultKeepsReviewedStateAndLimitation() throws Exception {
+        insertTask(
+                "CONFIRMED",
+                """
+                {"dataScope":"CONSTRUCTED_VALIDATION","clinicalUse":false,
+                 "admission":{"predictionAllowed":false},
+                 "prediction":{"adCif24m":0.31,"otherDementiaCif24m":0.12}}
+                """);
+
+        MockHttpSession patient = login("patient");
+        JsonNode body = bodyOf(get("/api/patients/me/research-summary"), patient);
+        JsonNode data = body.get("data");
+
+        assertThat(data.get("state").asText()).isEqualTo("CONFIRMED");
+        assertThat(data.get("summary").asText())
+                .contains("医生已复核")
+                .contains("不用于临床决策");
+        assertThat(data.get("notice").asText()).contains("研究验证用途").contains("非临床诊断");
+        assertThat(body.toString()).doesNotContain("0.31", "0.12", "adCif", "otherDementiaCif");
+    }
+
+    @Test
     void pendingResearchResultDoesNotLeakCif() throws Exception {
         insertTask(
                 "PENDING",

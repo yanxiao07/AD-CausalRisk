@@ -77,6 +77,10 @@
 - 旧模型身份/CRLF 软件锁摘要快照标记为不兼容，并提供重新登记接口；旧快照与历史任务不重写。
 - 单条评估拒绝上一档案迟到的快照响应，并在加载、提交前后核对当前受试者。
 - 研究报告列表在计数/分页前过滤已撤权档案；JSON/HTML/PDF 导出由后端重新鉴权并记录审计，禁止浏览器缓存完整任务。
+- 质控只读取当前访视版本；批量评估改用档案级 `data_version` 绑定质控证据，修复访视更正或仅特征变更后的误阻断。
+- 模型上传使用独立不可变文件路径，避免并发同版本上传互相删除；任务租约默认 900 秒，高于宿主 600 秒读超时。
+- 报告 PDF/HTML 归因列直接读取数值型贡献；患者摘要即使 `predictionAllowed=false` 也保留“已复核、输入有限”状态，不再误报“数据不足”。
+- 研究宿主健康检查将 `GET /` 的 501 视为可达（POST-only 宿主），仅 5xx/网络错误标记不可用。
 
 ## 真实七变量闭环
 
@@ -98,7 +102,7 @@
 
 ## 验证记录
 
-- 后端：`.\mvnw.cmd -B -ntp clean verify` → 364 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
+- 后端：`.\mvnw.cmd -B -ntp clean verify` → 367 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
 - 前端：`npm run build` → 2395 modules，构建成功。
 - Python：`tests.test_contracts_and_fixture` + `tests.test_lock_digest` 7/7；`tests.test_dynamic_host` 6/6。
 - CI：Python research primitives、Java backend、Python service 全部通过。

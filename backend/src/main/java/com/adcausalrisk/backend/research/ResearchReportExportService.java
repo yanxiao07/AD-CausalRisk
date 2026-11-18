@@ -145,10 +145,12 @@ class ResearchReportExportService {
     }
 
     private static String contribution(JsonNode contributions, int group, int outcome) {
-        if (contributions == null || !contributions.path(group).isArray()) return "—";
-        JsonNode pair = contributions.path(group).path(outcome);
-        return pair.isArray() && pair.size() > outcome && pair.get(outcome).isNumber()
-                ? String.format(Locale.ROOT, "%+.6f", pair.get(outcome).asDouble()) : "—";
+        if (contributions == null) return "—";
+        JsonNode row = contributions.path(group);
+        if (!row.isArray()) return "—";
+        // The explanation contract stores one number per outcome, not a nested pair per value.
+        JsonNode value = row.path(outcome);
+        return value.isNumber() ? String.format(Locale.ROOT, "%+.6f", value.asDouble()) : "—";
     }
 
     private static String escape(String value) {

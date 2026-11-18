@@ -55,6 +55,8 @@ app:
 research:
   task:
     executor-id: ${RESEARCH_TASK_EXECUTOR_ID:local}
-    lease-seconds: 300
+    # The host may legitimately take up to 600s (host read timeout). Keep a wide margin so a
+    # live synchronous run is never reclaimed as an orphan before it can persist its result.
+    lease-seconds: ${RESEARCH_TASK_LEASE_SECONDS:900}
     recovery-enabled: true
     recovery-interval-ms: 60000

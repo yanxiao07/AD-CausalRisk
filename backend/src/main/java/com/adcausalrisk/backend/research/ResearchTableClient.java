@@ -31,6 +31,10 @@ public final class ResearchTableClient {
 
     record Reply(int httpStatus, JsonNode body) {}
 
+    static boolean reachableStatus(int status) {
+        return status < 500 || status == 501;
+    }
+
     /** Admin-facing liveness result; never contains the bearer token or response body. */
     public record Health(
             boolean configured,
@@ -99,8 +103,10 @@ public final class ResearchTableClient {
     /**
      * Probes the configured research host without calling a business endpoint.
      *
-     * <p>A 4xx response still proves the HTTP service is listening, so only transport
-     * failures and 5xx are reported as unavailable. The token is never sent here.
+     * <p>A 4xx response still proves the HTTP service is listening. The research host deliberately
+     * implements only POST business routes, so a GET to {@code /} returns HTTP 501; that is a
+     * reachable listener, not an outage. Other 5xx responses remain unavailable. The token is never
+     * sent here.
      */
     public Health health() {
         SystemSettingService.ResearchHost host = settings.researchHost();
@@ -122,7 +128,7 @@ public final class ResearchTableClient {
             connection.setInstanceFollowRedirects(false);
             int status = connection.getResponseCode();
             long latencyMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
-            boolean available = status < 500;
+            boolean available = reachableStatus(status);
             return new Health(
                     true,
                     true,
@@ -130,7 +136,9 @@ public final class ResearchTableClient {
                     status,
                     latencyMs,
                     host.baseUrl(),
-                    available ? "研究宿主可达" : "研究宿主返回 HTTP " + status);
+                    !available
+                            ? "研究宿主返回 HTTP " + status
+                            : status == 501 ? "研究宿主在线（根路径不支持 GET）" : "研究宿主可达");
         } catch (IOException | RuntimeException unreachable) {
             long latencyMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
             log.warn("Research host health probe failed: {}", unreachable.toString());

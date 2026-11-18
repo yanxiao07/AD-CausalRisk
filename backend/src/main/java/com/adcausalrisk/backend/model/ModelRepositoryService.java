@@ -24,6 +24,7 @@ import java.sql.Timestamp;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -117,7 +118,15 @@ public class ModelRepositoryService {
             throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "该模型版本已登记");
         }
 
-        String baseName = version + "-" + artifactSha.substring(0, 12);
+        // A version can be attempted by two concurrent uploads. Keep every attempt in its own
+        // immutable path so the losing database insert can only delete its own bytes, never the
+        // files referenced by the winning release.
+        String baseName =
+                version
+                        + "-"
+                        + artifactSha.substring(0, 12)
+                        + "-"
+                        + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         Path artifactPath = repository.resolve(baseName + ".artifact");
         Path manifestPath = repository.resolve(baseName + ".manifest.json");
         try {

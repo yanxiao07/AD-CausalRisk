@@ -26,7 +26,7 @@ final class ResearchTaskLease {
 
     ResearchTaskLease(JdbcTemplate jdbc, Clock clock,
             @Value("${research.task.executor-id:local}") String executorId,
-            @Value("${research.task.lease-seconds:300}") long leaseSeconds) {
+            @Value("${research.task.lease-seconds:900}") long leaseSeconds) {
         this.jdbc = jdbc;
         this.clock = clock;
         this.executorId = executorId;

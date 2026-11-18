@@ -63,7 +63,7 @@ public class QualityCheckService {
     private List<Map<String, Object>> loadVisits(long subjectId) {
         return jdbc.queryForList(
                 "SELECT id,visit_date,mmse,moca,cdr_sb,raw_mmse,raw_moca,raw_cdr_sb FROM"
-                        + " visit WHERE subject_id=? ORDER BY visit_date,id",
+                        + " visit WHERE subject_id=? AND is_current=TRUE ORDER BY visit_date,id",
                 subjectId);
     }
 

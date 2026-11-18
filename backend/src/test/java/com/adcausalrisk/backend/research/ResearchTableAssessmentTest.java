@@ -350,6 +350,30 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void batchUsesCurrentArchiveVersionWhenOnlyFeatureEvidenceChanged() throws Exception {
+        String code = "DEMO-BATCH-VERSION-" + UUID.randomUUID().toString().substring(0, 8);
+        long subjectId = subject(code);
+        jdbc.update("""
+                INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb,data_version)
+                VALUES(?,?,?,?,?,?)
+                """, subjectId, "V-BATCH-VERSION", java.sql.Date.valueOf("2026-11-13"),
+                new java.math.BigDecimal("28.0"), new java.math.BigDecimal("0.5"), "demo-v1");
+        jdbc.update("UPDATE subject SET data_version='demo-v2' WHERE id=?", subjectId);
+        insertQuality(subjectId, "PASS");
+
+        var payload = json.createObjectNode();
+        payload.putArray("subjectIds").add(subjectId);
+        payload.put("evaluate", false);
+        JsonNode created = body(mvc.perform(post(PATH + "/snapshots/batch")
+                .with(authentication(actor("admin", "ADMIN")))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(payload.toString())));
+        JsonNode item = created.get("data").get("items").get(0);
+        assertThat(item.get("snapshotId").isNull()).isFalse();
+        assertThat(item.get("hostSyncStatus").asText()).isEqualTo("SYNCED");
+    }
+
+    @Test
     void batchEvaluationSubmitsAndReadsBackTheCreatedTask() throws Exception {
         String code = "DEMO-BE-" + UUID.randomUUID();
         long subjectId = subject(code);

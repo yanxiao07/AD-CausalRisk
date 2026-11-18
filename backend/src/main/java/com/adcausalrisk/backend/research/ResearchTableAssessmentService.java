@@ -83,7 +83,7 @@ class ResearchTableAssessmentService {
             BigDecimal cdrSb,
             String rawMmse,
             String rawCdrSb,
-            String dataVersion,
+            String subjectDataVersion,
             String qualityStatus,
             String qualityDigest,
             String qualityDataVersion) {}
@@ -278,7 +278,7 @@ class ResearchTableAssessmentService {
                 }
                 BatchVisit visit = jdbc.query("""
                         SELECT v.visit_date,v.mmse,v.cdr_sb,v.raw_mmse,v.raw_cdr_sb,
-                               COALESCE(v.data_version,s.data_version) AS data_version,
+                               s.data_version AS subject_data_version,
                                q.quality_status,q.input_digest AS quality_digest,
                                q.data_version AS quality_data_version
                         FROM visit v JOIN subject s ON s.id=v.subject_id
@@ -292,7 +292,7 @@ class ResearchTableAssessmentService {
                         row.getDate("visit_date").toLocalDate().toString(),
                         row.getBigDecimal("mmse"), row.getBigDecimal("cdr_sb"),
                         row.getString("raw_mmse"), row.getString("raw_cdr_sb"),
-                        row.getString("data_version"), row.getString("quality_status"),
+                        row.getString("subject_data_version"), row.getString("quality_status"),
                         row.getString("quality_digest"), row.getString("quality_data_version")),
                         subjectId).stream().findFirst().orElse(null);
                 if (visit == null) {
@@ -313,9 +313,9 @@ class ResearchTableAssessmentService {
                     continue;
                 }
                 if (visit.qualityDataVersion() == null
-                        || !visit.qualityDataVersion().equals(visit.dataVersion())) {
+                        || !visit.qualityDataVersion().equals(visit.subjectDataVersion())) {
                     items.add(new BatchItem(subjectId, null, null, null, null,
-                            "最新质控的数据版本早于当前访视，请重新质控"));
+                            "最新质控的数据版本早于当前档案，请重新质控"));
                     continue;
                 }
                 BigDecimal mmse;
@@ -335,7 +335,7 @@ class ResearchTableAssessmentService {
                 putIfPresent(features, "mmse", mmse);
                 putIfPresent(features, "cdr_sb", cdrSb);
                 Registration registration = registerManualAndSync(subjectId, features, visit.visitDate(),
-                        visit.dataVersion(), null, principal);
+                        visit.subjectDataVersion(), null, principal);
                 Long taskId = null;
                 String taskStatus = null;
                 String message = null;

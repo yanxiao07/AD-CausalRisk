@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -24,6 +25,8 @@ import org.springframework.test.web.servlet.RequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Map;
@@ -41,6 +44,9 @@ class ModelRepositoryApiTest {
     @Autowired private MockMvc mockMvc;
 
     @Autowired private ObjectMapper objectMapper;
+
+    @Value("${app.model-repository.dir}")
+    private String repositoryDir;
 
     @Test
     void adminCanUploadActivateAndRollBackAModelRelease() throws Exception {
@@ -160,6 +166,14 @@ class ModelRepositoryApiTest {
                                 .param("artifactSha256", sha)
                                 .session(admin))
                 .andExpect(status().isConflict());
+
+        try (var files = Files.list(Path.of(repositoryDir))) {
+            assertThat(
+                            files.map(path -> path.getFileName().toString())
+                                    .filter(name -> name.startsWith(version + "-"))
+                                    .count())
+                    .isGreaterThanOrEqualTo(2);
+        }
     }
 
     @Test
