@@ -129,6 +129,17 @@ public class ResearchTableAssessmentController {
         return Envelope.success(new SnapshotRegistration(id, service.syncToHost(id, principal)));
     }
 
+    @PostMapping("/snapshots/{id}/re-register")
+    public Envelope<?> reRegister(@PathVariable long id, Authentication auth) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
+        var registration = service.reRegister(id, principal);
+        return Envelope.success(new SnapshotRegistration(
+                registration.snapshotId(), registration.hostSyncStatus()));
+    }
+
     private static String text(JsonNode payload, String field) {
         JsonNode value = payload.get(field);
         return value == null || value.isNull() ? null : value.asText();
@@ -207,6 +218,7 @@ public class ResearchTableAssessmentController {
                 .contentType(MediaType.parseMediaType(export.contentType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + export.filename() + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .body(export.bytes());
     }
 

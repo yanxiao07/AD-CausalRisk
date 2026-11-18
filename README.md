@@ -102,7 +102,7 @@ Vite 的 `/api` 代理指向 `http://localhost:8080`。
 ## 验证
 
 ```powershell
-# 后端（H2 MySQL 模式，361 测试）
+# 后端（H2 MySQL 模式，364 测试）
 cd backend
 .\mvnw.cmd -B -ntp clean verify
 

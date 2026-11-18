@@ -2,7 +2,7 @@
 
 本次是四环节研究主线的有界工程支撑：复用研究Python服务及现有Java工程，补齐业务权限、来源/质量、任务/结果持久化及管理接口；验收终点为独立的后端提交、可构建源码和对应检查。研究工程验收不替代研究模型或临床验收。
 
-基线为[历史需求 V3.2](Course_SRS_V3_2.md)、[业务设计](Design_Guide.md)及[集成约定](Integration_Contract.md)。接口以 [Java OpenAPI](../contracts/java-business.target.openapi.json) 为准，共 91 个操作。表格研究任务为新评估入口，旧规则接口保留已有任务回读。
+基线为[历史需求 V3.2](Course_SRS_V3_2.md)、[业务设计](Design_Guide.md)及[集成约定](Integration_Contract.md)。接口以 [Java OpenAPI](../contracts/java-business.target.openapi.json) 为准，共 92 个操作。表格研究任务为新评估入口，旧规则接口保留已有任务回读。
 
 ## 管理员职责
 
@@ -35,7 +35,7 @@
 
 ## 可重复检查
 
-- JDK 21：在 `backend` 运行 `mvnw.cmd -B -ntp verify`（Linux/macOS 为 `./mvnw -B -ntp verify`）。H2 MySQL 兼容模式；路由覆盖检查比较 91 个 OpenAPI 操作与实际 MVC 路由集合。
+- JDK 21：在 `backend` 运行 `mvnw.cmd -B -ntp verify`（Linux/macOS 为 `./mvnw -B -ntp verify`）。H2 MySQL 兼容模式；路由覆盖检查比较 92 个 OpenAPI 操作与实际 MVC 路由集合。
 - 仓库根目录：同一已安装测试依赖的Python执行`python -m unittest discover -s tests -p test_contracts_and_fixture.py -v`，5项契约/fixtures检查。旧规则计算用于回归检查。
 - 与真实Python的合成联调验证完整/BLOCKED/原始超界值、导入身份、输入不可变、审计和正常Java重启后的结果读取。客户端模拟测试与真实HTTP分别记录，不把Mock当算法或临床证据。
 - 表格研究通道用[真实 HTTP 验收](../backend/README.md#本地研究任务联调)验证独立 Python 进程、登录会话、已训练权重、人工快照、结果回读及权限。验收使用新内存 H2。

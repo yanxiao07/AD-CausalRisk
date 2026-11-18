@@ -58,7 +58,11 @@
           class="ba-table"
           @selection-change="onSelectionChange"
         >
-          <el-table-column type="selection" width="48" />
+          <el-table-column
+            type="selection"
+            width="48"
+            :selectable="row => row.compatible !== false"
+          />
           <el-table-column label="快照 ID" width="130">
             <template #default="{ row }">#{{ row.snapshotId }}</template>
           </el-table-column>
@@ -68,13 +72,38 @@
               <span v-else class="ba-muted">—</span>
             </template>
           </el-table-column>
+          <el-table-column label="模型身份" width="140">
+            <template #default="{ row }">
+              <el-tag
+                :type="row.compatible === false ? 'danger' : 'success'"
+                size="small"
+                effect="light"
+              >
+                {{ row.compatible === false ? '需重新登记' : '兼容' }}
+              </el-tag>
+              <div v-if="row.compatible === false" class="ba-compat-hint">
+                {{ row.compatibilityMessage || '旧模型身份与新宿主不兼容' }}
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column label="宿主同步" width="150">
             <template #default="{ row }">
               <el-tag :type="syncTag(row.hostSyncStatus)" size="small" effect="light">
                 {{ syncLabel(row.hostSyncStatus) }}
               </el-tag>
               <el-button
-                v-if="row.hostSyncStatus === 'PENDING' || row.hostSyncStatus === 'FAILED'"
+                v-if="row.compatible === false"
+                link
+                type="danger"
+                size="small"
+                class="ba-retry"
+                :loading="reregisteringId === row.snapshotId"
+                @click.stop="reRegister(row)"
+              >
+                重新登记
+              </el-button>
+              <el-button
+                v-else-if="row.hostSyncStatus === 'PENDING' || row.hostSyncStatus === 'FAILED'"
                 link
                 type="primary"
                 size="small"
@@ -239,13 +268,14 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import StatusTag from '@/components/common/StatusTag.vue'
 import { newIdempotencyKey } from '@/api/assessments.js'
 import {
   getResearchTableTask,
   listResearchSnapshots,
   listResearchTaskHistory,
+  reRegisterResearchSnapshot,
   retryResearchSnapshotSync,
   retryResearchTableTask,
   submitResearchTableTask
@@ -273,6 +303,7 @@ const drawerOpen = ref(false)
 const batchRows = ref([])
 const batchRunning = ref(false)
 const retryingId = ref(null)
+const reregisteringId = ref(null)
 
 const syncFilter = ref('ALL')
 const activeTab = ref('snapshots')
@@ -364,6 +395,29 @@ async function retrySync(row) {
     ElMessage.error(describeProblem(problem))
   } finally {
     retryingId.value = null
+  }
+}
+
+async function reRegister(row) {
+  if (reregisteringId.value) return
+  try {
+    await ElMessageBox.confirm(
+      `旧快照 #${row.snapshotId} 将保留不改，系统会用其冻结请求和当前模型身份生成一份新快照；旧快照原值仍可审计。`,
+      '重新登记不兼容快照',
+      { confirmButtonText: '重新登记', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  reregisteringId.value = row.snapshotId
+  try {
+    const result = await reRegisterResearchSnapshot(row.snapshotId)
+    ElMessage.success(`已重新登记为快照 #${result?.snapshotId ?? '—'}`)
+    await loadSnapshots()
+  } catch (problem) {
+    ElMessage.error(describeProblem(problem))
+  } finally {
+    reregisteringId.value = null
   }
 }
 
@@ -678,6 +732,14 @@ defineExpose({
 
 .ba-retry {
   margin-left: 4px;
+}
+
+.ba-compat-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--danger);
+  white-space: normal;
 }
 
 .ba-danger {

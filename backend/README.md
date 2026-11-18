@@ -14,7 +14,7 @@ Java负责会话、对象授权、资料、导入、质量、持久化任务/结
 
 ## 构建与验证
 
-需要 JDK21。Windows 运行 `.\mvnw.cmd -B -ntp verify`，Linux/macOS 运行 `./mvnw -B -ntp verify`。测试使用 H2 MySQL 兼容模式，核对 91 个 API 操作与实际路由。研究适配测试使用隔离环回宿主、公开构造请求与响应。
+需要 JDK21。Windows 运行 `.\mvnw.cmd -B -ntp verify`，Linux/macOS 运行 `./mvnw -B -ntp verify`。测试使用 H2 MySQL 兼容模式，核对 92 个 API 操作与实际路由。研究适配测试使用隔离环回宿主、公开构造请求与响应。
 
 ## 启动
 

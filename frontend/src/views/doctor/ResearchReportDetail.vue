@@ -6,7 +6,7 @@
       :subtitle="task ? `研究任务 #${task.taskId} · 快照 #${task.snapshotId}` : '读取该受试者的研究验证结果'"
     >
       <template #extra>
-        <el-dropdown :disabled="!task" @command="exportReport">
+        <el-dropdown :disabled="!task || exporting" @command="exportReport">
           <el-button :icon="Download" :disabled="!task">
             导出报告
             <el-icon class="el-icon--right"><ArrowDown /></el-icon>
@@ -160,12 +160,13 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { ArrowDown, Download, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
-import { getResearchTableTask } from '@/api/research.js'
+import { downloadResearchReport, getResearchTableTask } from '@/api/research.js'
 import { formatDateTime } from '@/utils/datetime.js'
 
 const route = useRoute()
@@ -173,6 +174,7 @@ const router = useRouter()
 const task = ref(null)
 const loading = ref(true)
 const error = ref('')
+const exporting = ref(false)
 
 const result = computed(() => task.value?.result || {})
 const model = computed(() => result.value.model || {})
@@ -203,12 +205,25 @@ const reviewLabel = computed(
     })[task.value?.reviewStatus] || '—'
 )
 
-function exportReport(format) {
-  if (!task.value) return
-  window.open(
-    `/api/research/table-assessment-tasks/${task.value.taskId}/export?format=${encodeURIComponent(format)}`,
-    '_blank'
-  )
+async function exportReport(format) {
+  if (!task.value || exporting.value) return
+  exporting.value = true
+  try {
+    const { blob, filename } = await downloadResearchReport(task.value.taskId, format)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    ElMessage.success('报告已导出')
+  } catch (problem) {
+    ElMessage.error(problem?.message || '报告导出失败，请稍后重试')
+  } finally {
+    exporting.value = false
+  }
 }
 
 const statusTitle = computed(() => {

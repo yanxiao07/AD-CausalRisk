@@ -5,6 +5,7 @@ import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
 import com.adcausalrisk.backend.importjob.IdempotencyRecordRepository;
 import com.adcausalrisk.backend.importjob.entity.IdempotencyRecord;
+import com.adcausalrisk.backend.qualitycheck.QualityCheckService;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.SubjectAccessPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -64,7 +65,8 @@ class ResearchTableAssessmentService {
                 String reviewStatus, Long reviewedBy, Instant reviewedAt, String reviewComment) {}
 
     record ReviewQueue(List<Task> items, long total, int page, int pageSize) {}
-    record SnapshotOption(long snapshotId, Long taskId, String hostSyncStatus) {}
+    record SnapshotOption(long snapshotId, Long taskId, String hostSyncStatus,
+                          boolean compatible, String compatibilityMessage) {}
     record Registration(long snapshotId, String hostSyncStatus) {}
     record TaskSummary(long tasksToday, long completedToday, long failedToday, long averageSeconds,
                        List<Task> recent) {}
@@ -74,6 +76,17 @@ class ResearchTableAssessmentService {
     record BatchItem(long subjectId, Long snapshotId, String hostSyncStatus, Long taskId,
                      String taskStatus, String message) {}
     record BatchResult(List<BatchItem> items, int succeeded, int failed) {}
+
+    private record BatchVisit(
+            String visitDate,
+            BigDecimal mmse,
+            BigDecimal cdrSb,
+            String rawMmse,
+            String rawCdrSb,
+            String dataVersion,
+            String qualityStatus,
+            String qualityDigest,
+            String qualityDataVersion) {}
 
     record MigrationResult(int migrated, int failed, int skipped, List<Long> failedSnapshotIds,
                            List<Long> skippedSnapshotIds) {}
@@ -90,6 +103,7 @@ class ResearchTableAssessmentService {
     private final ResearchTableProtocol protocol;
     private final ResearchModelIdentity modelIdentity;
     private final ResearchTaskLease lease;
+    private final QualityCheckService qualityChecks;
     private final AuditService audit;
     private final Clock clock;
     @Value("${research.table.test-fixtures-enabled:false}")
@@ -98,7 +112,7 @@ class ResearchTableAssessmentService {
     ResearchTableAssessmentService(JdbcTemplate jdbc, PlatformTransactionManager manager,
             IdempotencyRecordRepository idempotency, SubjectAccessPolicy access,
             ResearchTableClient client, ResearchTableProtocol protocol, ResearchModelIdentity modelIdentity,
-            ResearchTaskLease lease, AuditService audit, Clock clock) {
+            ResearchTaskLease lease, QualityCheckService qualityChecks, AuditService audit, Clock clock) {
         this.jdbc = jdbc;
         transaction = new TransactionTemplate(manager);
         this.idempotency = idempotency;
@@ -107,6 +121,7 @@ class ResearchTableAssessmentService {
         this.protocol = protocol;
         this.modelIdentity = modelIdentity;
         this.lease = lease;
+        this.qualityChecks = qualityChecks;
         this.audit = audit;
         this.clock = clock;
     }
@@ -188,6 +203,47 @@ class ResearchTableAssessmentService {
         return new Registration(id, syncToHost(id, principal));
     }
 
+    /**
+     * Creates a new, current-model snapshot from an old snapshot's frozen request. The old row is
+     * never rewritten: its clinical values, model identity and digest stay auditable. The only
+     * mutation is a fresh {@code runId} so the host can register the new image independently.
+     */
+    Registration reRegister(long snapshotId, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        var source = jdbc.query("""
+                SELECT subject_id,request_json,model_json
+                FROM research_table_snapshot
+                WHERE id=? AND data_scope='CONSTRUCTED_VALIDATION'
+                  AND (authorized_user_id=? OR ?=TRUE)
+                """, (row, index) -> new Object[] {
+                        row.getLong("subject_id"), row.getString("request_json"), row.getString("model_json")},
+                snapshotId, principal.userId(), principal.roleCodes().contains("ADMIN")).stream().findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+        long subjectId = (Long) source[0];
+        if (!access.canReadRawScores(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        ObjectNode request;
+        JsonNode storedModel;
+        try {
+            request = (ObjectNode) protocol.parse(
+                    ((String) source[1]).getBytes(StandardCharsets.UTF_8));
+            storedModel = protocol.parse(((String) source[2]).getBytes(StandardCharsets.UTF_8));
+        } catch (IOException | IllegalArgumentException invalid) {
+            throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "旧快照配置不可解析");
+        }
+        if (modelIdentity.identity().equals(storedModel)) {
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT,
+                    "该快照的模型身份仍与研究宿主兼容，无需重新登记");
+        }
+        request.put("runId", "run-rereg-" + snapshotId + "-"
+                + UUID.randomUUID().toString().substring(0, 12));
+        Registration registration = registerAndSync(subjectId, request, principal);
+        audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_REREGISTERED",
+                "oldSnapshotId=" + snapshotId + " newSnapshotId=" + registration.snapshotId());
+        return registration;
+    }
+
     Registration registerManualAndSync(long subjectId, JsonNode features, String indexDate, String dataVersion,
             String runId, AppUserPrincipal principal) {
         long id = registerManual(subjectId, features, indexDate, dataVersion, runId, principal);
@@ -220,41 +276,66 @@ class ResearchTableAssessmentService {
                     items.add(new BatchItem(subjectId, null, null, null, null, "没有该受试者的原始数据权限"));
                     continue;
                 }
-                var visit = jdbc.query("""
-                        SELECT v.visit_date,v.mmse,v.cdr_sb,
+                BatchVisit visit = jdbc.query("""
+                        SELECT v.visit_date,v.mmse,v.cdr_sb,v.raw_mmse,v.raw_cdr_sb,
                                COALESCE(v.data_version,s.data_version) AS data_version,
-                               (SELECT q.quality_status FROM quality_check q
-                                 WHERE q.subject_id=v.subject_id
-                                 ORDER BY q.checked_at DESC,q.id DESC LIMIT 1) AS quality_status,
-                               (SELECT q.checked_at FROM quality_check q
-                                 WHERE q.subject_id=v.subject_id
-                                 ORDER BY q.checked_at DESC,q.id DESC LIMIT 1) AS checked_at
+                               q.quality_status,q.input_digest AS quality_digest,
+                               q.data_version AS quality_data_version
                         FROM visit v JOIN subject s ON s.id=v.subject_id
-                        WHERE v.subject_id=? ORDER BY v.visit_date DESC,v.id DESC LIMIT 1
-                        """, (row, index) -> new Object[] {row.getDate("visit_date").toLocalDate().toString(),
-                        row.getBigDecimal("mmse"), row.getBigDecimal("cdr_sb"), row.getString("data_version"),
-                        row.getString("quality_status"), row.getTimestamp("checked_at")},
+                        LEFT JOIN quality_check q ON q.id=(
+                            SELECT q2.id FROM quality_check q2
+                             WHERE q2.subject_id=v.subject_id
+                             ORDER BY q2.checked_at DESC,q2.id DESC LIMIT 1)
+                        WHERE v.subject_id=? AND v.is_current=TRUE
+                        ORDER BY v.visit_date DESC,v.id DESC LIMIT 1
+                        """, (row, index) -> new BatchVisit(
+                        row.getDate("visit_date").toLocalDate().toString(),
+                        row.getBigDecimal("mmse"), row.getBigDecimal("cdr_sb"),
+                        row.getString("raw_mmse"), row.getString("raw_cdr_sb"),
+                        row.getString("data_version"), row.getString("quality_status"),
+                        row.getString("quality_digest"), row.getString("quality_data_version")),
                         subjectId).stream().findFirst().orElse(null);
                 if (visit == null) {
                     items.add(new BatchItem(subjectId, null, null, null, null, "没有可用于生成快照的访视数据"));
                     continue;
                 }
-                String qualityStatus = (String) visit[4];
-                if (!"PASS".equals(qualityStatus)) {
+                if (!"PASS".equals(visit.qualityStatus())) {
                     items.add(new BatchItem(subjectId, null, null, null, null,
-                            qualityStatus == null
+                            visit.qualityStatus() == null
                                     ? "该受试者尚未完成质控，请先在质控页完成审核"
-                                    : "最新质控状态为 " + qualityStatus + "，请先处理质控异常"));
+                                    : "最新质控状态为 " + visit.qualityStatus() + "，请先处理质控异常"));
+                    continue;
+                }
+                if (visit.qualityDigest() == null
+                        || !visit.qualityDigest().equals(qualityChecks.inputDigest(subjectId))) {
+                    items.add(new BatchItem(subjectId, null, null, null, null,
+                            "最新质控未绑定当前数据（已有新访视或数据更正），请重新质控"));
+                    continue;
+                }
+                if (visit.qualityDataVersion() == null
+                        || !visit.qualityDataVersion().equals(visit.dataVersion())) {
+                    items.add(new BatchItem(subjectId, null, null, null, null,
+                            "最新质控的数据版本早于当前访视，请重新质控"));
+                    continue;
+                }
+                BigDecimal mmse;
+                BigDecimal cdrSb;
+                try {
+                    mmse = rawScore(visit.rawMmse(), visit.mmse());
+                    cdrSb = rawScore(visit.rawCdrSb(), visit.cdrSb());
+                } catch (NumberFormatException invalid) {
+                    items.add(new BatchItem(subjectId, null, null, null, null,
+                            "原始认知分数不可解析，请先修正访视数据"));
                     continue;
                 }
                 ObjectNode features = JsonNodeFactory.instance.objectNode();
                 for (String feature : MANUAL_FEATURES) {
                     features.putNull(feature);
                 }
-                putIfPresent(features, "mmse", (BigDecimal) visit[1]);
-                putIfPresent(features, "cdr_sb", (BigDecimal) visit[2]);
-                Registration registration = registerManualAndSync(subjectId, features, (String) visit[0],
-                        (String) visit[3], null, principal);
+                putIfPresent(features, "mmse", mmse);
+                putIfPresent(features, "cdr_sb", cdrSb);
+                Registration registration = registerManualAndSync(subjectId, features, visit.visitDate(),
+                        visit.dataVersion(), null, principal);
                 Long taskId = null;
                 String taskStatus = null;
                 String message = null;
@@ -275,6 +356,11 @@ class ResearchTableAssessmentService {
         }
         int succeeded = (int) items.stream().filter(item -> item.snapshotId() != null).count();
         return new BatchResult(items, succeeded, items.size() - succeeded);
+    }
+
+    private static BigDecimal rawScore(String raw, BigDecimal derived) {
+        if (raw == null || raw.isBlank()) return derived;
+        return new BigDecimal(raw.trim());
     }
 
     private static void putIfPresent(ObjectNode features, String name, BigDecimal value) {
@@ -427,9 +513,12 @@ class ResearchTableAssessmentService {
             }
             if (reply == null || reply.httpStatus() != 200
                     || !"SYNCED".equals(reply.body().path("status").asText())) {
+                String hostError = reply == null ? "" : reply.body().path("errorCode").asText("");
                 updateSync(snapshotId, "FAILED");
                 audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_SYNC_FAILED",
-                        "snapshotId=" + snapshotId + " status=" + (reply == null ? "unavailable" : reply.httpStatus()));
+                        "snapshotId=" + snapshotId + " status="
+                                + (reply == null ? "unavailable" : reply.httpStatus())
+                                + (hostError.isBlank() ? "" : " hostError=" + hostError));
                 return "FAILED";
             }
             updateSync(snapshotId, "SYNCED");
@@ -580,8 +669,9 @@ class ResearchTableAssessmentService {
         if (!access.canReadRawScores(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
+        JsonNode currentModel = modelIdentity.identity();
         return jdbc.query("""
-                SELECT s.id,s.request_json,s.host_sync_status,t.id AS task_id
+                SELECT s.id,s.request_json,s.model_json,s.host_sync_status,t.id AS task_id
                 FROM research_table_snapshot s LEFT JOIN research_table_task t ON t.snapshot_id=s.id
                 WHERE s.subject_id=? AND s.authorized_user_id=? AND s.data_scope='CONSTRUCTED_VALIDATION'
                 ORDER BY s.id
@@ -591,8 +681,17 @@ class ResearchTableAssessmentService {
                         if (!TRAINED_MODEL.equals(request.path("modelKey").asText())) {
                             return null;
                         }
+                        boolean compatible;
+                        try {
+                            JsonNode storedModel = protocol.parse(
+                                    row.getString("model_json").getBytes(StandardCharsets.UTF_8));
+                            compatible = currentModel.equals(storedModel);
+                        } catch (IOException | IllegalArgumentException invalid) {
+                            compatible = false;
+                        }
                         return new SnapshotOption(row.getLong("id"), row.getObject("task_id", Long.class),
-                                row.getString("host_sync_status"));
+                                row.getString("host_sync_status"), compatible,
+                                compatible ? null : "旧模型身份或软件锁摘要与新研究宿主不兼容，请重新登记");
                     } catch (IOException | IllegalArgumentException invalid) {
                         throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "冻结研究快照配置无效");
                     }
@@ -780,6 +879,11 @@ class ResearchTableAssessmentService {
         } else {
             scopeFilter = " AND s.authorized_user_id=?";
             params.add(principal.userId());
+            if (!access.hasFullRawScoreVisibility(principal)) {
+                scopeFilter += " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
+                        + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))";
+                params.add(principal.userId());
+            }
         }
         String from = """
                 FROM research_table_task t

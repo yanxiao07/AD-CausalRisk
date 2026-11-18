@@ -1,6 +1,7 @@
 package com.adcausalrisk.backend.report;
 
 import com.adcausalrisk.backend.assessment.AssessmentService;
+import com.adcausalrisk.backend.audit.AuditService;
 import com.adcausalrisk.backend.common.*;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,12 +19,15 @@ public class ReportExportService {
     private final AssessmentService assessments;
     private final BusinessQueries queries;
     private final ObjectMapper json;
+    private final AuditService audit;
 
     public ReportExportService(
-            AssessmentService assessments, BusinessQueries queries, ObjectMapper json) {
+            AssessmentService assessments, BusinessQueries queries, ObjectMapper json,
+            AuditService audit) {
         this.assessments = assessments;
         this.queries = queries;
         this.json = json;
+        this.audit = audit;
     }
 
     public record Export(byte[] bytes, String contentType, String filename) {}
@@ -31,6 +35,8 @@ public class ReportExportService {
     public Export export(long id, String format, String audience, AppUserPrincipal user) {
         if (!Set.of("research", "doctor").contains(audience))
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "报告用途无效");
+        if (!Set.of("json", "html", "pdf").contains(format))
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "仅支持HTML、PDF、JSON导出");
         var outcome = assessments.findAssessment(id, user);
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("title", "AD-CausalRisk 合成研究排序报告");
@@ -62,7 +68,7 @@ public class ReportExportService {
         try {
             String content = json.writerWithDefaultPrettyPrinter().writeValueAsString(report);
             String readable = readable(report, outcome.result(), audience);
-            return switch (format) {
+            Export export = switch (format) {
                 case "json" ->
                         new Export(
                                 content.getBytes(java.nio.charset.StandardCharsets.UTF_8),
@@ -93,6 +99,9 @@ public class ReportExportService {
                         throw new BusinessException(
                                 ErrorCode.VALIDATION_ERROR, "仅支持HTML、PDF、JSON导出");
             };
+            audit.recordQuietly(user.userId(), "REPORT_EXPORT",
+                    "assessmentId=" + id + " format=" + format + " audience=" + audience);
+            return export;
         } catch (IOException error) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "报告生成失败");
         }

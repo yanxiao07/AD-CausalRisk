@@ -60,6 +60,14 @@ export function retryResearchSnapshotSync(snapshotId) {
   )
 }
 
+export function reRegisterResearchSnapshot(snapshotId) {
+  return request.post(
+    `/research/table-assessment-tasks/snapshots/${Number(snapshotId)}/re-register`,
+    null,
+    { silent: true }
+  )
+}
+
 export function submitResearchTableTask({ snapshotId, idempotencyKey }) {
   return request.post(
     '/research/table-assessment-tasks',
@@ -73,6 +81,35 @@ export function submitResearchTableTask({ snapshotId, idempotencyKey }) {
 
 export function getResearchTableTask(taskId) {
   return request.get(`/research/table-assessment-tasks/${taskId}`, { silent: true })
+}
+
+/**
+ * Fetches a report through the authenticated Java session instead of letting the browser
+ * open the protected URL directly. The server re-authorizes every export and audits it.
+ */
+export async function downloadResearchReport(taskId, format) {
+  const response = await fetch(
+    `/api/research/table-assessment-tasks/${Number(taskId)}/export?format=${encodeURIComponent(format)}`,
+    { credentials: 'include', headers: { Accept: '*/*' } }
+  )
+  if (!response.ok) {
+    let message = '报告导出失败，请稍后重试'
+    try {
+      const payload = await response.json()
+      message = payload?.message || message
+    } catch {
+      /* non-JSON error body */
+    }
+    const problem = new Error(message)
+    problem.httpStatus = response.status
+    throw problem
+  }
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const match = /filename="?([^";]+)"?/i.exec(disposition)
+  return {
+    blob: await response.blob(),
+    filename: match?.[1] || `research-task-${taskId}.${format}`
+  }
 }
 
 /**

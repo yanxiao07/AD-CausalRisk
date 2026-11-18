@@ -45,6 +45,49 @@ public class QualityCheckService {
             Instant checkedAt,
             String ruleVersion) {}
 
+    /**
+     * Canonical digest of the exact visit/feature evidence a quality check evaluates.
+     *
+     * <p>The batch research path reuses this so a {@code PASS} can never be replayed against a
+     * newer, un-checked visit: the digest is computed from the same ordered rows and serialized
+     * shape that {@link #check(Long, AppUserPrincipal)} stores in {@code quality_check.input_digest}.
+     */
+    public String inputDigest(long subjectId) {
+        try {
+            return computeInputDigest(loadVisits(subjectId), loadFeatures(subjectId));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
+            throw new IllegalStateException("质控输入无法序列化", invalid);
+        }
+    }
+
+    private List<Map<String, Object>> loadVisits(long subjectId) {
+        return jdbc.queryForList(
+                "SELECT id,visit_date,mmse,moca,cdr_sb,raw_mmse,raw_moca,raw_cdr_sb FROM"
+                        + " visit WHERE subject_id=? ORDER BY visit_date,id",
+                subjectId);
+    }
+
+    private List<Map<String, Object>> loadFeatures(long subjectId) {
+        return jdbc.queryForList(
+                "SELECT id,feature_name,feature_value,recorded_at,unit FROM subject_feature"
+                        + " WHERE subject_id=? ORDER BY recorded_at,id",
+                subjectId);
+    }
+
+    private String computeInputDigest(
+            List<Map<String, Object>> visits, List<Map<String, Object>> features)
+            throws com.fasterxml.jackson.core.JsonProcessingException {
+        String input = json.writeValueAsString(List.of(visits, features));
+        try {
+            return HexFormat.of()
+                    .formatHex(
+                            MessageDigest.getInstance("SHA-256")
+                                    .digest(input.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
     @Transactional
     public QualityCheckResult check(Long id, AppUserPrincipal principal) {
         if (!policy.canReadRawScores(principal, id))
@@ -53,16 +96,8 @@ public class QualityCheckService {
                 subjects.findById(id)
                         .orElseThrow(
                                 () -> new BusinessException(ErrorCode.VALIDATION_ERROR, "档案不存在"));
-        var visits =
-                jdbc.queryForList(
-                        "SELECT id,visit_date,mmse,moca,cdr_sb,raw_mmse,raw_moca,raw_cdr_sb FROM"
-                                + " visit WHERE subject_id=? ORDER BY visit_date,id",
-                        id);
-        var features =
-                jdbc.queryForList(
-                        "SELECT id,feature_name,feature_value,recorded_at,unit FROM subject_feature"
-                                + " WHERE subject_id=? ORDER BY recorded_at,id",
-                        id);
+        var visits = loadVisits(id);
+        var features = loadFeatures(id);
         List<String> issues = new ArrayList<>();
         boolean blocked = visits.isEmpty(), cognition = false;
         int observed = 0, missing = 0;
@@ -173,12 +208,7 @@ public class QualityCheckService {
         }
         Instant now = Instant.now(clock);
         try {
-            String input = json.writeValueAsString(List.of(visits, features));
-            String digest =
-                    HexFormat.of()
-                            .formatHex(
-                                    MessageDigest.getInstance("SHA-256")
-                                            .digest(input.getBytes(StandardCharsets.UTF_8)));
+            String digest = computeInputDigest(visits, features);
             var keys = new GeneratedKeyHolder();
             String issuesJson = json.writeValueAsString(issues.stream().distinct().toList()),
                     coverageJson = json.writeValueAsString(coverage);

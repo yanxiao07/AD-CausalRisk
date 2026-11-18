@@ -47,7 +47,7 @@
 - 新增 `GET /api/research/table-assessment-tasks/history?subjectId=`，按任务时间倒序返回最近 50 条。
 - 新增 `POST /api/research/table-assessment-tasks/{id}/retry`，仅允许 `FAILED`/`OUTCOME_UNKNOWN` 重试。
 - 前端增加同步状态筛选、任务历史表与失败任务重试；刷新页面后历史从后端重建。
-- OpenAPI 操作数在 P3 时增至 83、路径 71；J1 后为 85 个操作、73 条路径，当前为 91 个操作、78 条路径。
+- OpenAPI 操作数在 P3 时增至 83、路径 71；J1 后为 85 个操作、73 条路径，当前为 92 个操作、79 条路径。
 
 ### P5 产品化文案
 
@@ -62,7 +62,7 @@
 - J2：新增 `GET /api/research/table-assessment-tasks/metrics`，管理员大屏与医生工作台按独立研究口径展示任务/复核/同步/耗时，不与旧规则混算。
 - J3：V20 为 `research_table_task` 增加 `executor_id`、`lease_expires_at` 与租约索引，原子领取、过期恢复和多实例防重复执行；并发/过期测试覆盖。
 - J4：启用 Cookie 会话 CSRF，登录豁免，`GET /api/auth/csrf` 发放 token，前端 axios 对写请求自动附加 `X-CSRF-TOKEN`。
-- OpenAPI 增至 91 个操作、78 条路径；V1–V22 已在隔离 MySQL 8.0.46 完成 fresh 迁移、V12→V22 升级、备份恢复与租约恢复演练，生产部署与真实进程中断演练仍待执行。
+- OpenAPI 增至 92 个操作、79 条路径；V1–V22 已在隔离 MySQL 8.0.46 完成 fresh 迁移、V12→V22 升级、备份恢复与租约恢复演练，生产部署与真实进程中断演练仍待执行。
 
 ### 产品化与医疗合规收尾
 
@@ -70,6 +70,13 @@
 - V22：访视更正改为追加版本，原行保留 `is_current=false`，新行记录 `version_no`、`replaces_id`、原因、操作人和时间；current-only 读取保证详情不重复，历史可追溯。
 - 患者端新增 `GET /api/patients/me/research-summary`，仅对 `CONFIRMED` 研究结果输出定性结论、研究用途声明和限制，不返回 CIF、权重、图或 resultJson。
 - 前端增加患者研究摘要卡片、系统控制台模型仓库、360 档案访视更正与版本历史；移动端侧栏、表格横向滚动和工具栏换行覆盖 390px 验收。
+
+### 合并前安全与一致性修复
+
+- 批量研究评估只接受当前访视版本，且质控必须绑定同一输入摘要与数据版本；旧访视 PASS 不再放行新访视，批量分数使用原始值而不是舍入派生值。
+- 旧模型身份/CRLF 软件锁摘要快照标记为不兼容，并提供重新登记接口；旧快照与历史任务不重写。
+- 单条评估拒绝上一档案迟到的快照响应，并在加载、提交前后核对当前受试者。
+- 研究报告列表在计数/分页前过滤已撤权档案；JSON/HTML/PDF 导出由后端重新鉴权并记录审计，禁止浏览器缓存完整任务。
 
 ## 真实七变量闭环
 
@@ -91,7 +98,7 @@
 
 ## 验证记录
 
-- 后端：`.\mvnw.cmd -B -ntp clean verify` → 361 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
+- 后端：`.\mvnw.cmd -B -ntp clean verify` → 364 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
 - 前端：`npm run build` → 2395 modules，构建成功。
 - Python：`tests.test_contracts_and_fixture` + `tests.test_lock_digest` 7/7；`tests.test_dynamic_host` 6/6。
 - CI：Python research primitives、Java backend、Python service 全部通过。
