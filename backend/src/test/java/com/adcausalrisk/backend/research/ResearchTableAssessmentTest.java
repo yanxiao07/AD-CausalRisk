@@ -759,11 +759,18 @@ class ResearchTableAssessmentTest {
                     .containsExactlyInAnyOrder("DOCTOR", "RESEARCHER");
             var dualRole = actor("research_doctor", "DOCTOR", "RESEARCHER");
 
-            // Global read scope must still let the treating doctor read the task result.
-            mvc.perform(get(PATH + "/" + taskId).with(authentication(dualRole)))
-                    .andExpect(status().isOk());
+            // Report list, detail and export all require the explicit archive grant. Global
+            // research visibility alone must not widen the report use case.
+            mvc.perform(get(PATH + "/reports/" + taskId).with(authentication(dualRole)))
+                    .andExpect(status().isForbidden());
+            mvc.perform(get(PATH + "/" + taskId + "/export")
+                            .with(authentication(dualRole)))
+                    .andExpect(status().isForbidden());
+            JsonNode hiddenReports = body(mvc.perform(get(PATH + "/reports")
+                    .with(authentication(dualRole)))).get("data");
+            assertThat(hiddenReports.get("total").asLong()).isZero();
 
-            // But review submission additionally needs an explicit subject grant.
+            // Review submission also needs an explicit subject grant.
             JsonNode queue = body(mvc.perform(get(PATH + "/reviews")
                     .with(authentication(dualRole)))).get("data");
             assertThat(queue.get("total").asLong()).isZero();
@@ -771,6 +778,23 @@ class ResearchTableAssessmentTest {
                             .with(authentication(dualRole)).contentType(MediaType.APPLICATION_JSON)
                             .content("{\"decision\":\"CONFIRMED\",\"comment\":\"无档案授权不得复核\"}"))
                     .andExpect(status().isForbidden());
+
+            jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,?)",
+                    task.get("subjectId").asLong(), dualUserId, "VIEW");
+            try {
+                mvc.perform(get(PATH + "/reports/" + taskId).with(authentication(dualRole)))
+                        .andExpect(status().isOk());
+                mvc.perform(get(PATH + "/" + taskId + "/export")
+                                .with(authentication(dualRole))
+                                .param("format", "json"))
+                        .andExpect(status().isOk());
+                JsonNode visibleReports = body(mvc.perform(get(PATH + "/reports")
+                        .with(authentication(dualRole)))).get("data");
+                assertThat(visibleReports.get("total").asLong()).isEqualTo(1);
+            } finally {
+                jdbc.update("DELETE FROM subject_permission WHERE subject_id=? AND user_id=?",
+                        task.get("subjectId").asLong(), dualUserId);
+            }
         } finally {
             jdbc.update("UPDATE sys_user SET data_scope=? WHERE id=?", originalScope, dualUserId);
         }

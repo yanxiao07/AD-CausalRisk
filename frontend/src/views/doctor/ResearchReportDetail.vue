@@ -166,7 +166,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
-import { downloadResearchReport, getResearchTableTask } from '@/api/research.js'
+import { downloadResearchReport, getResearchReportTask } from '@/api/research.js'
 import { formatDateTime } from '@/utils/datetime.js'
 
 const route = useRoute()
@@ -291,7 +291,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    task.value = await getResearchTableTask(taskId)
+    task.value = await getResearchReportTask(taskId)
   } catch (problem) {
     task.value = null
     error.value = problem?.message || '该研究结果不存在或当前账号无权查看'

@@ -83,6 +83,11 @@ export function getResearchTableTask(taskId) {
   return request.get(`/research/table-assessment-tasks/${taskId}`, { silent: true })
 }
 
+/** GET /api/research/table-assessment-tasks/reports/{id} —— 报告详情，复用报告的档案授权规则。 */
+export function getResearchReportTask(taskId) {
+  return request.get(`/research/table-assessment-tasks/reports/${Number(taskId)}`, { silent: true })
+}
+
 /**
  * Fetches a report through the authenticated Java session instead of letting the browser
  * open the protected URL directly. The server re-authorizes every export and audits it.

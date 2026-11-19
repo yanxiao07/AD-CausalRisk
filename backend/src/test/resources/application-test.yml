@@ -40,4 +40,5 @@ research:
   task:
     # Tests call recovery explicitly; a background pass would race with their fixtures.
     recovery-enabled: false
-    lease-seconds: 60
+    # Must exceed the research host read timeout ceiling (600s); see ResearchTaskLease.
+    lease-seconds: 900

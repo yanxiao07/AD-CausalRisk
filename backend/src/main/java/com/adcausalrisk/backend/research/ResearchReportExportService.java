@@ -43,7 +43,7 @@ class ResearchReportExportService {
         if (!List.of("pdf", "html", "json").contains(normalized)) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "仅支持 PDF、HTML、JSON 导出");
         }
-        var task = tasks.find(taskId, principal);
+        var task = tasks.report(taskId, principal);
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("title", "AD-CausalRisk 模型验证报告");
         report.put("taskId", task.taskId());

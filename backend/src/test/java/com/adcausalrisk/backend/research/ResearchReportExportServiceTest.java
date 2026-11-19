@@ -28,7 +28,7 @@ class ResearchReportExportServiceTest {
     void exportsThePersistedResearchResultAsJsonHtmlAndPdf() throws Exception {
         var principal = mock(AppUserPrincipal.class);
         when(principal.userId()).thenReturn(7L);
-        when(tasks.find(9L, principal)).thenReturn(task(9L));
+        when(tasks.report(9L, principal)).thenReturn(task(9L));
 
         var jsonExport = service.export(9L, "json", principal);
         assertThat(jsonExport.contentType()).isEqualTo("application/json");

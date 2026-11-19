@@ -222,6 +222,14 @@ public class ResearchTableAssessmentController {
                 .body(export.bytes());
     }
 
+    @GetMapping("/reports/{id}")
+    public Envelope<?> report(@PathVariable long id, Authentication auth) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        return Envelope.success(service.report(id, (AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @GetMapping("/{id}")
     public Envelope<?> task(@PathVariable long id, Authentication auth) {
         if (id <= 0) {

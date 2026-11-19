@@ -2,7 +2,7 @@
 
 本次是四环节研究主线的有界工程支撑：复用研究Python服务及现有Java工程，补齐业务权限、来源/质量、任务/结果持久化及管理接口；验收终点为独立的后端提交、可构建源码和对应检查。研究工程验收不替代研究模型或临床验收。
 
-基线为[历史需求 V3.2](Course_SRS_V3_2.md)、[业务设计](Design_Guide.md)及[集成约定](Integration_Contract.md)。接口以 [Java OpenAPI](../contracts/java-business.target.openapi.json) 为准，共 92 个操作。表格研究任务为新评估入口，旧规则接口保留已有任务回读。
+基线为[历史需求 V3.2](Course_SRS_V3_2.md)、[业务设计](Design_Guide.md)及[集成约定](Integration_Contract.md)。接口以 [Java OpenAPI](../contracts/java-business.target.openapi.json) 为准，共 93 个操作。表格研究任务为新评估入口，旧规则接口保留已有任务回读。
 
 ## 管理员职责
 
@@ -21,21 +21,21 @@
 | 扩展：访视追加更正 | `PATCH /api/subjects/{subjectId}/visits/{visitId}` 追加新版本，保留原行与原值，记录原因/操作人/时间/版本链 | V22；原值保留、current-only 详情、MANAGE 与原因校验；不物理覆盖 |
 | FR-DATA-03/04/05 | CSV映射、预检、错误、原文/映射绑定幂等、确认入库及版本推进 | 导入事务/权限/重放与错误附件验证；错误明细保留既有数量上限 |
 | FR-QUALITY-01/02/03 | 独立持久化检查、规则/操作者/覆盖/摘要、PASS/WARN/BLOCKED | 全缺失不能因人工批准变有效；资料质量与Python窗口资格分别记录 |
-| FR-ASSESS-01/02 | 固定输入/来源/质量绑定、持久化幂等任务、有界异步队列、排队取消、失败与中断恢复 | PENDING/RUNNING取消边界和旧快照不变；正常新进程可读原结果；V20 任务租约/执行者归属与过期恢复 |
+| FR-ASSESS-01/02 | 固定输入/来源/质量绑定、持久化幂等任务、有界异步队列、排队取消、失败与中断恢复 | PENDING/RUNNING取消边界和旧快照不变；正常新进程可读原结果；V20 任务租约/执行者归属与过期恢复；租约配置必须大于宿主 600s 读超时，否则启动拒绝 |
 | FR-GRAPH-01/FR-WARN-01/FR-EXPLAIN-01 | 校验并保存同一次Python结果、图/贡献/缺失/版本/限制，提供图比较及来源追溯 | 规则历史用例与表格模型演示分别验证。演示使用已训练权重、人工快照及同次归因 |
 | FR-WARN-02 | BLOCKED保留null分数和UNAVAILABLE等级 | 序列化、报告和真实合成调用核验；不补0 |
 | FR-EXPLAIN-02 | 患者本人摘要/随访/医生联系，后端白名单过滤 | 越权及敏感字段检查；无图权重、排序数值、内部阶段和备注 |
 | 扩展：患者研究摘要 | `GET /api/patients/me/research-summary` 仅返回已复核研究结果的定性结论、用途声明与限制 | 仅 PATIENT 且绑定档案；仅 `CONFIRMED`；响应不含 CIF、权重、图或 resultJson；未绑定/待复核/需补充/未通过均只给状态文案 |
 | FR-FOLLOW-01/02 | 对象权限、创建/改期/完成/取消、终态保护、近期/逾期与分页 | 数据库业务回归；终态不因省略status被改写 |
-| FR-REPORT-01 | 授权HTML/PDF/JSON附件、模板、来源/版本/限制及复核信息 | PDF中文文本提取与两页渲染检查；内嵌OFL字体，不依赖主机字体 |
+| FR-REPORT-01 | 授权HTML/PDF/JSON附件、模板、来源/版本/限制及复核信息；列表、报告详情与下载共用档案授权规则 | PDF中文文本提取与两页渲染检查；内嵌OFL字体，不依赖主机字体 |
 | FR-AUDIT-01 | 登录/失败/拒绝、导入/质量、任务、复核、随访、授权、导出审计，服务端分页 | 审计事件绑定对象/状态/traceId，不存原始请求或密码；写审计失败只记录错误，可靠审计部署另验 |
 | FR-AGENT-01/02 | HTTP适配、超时、版本/runId/返回值校验，稳定错误白名单 | 既有HTTP客户端故障与契约测试，真实合成服务成功/BLOCKED/非法原值；不自动重复POST |
 
-管理扩展同时包括已安装验证模型开关、模型仓库上传/SHA-256校验/启停/回滚、Java/研究宿主健康/版本、研究任务独立指标聚合、偏好持久化、完整授权范围聚合与查询。只读研究证据接口复用现有Git聚合说明，模型清单仅核文件存在，不加载权重或执行研究推理。这些是支撑接口，不改变研究验收标准。
+管理扩展同时包括已安装验证模型开关、模型仓库上传/SHA-256校验/启停/回滚、Java/研究宿主健康/版本、研究任务独立指标聚合、偏好持久化、完整授权范围聚合与查询。模型启用/回滚在同一事务内锁定配置后串行切换。只读研究证据接口复用现有Git聚合说明，模型清单仅核文件存在，不加载权重或执行研究推理。这些是支撑接口，不改变研究验收标准。
 
 ## 可重复检查
 
-- JDK 21：在 `backend` 运行 `mvnw.cmd -B -ntp verify`（Linux/macOS 为 `./mvnw -B -ntp verify`）。H2 MySQL 兼容模式；路由覆盖检查比较 92 个 OpenAPI 操作与实际 MVC 路由集合。
+- JDK 21：在 `backend` 运行 `mvnw.cmd -B -ntp verify`（Linux/macOS 为 `./mvnw -B -ntp verify`）。H2 MySQL 兼容模式；路由覆盖检查比较 93 个 OpenAPI 操作与实际 MVC 路由集合。
 - 仓库根目录：同一已安装测试依赖的Python执行`python -m unittest discover -s tests -p test_contracts_and_fixture.py -v`，5项契约/fixtures检查。旧规则计算用于回归检查。
 - 与真实Python的合成联调验证完整/BLOCKED/原始超界值、导入身份、输入不可变、审计和正常Java重启后的结果读取。客户端模拟测试与真实HTTP分别记录，不把Mock当算法或临床证据。
 - 表格研究通道用[真实 HTTP 验收](../backend/README.md#本地研究任务联调)验证独立 Python 进程、登录会话、已训练权重、人工快照、结果回读及权限。验收使用新内存 H2。

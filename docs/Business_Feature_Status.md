@@ -4,7 +4,7 @@
 
 下表记录已验收的 Java 业务行为；涉及前端界面的描述为本地候选或接入目标。主分支页面接入情况见[前端 README](../frontend/README.md)，后端逐项证据见[后端验收](Backend_Requirements_Acceptance.md)。
 
-接口以 [Java OpenAPI](../contracts/java-business.target.openapi.json) 的 **92 个操作**为准。新评估走表格研究通道，旧规则提交只供已有幂等任务回读。
+接口以 [Java OpenAPI](../contracts/java-business.target.openapi.json) 的 **93 个操作**为准。新评估走表格研究通道，旧规则提交只供已有幂等任务回读。
 
 ## 已实现的业务链路
 
@@ -47,7 +47,7 @@
 
 ## 验证与未完成边界
 
-Java `mvnw clean verify`覆盖真实Spring MVC/会话/迁移/H2权限与事务，当前 **367 tests**，含新增业务回归与路由契约覆盖；算法客户端的模拟测试与真实合成Java→Python调用分开记录。Python研究733项回归保留。前端有构建（2395 modules）、任务页乱序/错误回归及使用真实服务的 `scripts/e2e-business.mjs`。
+Java `mvnw clean verify`覆盖真实Spring MVC/会话/迁移/H2权限与事务，当前 **370 tests**，含新增业务回归与路由契约覆盖；算法客户端的模拟测试与真实合成Java→Python调用分开记录。Python研究733项回归保留。前端有构建（2395 modules）、任务页乱序/错误回归及使用真实服务的 `scripts/e2e-business.mjs`。
 
 迁移 V11 加入来源、质量、输入快照、偏好、模型配置等字段；V12 加入研究数据范围；V13 增加独立研究快照和任务表；V14–V20 增加系统设置、快照上下文、宿主同步、执行批次、复核与任务租约字段；V21 增加模型发布仓库；V22 增加访视追加更正版本链。H2 通过 V1–V22；隔离 MySQL 8.0.46 已通过 V1–V22 fresh 迁移、V12→V22 升级、备份恢复与租约恢复演练，**生产部署、在线恢复与真实进程中断演练仍待验收**。升级现有库前备份，不能删库或修改历史 Flyway 脚本规避校验。
 

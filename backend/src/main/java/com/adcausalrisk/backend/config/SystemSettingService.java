@@ -37,7 +37,7 @@ public class SystemSettingService {
     static final String KEY_RETENTION_POLICY = "retention.policy";
 
     static final int MIN_RESEARCH_TIMEOUT_SECONDS = 1;
-    static final int MAX_RESEARCH_TIMEOUT_SECONDS = 600;
+    public static final int MAX_RESEARCH_TIMEOUT_SECONDS = 600;
     static final int MIN_AUDIT_RETENTION_DAYS = 30;
     static final int MAX_AUDIT_RETENTION_DAYS = 3650;
     static final int DEFAULT_AUDIT_RETENTION_DAYS = 365;

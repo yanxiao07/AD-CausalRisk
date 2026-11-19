@@ -182,6 +182,7 @@ public class ModelRepositoryService {
     public ModelView rollback(String version, AppUserPrincipal user) {
         BusinessQueries.admin(user);
         requireVersion(version);
+        lockModelConfiguration();
         String previous =
                 jdbc.query(
                         "SELECT model_version FROM model_configuration WHERE enabled=TRUE"
@@ -198,9 +199,11 @@ public class ModelRepositoryService {
         return view(version);
     }
 
+    @Transactional
     public void setEnabled(String version, boolean enabled, AppUserPrincipal user) {
         BusinessQueries.admin(user);
         requireVersion(version);
+        lockModelConfiguration();
         if (enabled) {
             String previous =
                     jdbc.query(
@@ -237,6 +240,18 @@ public class ModelRepositoryService {
                 "UPDATE model_release SET activated_at=CURRENT_TIMESTAMP"
                         + " WHERE model_version=?",
                 version);
+    }
+
+    /**
+     * All activation paths lock the same row set before deciding which version to switch. Without
+     * this, two enable requests can each disable the current version and then enable themselves,
+     * leaving two enabled rows. The transaction boundary in setEnabled/rollback keeps both updates
+     * and the audit outcome atomic.
+     */
+    private void lockModelConfiguration() {
+        jdbc.queryForList(
+                "SELECT model_version FROM model_configuration ORDER BY model_version FOR UPDATE",
+                String.class);
     }
 
     private void requireVersion(String version) {

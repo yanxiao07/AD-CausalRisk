@@ -825,6 +825,46 @@ class ResearchTableAssessmentService {
                 """, status, code, result, Timestamp.from(clock.instant()), taskId, executionId);
     }
 
+    private record ReportScope(String filter, List<Object> params) {}
+
+    /**
+     * The report list, report detail and export share one authorization rule. A doctor needs an
+     * explicit VIEW/MANAGE grant for the subject; a researcher is limited to their own snapshots
+     * unless they have full raw-score visibility, in which case every researcher snapshot is
+     * readable. This intentionally does not fall back to the broader task detail rule.
+     */
+    private ReportScope reportScope(AppUserPrincipal principal) {
+        requireReportRole(principal);
+        List<Object> params = new ArrayList<>();
+        String filter;
+        if (principal.roleCodes().contains("DOCTOR")) {
+            filter = " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
+                    + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))";
+            params.add(principal.userId());
+        } else {
+            filter = " AND s.authorized_user_id=?";
+            params.add(principal.userId());
+            if (!access.hasFullRawScoreVisibility(principal)) {
+                filter += " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
+                        + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))";
+                params.add(principal.userId());
+            }
+        }
+        return new ReportScope(filter, List.copyOf(params));
+    }
+
+    Task report(long id, AppUserPrincipal principal) {
+        ReportScope scope = reportScope(principal);
+        List<Object> params = new ArrayList<>();
+        params.add(id);
+        params.addAll(scope.params());
+        return jdbc.query(TASK_QUERY + " WHERE t.id=?" + scope.filter(),
+                        (row, index) -> mapTask(row, principal), params.toArray())
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+    }
+
     Task find(long id, AppUserPrincipal principal) {
         requireArchiveRole(principal);
         return jdbc.query(TASK_QUERY + " WHERE t.id=?", (row, index) -> mapTask(row, principal),
@@ -864,33 +904,20 @@ class ResearchTableAssessmentService {
     }
 
     ReviewQueue reports(String status, int page, int pageSize, AppUserPrincipal principal) {
-        requireReportRole(principal);
+        ReportScope scope = reportScope(principal);
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(100, pageSize));
         boolean all = status == null || status.isBlank() || "ALL".equalsIgnoreCase(status);
         String statusFilter = all ? " AND t.status<>'RUNNING'" : " AND t.status=?";
-        String scopeFilter;
         List<Object> params = new ArrayList<>();
         if (!all) params.add(status.toUpperCase(Locale.ROOT));
-        if (principal.roleCodes().contains("DOCTOR")) {
-            scopeFilter = " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
-                    + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))";
-            params.add(principal.userId());
-        } else {
-            scopeFilter = " AND s.authorized_user_id=?";
-            params.add(principal.userId());
-            if (!access.hasFullRawScoreVisibility(principal)) {
-                scopeFilter += " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
-                        + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))";
-                params.add(principal.userId());
-            }
-        }
+        params.addAll(scope.params());
         String from = """
                 FROM research_table_task t
                 JOIN research_table_snapshot s ON s.id=t.snapshot_id
                 JOIN subject sub ON sub.id=s.subject_id
                 WHERE 1=1
-                """ + statusFilter + scopeFilter;
+                """ + statusFilter + scope.filter();
         Long total = jdbc.queryForObject("SELECT COUNT(*) " + from, Long.class, params.toArray());
         String select = """
                 SELECT t.id,t.snapshot_id,t.run_id,t.status,t.error_code,t.result_json,t.created_at,t.updated_at,

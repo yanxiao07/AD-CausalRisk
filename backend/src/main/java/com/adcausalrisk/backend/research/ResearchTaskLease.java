@@ -1,5 +1,6 @@
 package com.adcausalrisk.backend.research;
 
+import com.adcausalrisk.backend.config.SystemSettingService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -27,10 +28,16 @@ final class ResearchTaskLease {
     ResearchTaskLease(JdbcTemplate jdbc, Clock clock,
             @Value("${research.task.executor-id:local}") String executorId,
             @Value("${research.task.lease-seconds:900}") long leaseSeconds) {
+        if (leaseSeconds <= SystemSettingService.MAX_RESEARCH_TIMEOUT_SECONDS) {
+            throw new IllegalStateException(
+                    "research.task.lease-seconds must be greater than the research host read timeout ("
+                            + SystemSettingService.MAX_RESEARCH_TIMEOUT_SECONDS + "s), but was "
+                            + leaseSeconds + "s");
+        }
         this.jdbc = jdbc;
         this.clock = clock;
         this.executorId = executorId;
-        this.leaseDuration = Duration.ofSeconds(Math.max(1, leaseSeconds));
+        this.leaseDuration = Duration.ofSeconds(leaseSeconds);
     }
 
     String executorId() {

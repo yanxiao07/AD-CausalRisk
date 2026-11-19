@@ -7611,6 +7611,67 @@
         }
       }
     },
+    "/api/research/table-assessment-tasks/reports/{id}": {
+      "get": {
+        "operationId": "getResearchTaskReport",
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO",
+        "summary": "读取研究验证报告详情（与报告列表共用档案授权）",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "研究验证报告",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchTableTaskEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/research/evidence": {
       "get": {
         "summary": "已封存研究证据与受控候选模型路径定位（不加载权重）",
