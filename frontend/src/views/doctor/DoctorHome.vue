@@ -36,6 +36,27 @@
       </aside>
 
       <main class="feed">
+        <section class="panel research-metrics">
+          <header class="panel__head">
+            <div>
+              <h2>研究验证</h2>
+              <p>研究模型任务独立统计，不与旧规则评估混算。</p>
+            </div>
+            <el-button text type="primary" @click="goResearchReviews">进入研究复核</el-button>
+          </header>
+          <div class="research-metrics__grid">
+            <div><span>今日任务</span><strong>{{ researchMetrics?.tasksToday ?? '—' }}</strong></div>
+            <div><span>已完成</span><strong>{{ researchMetrics?.completed ?? '—' }}</strong></div>
+            <div><span>待复核</span><strong>{{ researchMetrics?.pendingReview ?? '—' }}</strong></div>
+            <div><span>已同步快照</span><strong>{{ researchMetrics?.syncedSnapshots ?? '—' }}</strong></div>
+          </div>
+          <p v-if="researchMetrics" class="research-metrics__note">
+            阻断 {{ researchMetrics.blocked }} · 失败 {{ researchMetrics.failed }} · 平均耗时
+            {{ researchMetrics.averageSeconds }} 秒
+          </p>
+          <p v-else class="research-metrics__note">研究指标暂不可用，请稍后刷新。</p>
+        </section>
+
         <section class="panel">
           <header class="panel__head">
             <div>
@@ -69,6 +90,34 @@
             :icon="Warning"
           />
           <el-skeleton v-else :rows="3" animated />
+        </section>
+
+        <section class="panel">
+          <header class="panel__head">
+            <div>
+              <h2>研究模型待复核</h2>
+              <p>研究验证结果需要医生确认后归档。</p>
+            </div>
+            <el-button text type="primary" @click="goResearchReviews">进入研究复核</el-button>
+          </header>
+
+          <div v-if="researchPending.length" class="pending-list">
+            <div v-for="item in researchPending" :key="item.taskId" class="pending-row">
+              <div class="pending-row__main">
+                <strong>{{ item.subjectCode || `#${item.subjectId}` }}</strong>
+                <span>{{ item.subjectAlias || '—' }} · {{ formatTime(item.createdAt) }}</span>
+              </div>
+              <span class="pending-row__score">{{ researchCif(item, 'adCif24m') }}</span>
+              <el-button size="small" type="primary" plain @click="goResearchReviews">复核</el-button>
+            </div>
+          </div>
+          <EmptyState
+            v-else-if="!loading"
+            title="没有研究模型待复核"
+            description="当前没有等待确认的研究验证结果。"
+            :icon="Checked"
+          />
+          <el-skeleton v-else :rows="2" animated />
         </section>
 
         <section class="panel">
@@ -149,6 +198,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { listAssessments } from '@/api/assessments.js'
 import { listFollowUpsPaged } from '@/api/followups.js'
+import { getResearchMetrics, listResearchReviews } from '@/api/research.js'
 import { listSubjects } from '@/api/subjects.js'
 import { formatDateTime } from '@/utils/datetime.js'
 
@@ -163,6 +213,9 @@ const followups = ref([])
 const todayTotal = ref(0)
 const overdueTotal = ref(0)
 const subjectTotal = ref(null)
+const researchPending = ref([])
+const researchPendingTotal = ref(0)
+const researchMetrics = ref(null)
 
 /** 同一个受试者只保留最新一条高危评估，避免卡片流出现重复患者。 */
 const highUnique = computed(() => {
@@ -246,16 +299,20 @@ function formatScore(value) {
 async function load() {
   loading.value = true
   loadError.value = ''
-  const [pending, high, subjects, today, overdue] = await Promise.allSettled([
+  const [pending, high, subjects, today, overdue, research, researchStats] = await Promise.allSettled([
     listAssessments({ page: 1, pageSize: 6, reviewStatus: 'PENDING' }),
     listAssessments({ page: 1, pageSize: 6, riskLevel: 'HIGH' }),
     listSubjects({ page: 1, pageSize: 1 }),
     listFollowUpsPaged({ page: 1, pageSize: 6, due: 'today' }),
-    listFollowUpsPaged({ page: 1, pageSize: 1, due: 'overdue' })
+    listFollowUpsPaged({ page: 1, pageSize: 1, due: 'overdue' }),
+    listResearchReviews({ status: 'PENDING', page: 1, pageSize: 5 }),
+    getResearchMetrics()
   ])
 
-  const failed = [pending, high, subjects, today, overdue].filter((item) => item.status === 'rejected')
-  if (failed.length === 5) {
+  const failed = [pending, high, subjects, today, overdue, research, researchStats].filter(
+    (item) => item.status === 'rejected'
+  )
+  if (failed.length === 7) {
     loadError.value = '工作台数据读取失败，请稍后刷新重试。'
   } else if (failed.length > 0) {
     loadError.value = '部分数据读取失败，已展示可用的内容。'
@@ -275,7 +332,21 @@ async function load() {
     todayTotal.value = Number(today.value?.total ?? followups.value.length)
   }
   if (overdue.status === 'fulfilled') overdueTotal.value = Number(overdue.value?.total ?? 0)
+  if (research.status === 'fulfilled') {
+    researchPending.value = Array.isArray(research.value?.items) ? research.value.items : []
+    researchPendingTotal.value = Number(research.value?.total ?? researchPending.value.length)
+  }
+  if (researchStats.status === 'fulfilled') researchMetrics.value = researchStats.value
   loading.value = false
+}
+
+function researchCif(item, key) {
+  const value = item?.result?.prediction?.[key]
+  return typeof value === 'number' ? `${(value * 100).toFixed(2)}%` : '—'
+}
+
+function goResearchReviews() {
+  router.push('/reviews?tab=research')
 }
 
 function goReviews() {
@@ -415,6 +486,40 @@ onMounted(load)
   margin: 4px 0 0;
   font-size: 12px;
   color: var(--muted);
+}
+
+.research-metrics__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.research-metrics__grid > div {
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: #f6f9fc;
+  border: 1px solid #e6eef6;
+}
+
+.research-metrics__grid span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.research-metrics__grid strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 24px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.research-metrics__note {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .risk-cards {
@@ -586,6 +691,10 @@ onMounted(load)
 @media (max-width: 640px) {
   .rail {
     grid-template-columns: 1fr;
+  }
+
+  .research-metrics__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .followup-row {

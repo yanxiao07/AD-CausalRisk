@@ -8,13 +8,13 @@ Java负责会话、对象授权、资料、导入、质量、持久化任务/结
 
 新评估走表格研究任务。旧评估接口保留历史读取与原幂等键回读，JSON 报告资源及当前用户接口仍可用。管理员界面按 `/api/me` 的菜单渲染，纯 ADMIN 使用 audit/system/users，多角色合并对应入口。
 
-已有库先完整备份，再在专用测试库验证 V11–V13。应用升级后 Flyway 执行前向迁移并校验历史脚本。V12 为既有演示研究账号显式保留 ALL，新研究账号默认 ASSIGNED，通过授权接口配置对象范围。目标库验收步骤见 [MySQL 8 验收](../docs/MySQL8_Acceptance.md)。
+已有库先完整备份，再在专用测试库验证 V11–V22。应用升级后 Flyway 执行前向迁移并校验历史脚本。V12 为既有演示研究账号显式保留 ALL，新研究账号默认 ASSIGNED，通过授权接口配置对象范围。目标库验收步骤见 [MySQL 8 验收](../docs/MySQL8_Acceptance.md)。
 
 评估页接入和运行方式见[前端说明](../frontend/README.md#风险评估接入)。
 
 ## 构建与验证
 
-需要 JDK21。Windows 运行 `.\mvnw.cmd -B -ntp verify`，Linux/macOS 运行 `./mvnw -B -ntp verify`。测试使用 H2 MySQL 兼容模式，核对 62 个 API 操作与实际路由。研究适配测试使用隔离环回宿主、公开构造请求与响应。
+需要 JDK21。Windows 运行 `.\mvnw.cmd -B -ntp verify`，Linux/macOS 运行 `./mvnw -B -ntp verify`。测试使用 H2 MySQL 兼容模式，核对 93 个 API 操作与实际路由。研究适配测试使用隔离环回宿主、公开构造请求与响应。
 
 ## 启动
 
@@ -28,7 +28,7 @@ $env:ADCR_DB_PASSWORD='<db-password>'
 .\mvnw.cmd spring-boot:run
 ```
 
-Java 默认端口为 8080。无数据库配置时启动失败。Flyway在启动时执行V1–V13，Hibernate验证表结构。V11新增输入快照/质量及来源元数据，V12新增研究数据范围，V13新增独立研究快照和任务表。**MySQL实际迁移和部署待验收**。已有库按前向迁移流程升级。
+Java 默认端口为 8080。无数据库配置时启动失败。Flyway 在启动时执行 V1–V22，Hibernate 验证表结构。V11 新增输入快照/质量及来源元数据，V12 新增研究数据范围，V13 新增独立研究快照和任务表，V14–V20 增加系统设置、快照上下文、宿主同步、执行批次、复核与任务租约字段；V21 增加模型发布仓库，V22 增加访视追加更正版本与当前版本约束。**MySQL 8 的 V1–V22 fresh 迁移、V12→V22 升级、备份恢复和租约恢复演练已在隔离实例验证；生产部署、在线恢复与真实进程中断演练仍待验收**。已有库按前向迁移流程升级。
 
 合成种子账号为admin、researcher、doctor、patient、research_doctor，仓库种子口令为 `DemoPass!2026`，保存BCrypt哈希。管理员可通过账号管理重置密码；本地既有账号密码不会在升级时重置。
 

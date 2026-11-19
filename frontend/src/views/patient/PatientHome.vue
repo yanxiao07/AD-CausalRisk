@@ -29,6 +29,31 @@
       <el-button v-if="state === 'degraded'" class="hcard__retry" @click="load">重新加载</el-button>
     </section>
 
+    <!-- 卡片 1b：研究验证结果（定性、脱敏；GET /api/patients/me/research-summary） -->
+    <section class="hcard hcard--research" aria-labelledby="research-title">
+      <div class="hcard__heading">
+        <p id="research-title" class="hcard__label">研究验证结果</p>
+        <el-tag size="small" effect="plain" type="warning">研究用途 · 非临床诊断</el-tag>
+      </div>
+
+      <p v-if="researchState === 'loading'" class="hcard__status is-muted">正在读取研究验证结果…</p>
+      <p v-else-if="researchState === 'degraded'" class="hcard__status is-muted">
+        暂时无法读取研究验证结果，请稍后重试或咨询医生。
+      </p>
+      <p v-else class="hcard__status" aria-live="polite">{{ research?.summary }}</p>
+
+      <p v-if="researchState === 'ready' && research?.notice" class="hcard__note">
+        {{ research.notice }}
+      </p>
+
+      <ul
+        v-if="researchState === 'ready' && research?.limitations?.length"
+        class="hcard__limitations"
+      >
+        <li v-for="item in research.limitations" :key="item">{{ item }}</li>
+      </ul>
+    </section>
+
     <!-- 卡片 2/3：桌面并排，手机单列 -->
     <div class="patient-grid">
       <!-- 卡片 2：下次复诊 -->
@@ -68,7 +93,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { Printer } from '@element-plus/icons-vue'
-import { getMyDoctor, getMyFollowUp, getPatientSummary } from '@/api/patients.js'
+import { getMyDoctor, getMyFollowUp, getPatientSummary, getResearchSummary } from '@/api/patients.js'
 import { formatDateTime } from '@/utils/datetime.js'
 
 /**
@@ -81,6 +106,8 @@ const state = ref('loading') // loading | ready | degraded
 const summary = ref(null)
 const doctor = ref(null)
 const followUp = ref(null)
+const research = ref(null)
+const researchState = ref('loading') // loading | ready | degraded
 const degradeReason = ref('')
 
 const statusText = computed(() => {
@@ -129,13 +156,16 @@ async function load() {
     else degradeReason.value = '档案读取失败，请稍后重试'
   }
 
-  // 主治医生与随访安排单独取：接口失败不影响摘要主体
-  const [doctorResult, followUpResult] = await Promise.allSettled([
+  // 主治医生、随访与研究验证单独取：任一接口失败都不影响主摘要
+  const [doctorResult, followUpResult, researchResult] = await Promise.allSettled([
     getMyDoctor(),
-    getMyFollowUp()
+    getMyFollowUp(),
+    getResearchSummary()
   ])
   doctor.value = doctorResult.status === 'fulfilled' ? doctorResult.value : null
   followUp.value = followUpResult.status === 'fulfilled' ? followUpResult.value : null
+  research.value = researchResult.status === 'fulfilled' ? researchResult.value : null
+  researchState.value = researchResult.status === 'fulfilled' ? 'ready' : 'degraded'
 }
 
 async function askHelp() {
@@ -198,6 +228,23 @@ onMounted(load)
 .hcard--status {
   background: linear-gradient(150deg, #ffffff 0%, #f0f9ff 100%);
   border-color: rgba(10, 115, 173, 0.22);
+}
+
+.hcard--research {
+  background: linear-gradient(150deg, #ffffff 0%, #fffbeb 100%);
+  border-color: rgba(180, 120, 20, 0.22);
+}
+
+.hcard__heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.hcard__heading .hcard__label {
+  margin: 0;
 }
 
 .hcard__label {

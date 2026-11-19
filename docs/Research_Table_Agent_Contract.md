@@ -51,7 +51,7 @@ JSON Schema将1.0视为integer，不能据此放行APOE；适配器和语义校�
 
 Python 宿主增加 `--snapshot-dir`：启动时读取宿主自有的冻结快照包（`research-dynamic-snapshot-v1`），请求到达时按 `runId` 精确匹配。包内含 `snapshotId`、`request`、`model`、完整 `context` 及三个摘要；宿主用 `research_table_protocol.digest` 重算 `requestSha256`、`inputSha256=digest(admissionCore)`、`contextSha256=digest(context)`，任一与包或调用方声明不一致即拒绝。未知/非法 `runId` 返回 `RUN_ID_INVALID`，请求摘要不符返回 `SNAPSHOT_BINDING_MISMATCH`，包内模型与宿主实际加载的清单/权重/训练计划/运行时/依赖锁不一致返回 `HOST_BINDING_INVALID`。每次请求重建 `ResearchTableAgent`，`TableAssessment` 按模型身份摘要缓存；请求体不携带可信上下文或摘要，客户端不能指定模型路径、来源映射或授权开关。
 
-Java 生产登记接口目前把 `registrationContext` 的 `sourceMappings`/`evidence` 固定为空，并以其摘要写入 `research_table_snapshot.context_sha256`；该摘要无法等于 Python 准入所需的完整 context 摘要。因此受控运维在 Java 登记（保留权限、受试者、请求与审计校验）后，只将 `context_sha256` 修正为宿主核验的真实摘要，再执行任务。这是 Java 登记侧待修复缺陷，不改变 Python 准入规则；快照 #2 因 `MANUAL-ENTRY` 来源重复、年龄/教育 QC 错误及该摘要缺陷不可执行，未被伪装成成功。
+Java 登记接口现在构造完整的 `sourceMappings`/`evidence`，以 canonical JSON 统一计算 `requestSha256`、`inputSha256`、`contextSha256`，并与 request/model/context 一起写入 `research_table_snapshot`；登记成功后自动把 bundle 同步到动态宿主，只有 `host_sync_status=SYNCED` 的快照才允许提交。旧版空 context 快照不再原地改写：被任务引用的快照标记 `MIGRATION_SKIPPED`，未引用且属于 `CONSTRUCTED_VALIDATION` 的快照才可按新规则迁移。
 
 W1 使用新登记快照 #4（subject 203，`run-manual-w1-snapshot3`）完成真实联调：任务 1 为 `COMPLETED`，`adCif24m=0.1933752820629015`、`otherDementiaCif24m=0.000795670798321653`、`directCifCalls=1`、`explanationCifCalls=64`、`isCausalEffect=false`，GET 回读的 CIF 与 `trustedContextSha256` 一致。启动示例：
 

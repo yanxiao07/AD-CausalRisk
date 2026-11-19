@@ -607,24 +607,15 @@ class SubjectApiTest {
     @Test
     void patientWhoIsAlsoResearcherCannotSeeRawVisitScores() throws Exception {
         MockHttpSession admin = login("admin");
-        jdbc.update(
-                """
-INSERT INTO sys_user (username, password_hash, status, created_at)
-SELECT ?, password_hash, status, created_at FROM sys_user WHERE username = 'patient'
-""",
-                "patient_researcher");
+        // Reuse a committed account instead of inserting an ephemeral one: audit rows are written
+        // in a separate transaction and cannot reference a user that is still uncommitted here.
         jdbc.update(
                 """
                 INSERT INTO user_role (user_id, role_id)
                 SELECT u.id, r.id FROM sys_user u, sys_role r
-                WHERE u.username = 'patient_researcher' AND r.role_code = 'PATIENT'
+                WHERE u.username = 'researcher' AND r.role_code = 'PATIENT'
                 """);
-        jdbc.update(
-                """
-                INSERT INTO user_role (user_id, role_id)
-                SELECT u.id, r.id FROM sys_user u, sys_role r
-                WHERE u.username = 'patient_researcher' AND r.role_code = 'RESEARCHER'
-                """);
+        MockHttpSession patientResearcher = login("researcher");
 
         Subject subject = seedSubjectWithCode("DEMO-PATIENT-RESEARCHER");
         visitRepository.save(
@@ -638,19 +629,17 @@ SELECT ?, password_hash, status, created_at FROM sys_user WHERE username = 'pati
 
         // RESEARCHER alone would grant full visibility, so no subject_permission row is needed;
         // the only thing standing between this account and the scores is the PATIENT gate.
-        mockMvc.perform(
-                        get("/api/subjects/" + subject.getId())
-                                .session(login("patient_researcher")))
+        mockMvc.perform(get("/api/subjects/" + subject.getId()).session(patientResearcher))
                 .andExpect(status().isForbidden());
         jdbc.update(
                 "INSERT INTO subject_permission (subject_id,user_id,permission_type) SELECT"
-                        + " ?,id,'SUMMARY_READ' FROM sys_user WHERE username='patient_researcher'",
+                        + " ?,id,'SUMMARY_READ' FROM sys_user WHERE username='researcher'",
                 subject.getId());
         JsonNode asPatientResearcher =
                 bodyOf(
                         mockMvc.perform(
                                         get("/api/subjects/" + subject.getId())
-                                                .session(login("patient_researcher")))
+                                                .session(patientResearcher))
                                 .andExpect(status().isOk())
                                 .andReturn());
 

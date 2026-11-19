@@ -51,6 +51,7 @@
                   :key="item.snapshotId"
                   :label="snapshotLabel(item)"
                   :value="item.snapshotId"
+                  :disabled="item.compatible === false"
                 />
               </el-select>
               <el-input
@@ -89,6 +90,15 @@
           show-icon
           title="该受试者还没有当前账号获准评估的冻结快照。"
           description="请先由受控登记流程生成快照（CONSTRUCTED_VALIDATION + trained-seven-logistic），或换一个有快照的受试者。"
+        />
+        <el-alert
+          v-if="selectedIncompatible"
+          class="ra-block"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="该快照的模型身份或软件锁摘要与新研究宿主不兼容"
+          :description="selectedOption?.compatibilityMessage || '请在批量评估或快照列表中重新登记，旧快照会保留用于审计。'"
         />
         <el-alert
           v-if="selectedOption?.taskId"
@@ -259,6 +269,8 @@ const task = ref(null)
 
 let intentKey = ''
 let intentSnapshotId = null
+let snapshotRequestSeq = 0
+const loadedSubjectId = ref(null)
 
 const selectedOption = computed(
   () => snapshots.value.find(item => Number(item.snapshotId) === Number(selectedSnapshotId.value)) || null
@@ -269,7 +281,12 @@ const activeTaskId = computed(() => {
   return selectedOption.value?.taskId ?? null
 })
 
+const selectedIncompatible = computed(
+  () => !manualMode.value && selectedOption.value?.compatible === false
+)
+
 const effectiveSnapshotId = computed(() => {
+  if (selectedIncompatible.value) return 0
   const raw = manualMode.value || !snapshots.value.length
     ? manualSnapshotId.value
     : selectedSnapshotId.value
@@ -315,7 +332,10 @@ const explanationRows = computed(() => {
 })
 
 function snapshotLabel(item) {
-  return item.taskId ? `快照 #${item.snapshotId} · 已有任务 #${item.taskId}` : `快照 #${item.snapshotId}`
+  const base = item.taskId
+    ? `快照 #${item.snapshotId} · 已有任务 #${item.taskId}`
+    : `快照 #${item.snapshotId}`
+  return item.compatible === false ? `${base} · 需重新登记` : base
 }
 
 function formatCif(value) {
@@ -368,29 +388,37 @@ function handleSnapshotProblem(problem) {
 
 async function loadSnapshots() {
   const subjectId = Number(props.subjectId)
+  const requestId = ++snapshotRequestSeq
   const hadFallback = Boolean(fallbackNotice.value)
   snapshotError.value = ''
   fallbackNotice.value = ''
   hostUnavailable.value = false
   if (!Number.isInteger(subjectId) || subjectId <= 0) {
     snapshots.value = []
+    selectedSnapshotId.value = null
+    loadedSubjectId.value = null
     return
   }
   snapshotLoading.value = true
   try {
     const data = await listResearchSnapshots(subjectId)
+    if (requestId !== snapshotRequestSeq || Number(props.subjectId) !== subjectId) return
     snapshots.value = Array.isArray(data) ? data : []
-    const current = Number(selectedSnapshotId.value)
-    if (!snapshots.value.some(item => Number(item.snapshotId) === current)) {
-      selectedSnapshotId.value = snapshots.value.length ? Number(snapshots.value[0].snapshotId) : null
+    loadedSubjectId.value = subjectId
+    const current = snapshots.value.find(item => Number(item.snapshotId) === Number(selectedSnapshotId.value))
+    if (!current || current.compatible === false) {
+      const firstCompatible = snapshots.value.find(item => item.compatible !== false)
+      selectedSnapshotId.value = firstCompatible ? Number(firstCompatible.snapshotId) : null
     }
     if (hadFallback) manualMode.value = false
   } catch (problem) {
+    if (requestId !== snapshotRequestSeq || Number(props.subjectId) !== subjectId) return
     snapshots.value = []
     selectedSnapshotId.value = null
+    loadedSubjectId.value = null
     handleSnapshotProblem(problem)
   } finally {
-    snapshotLoading.value = false
+    if (requestId === snapshotRequestSeq) snapshotLoading.value = false
   }
 }
 
@@ -405,6 +433,19 @@ function describeTaskProblem(problem) {
 }
 
 async function run() {
+  const subjectId = Number(props.subjectId)
+  if (!Number.isInteger(subjectId) || subjectId <= 0) {
+    ElMessage.warning('请先选择受试者')
+    return
+  }
+  if (loadedSubjectId.value !== subjectId) {
+    ElMessage.warning('该受试者的快照仍在加载，请稍后再提交')
+    return
+  }
+  if (selectedIncompatible.value) {
+    ElMessage.warning('该快照与新研究宿主不兼容，请重新登记后再提交')
+    return
+  }
   const snapshotId = effectiveSnapshotId.value
   if (!snapshotId) {
     ElMessage.warning('请选择或输入快照 ID')
@@ -414,13 +455,16 @@ async function run() {
   taskError.value = ''
   try {
     if (activeTaskId.value) {
-      task.value = await getResearchTableTask(activeTaskId.value)
+      const loaded = await getResearchTableTask(activeTaskId.value)
+      if (Number(props.subjectId) !== subjectId) return
+      task.value = loaded
     } else {
       if (intentSnapshotId !== snapshotId || !intentKey) {
         intentKey = newIdempotencyKey()
         intentSnapshotId = snapshotId
       }
       const created = await submitResearchTableTask({ snapshotId, idempotencyKey: intentKey })
+      if (Number(props.subjectId) !== subjectId) return
       task.value = created
       intentKey = ''
       intentSnapshotId = null
@@ -428,6 +472,7 @@ async function run() {
       await loadSnapshots()
     }
   } catch (problem) {
+    if (Number(props.subjectId) !== subjectId) return
     if (problem?.httpStatus === 503 || problem?.errorCode === 'RESEARCH_UNAVAILABLE') {
       hostUnavailable.value = true
     } else {
@@ -447,6 +492,7 @@ watch(
     selectedSnapshotId.value = null
     manualSnapshotId.value = ''
     manualMode.value = false
+    loadedSubjectId.value = null
     loadSnapshots()
   },
   { immediate: true }

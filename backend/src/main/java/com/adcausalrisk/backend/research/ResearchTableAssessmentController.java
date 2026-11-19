@@ -5,7 +5,9 @@ import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,10 +18,13 @@ import java.io.IOException;
 public class ResearchTableAssessmentController {
     private final ResearchTableAssessmentService service;
     private final ResearchTableProtocol protocol;
+    private final ResearchReportExportService exports;
 
-    ResearchTableAssessmentController(ResearchTableAssessmentService service, ResearchTableProtocol protocol) {
+    ResearchTableAssessmentController(ResearchTableAssessmentService service, ResearchTableProtocol protocol,
+                                      ResearchReportExportService exports) {
         this.service = service;
         this.protocol = protocol;
+        this.exports = exports;
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -105,6 +110,11 @@ public class ResearchTableAssessmentController {
         return Envelope.success(service.summary((AppUserPrincipal) auth.getPrincipal()));
     }
 
+    @GetMapping("/metrics")
+    public Envelope<?> metrics(Authentication auth) {
+        return Envelope.success(service.metrics((AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @PostMapping("/snapshots/migrate")
     public Envelope<?> migrateLegacySnapshots(Authentication auth) {
         return Envelope.success(service.migrateLegacySnapshots((AppUserPrincipal) auth.getPrincipal()));
@@ -117,6 +127,17 @@ public class ResearchTableAssessmentController {
         }
         AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
         return Envelope.success(new SnapshotRegistration(id, service.syncToHost(id, principal)));
+    }
+
+    @PostMapping("/snapshots/{id}/re-register")
+    public Envelope<?> reRegister(@PathVariable long id, Authentication auth) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
+        var registration = service.reRegister(id, principal);
+        return Envelope.success(new SnapshotRegistration(
+                registration.snapshotId(), registration.hostSyncStatus()));
     }
 
     private static String text(JsonNode payload, String field) {
@@ -158,6 +179,15 @@ public class ResearchTableAssessmentController {
 
     record ReviewRequest(String decision, String comment) {}
 
+    @GetMapping("/reports")
+    public Envelope<?> reports(@RequestParam(defaultValue = "ALL") String status,
+                               @RequestParam(defaultValue = "1") int page,
+                               @RequestParam(defaultValue = "20") int pageSize,
+                               Authentication auth) {
+        return Envelope.success(service.reports(status, page, pageSize,
+                (AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @GetMapping("/reviews")
     public Envelope<?> reviews(@RequestParam(defaultValue = "PENDING") String status,
                                @RequestParam(defaultValue = "1") int page,
@@ -174,6 +204,30 @@ public class ResearchTableAssessmentController {
         }
         return Envelope.success(service.review(id, request.decision(), request.comment(),
                 (AppUserPrincipal) auth.getPrincipal()));
+    }
+
+    @GetMapping("/{id}/export")
+    public ResponseEntity<byte[]> export(@PathVariable long id,
+                                         @RequestParam(defaultValue = "pdf") String format,
+                                         Authentication auth) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        var export = exports.export(id, format, (AppUserPrincipal) auth.getPrincipal());
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(export.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + export.filename() + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(export.bytes());
+    }
+
+    @GetMapping("/reports/{id}")
+    public Envelope<?> report(@PathVariable long id, Authentication auth) {
+        if (id <= 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        return Envelope.success(service.report(id, (AppUserPrincipal) auth.getPrincipal()));
     }
 
     @GetMapping("/{id}")

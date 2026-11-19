@@ -1,0 +1,91 @@
+package com.adcausalrisk.backend.research;
+
+import com.adcausalrisk.backend.config.SystemSettingService;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+
+/**
+ * A research task is executed synchronously in the Java process. The executor column and lease
+ * make that ownership visible to other instances. A task is claimable only while it is RUNNING,
+ * still carries the expected execution id, and has no live owner. The conditional UPDATE is the
+ * only operation that can move a task from "unowned/expired" to "owned", so two instances cannot
+ * both start the same task even when a start-up recovery and a retry race.
+ */
+@Component
+final class ResearchTaskLease {
+
+    /**
+     * The host request has a 2s connect timeout, up to 600s read timeout, and then the Java side
+     * still has to persist the result. A lease that is only one second longer than the read
+     * timeout can therefore expire while a perfectly healthy request is still in flight. Keep a
+     * fixed grace period for the result write and recovery scheduling.
+     */
+    static final long RESULT_WRITE_GRACE_SECONDS = 30;
+
+    static final long MINIMUM_LEASE_SECONDS =
+            ResearchTableClient.CONNECT_TIMEOUT_SECONDS
+                    + SystemSettingService.MAX_RESEARCH_TIMEOUT_SECONDS
+                    + RESULT_WRITE_GRACE_SECONDS;
+
+    private final JdbcTemplate jdbc;
+    private final Clock clock;
+    private final String executorId;
+    private final Duration leaseDuration;
+
+    ResearchTaskLease(JdbcTemplate jdbc, Clock clock,
+            @Value("${research.task.executor-id:local}") String executorId,
+            @Value("${research.task.lease-seconds:900}") long leaseSeconds) {
+        if (leaseSeconds < MINIMUM_LEASE_SECONDS) {
+            throw new IllegalStateException(
+                    "research.task.lease-seconds must cover the full host request"
+                            + " (2s connect + "
+                            + SystemSettingService.MAX_RESEARCH_TIMEOUT_SECONDS
+                            + "s read + "
+                            + RESULT_WRITE_GRACE_SECONDS
+                            + "s result-write grace; minimum "
+                            + MINIMUM_LEASE_SECONDS
+                            + "s), but was "
+                            + leaseSeconds
+                            + "s");
+        }
+        this.jdbc = jdbc;
+        this.clock = clock;
+        this.executorId = executorId;
+        this.leaseDuration = Duration.ofSeconds(leaseSeconds);
+    }
+
+    String executorId() {
+        return executorId;
+    }
+
+    Timestamp expiresAt() {
+        return Timestamp.from(clock.instant().plus(leaseDuration));
+    }
+
+    boolean claim(long taskId, String executionId) {
+        return claim(taskId, executionId, executorId);
+    }
+
+    /**
+     * Claim one RUNNING attempt atomically. The executor column is deliberately part of the
+     * predicate: a live owner, including one on another instance, must lose the race. Tests pass
+     * two explicit executor ids through this overload.
+     */
+    boolean claim(long taskId, String executionId, String claimant) {
+        Instant now = clock.instant();
+        Timestamp until = Timestamp.from(now.plus(leaseDuration));
+        int updated = jdbc.update("""
+                UPDATE research_table_task
+                SET executor_id=?, lease_expires_at=?, updated_at=?
+                WHERE id=? AND status='RUNNING' AND execution_id=?
+                  AND (executor_id IS NULL OR lease_expires_at IS NULL OR lease_expires_at < ?)
+                """, claimant, until, Timestamp.from(now), taskId, executionId, Timestamp.from(now));
+        return updated == 1;
+    }
+}

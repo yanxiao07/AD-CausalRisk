@@ -37,7 +37,7 @@ export const MENU_REGISTRY = {
   users: { label: '账号管理', path: '/admin/users', icon: UserFilled, ready: true },
   system: { label: '系统设置', path: '/admin/system', icon: Setting, ready: true },
   research: { label: '研究证据', path: '/research', icon: DataAnalysis, ready: true },
-  summary: { label: '我的摘要', path: '/summary', icon: Postcard, ready: false }
+  summary: { label: '我的摘要', path: '/summary', icon: Postcard, ready: true }
 }
 
 /**

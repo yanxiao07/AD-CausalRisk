@@ -44,6 +44,11 @@
               {{ hostState.label }}
             </strong>
             <span class="health-tile__meta">{{ host?.baseUrl || '尚未配置服务地址' }}</span>
+            <span class="health-tile__meta">
+              {{ hostHealth?.available
+                ? `响应 ${hostHealth.latencyMs ?? '—'} ms · HTTP ${hostHealth.httpStatus ?? '—'}`
+                : hostHealth?.message || '等待探测' }}
+            </span>
             <span class="health-tile__meta">动态快照 · 读取超时 {{ host?.readTimeoutSeconds ?? 120 }} 秒</span>
           </div>
 
@@ -56,43 +61,76 @@
         </div>
       </article>
 
-      <!-- 2. 模型与通道 -->
+      <!-- 2. 模型仓库与通道 -->
       <article class="panel panel--wide">
         <header class="panel__head">
           <div>
-            <h2 class="panel__title">模型与通道</h2>
+            <h2 class="panel__title">模型仓库</h2>
             <p class="panel__hint">
-              模型开关只影响新提交；旧规则评估通道关闭后，<code>POST /api/assessment-tasks</code> 返回 503，
-              新评估请走研究表格快照。
+              上传 Manifest 与 Artifact 并校验 SHA-256；启用/停用/回滚均写入审计。
+              这里记录发布意图，研究宿主仍需加载同一 Artifact 才会实际改变打分。
             </p>
           </div>
-          <el-button text :icon="Refresh" :loading="infoLoading" @click="loadInfo">刷新模型</el-button>
+          <div class="panel__actions">
+            <el-button text :icon="Refresh" :loading="modelLoading" @click="loadModels">
+              刷新仓库
+            </el-button>
+            <el-button type="primary" :icon="Upload" @click="openUpload">上传模型</el-button>
+          </div>
         </header>
 
-        <el-skeleton v-if="infoLoading && models.length === 0" :rows="3" animated />
+        <el-skeleton v-if="modelLoading && models.length === 0" :rows="3" animated />
         <el-empty
           v-else-if="!models.length"
-          :description="infoError || '没有已安装的模型版本'"
+          :description="modelError || '没有已安装的模型版本'"
           :image-size="64"
         />
         <el-table v-else :data="models" size="small" class="model-table">
-          <el-table-column prop="model_version" label="模型版本" min-width="250" show-overflow-tooltip />
-          <el-table-column label="启用" width="100">
+          <el-table-column label="模型版本" min-width="230">
             <template #default="{ row }">
-              <el-switch
-                :model-value="isEnabled(row)"
-                :loading="togglingVersion === row.model_version"
-                @change="(value) => toggleModel(row, value)"
-              />
+              <span class="model-version">{{ row.modelVersion }}</span>
+              <span class="model-origin" :class="row.registered ? 'model-origin--uploaded' : ''">
+                {{ row.registered ? '已上传' : '内置' }}
+              </span>
             </template>
           </el-table-column>
-          <el-table-column label="更新时间" width="180">
-            <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
-          </el-table-column>
-          <el-table-column label="影响" min-width="160">
+          <el-table-column label="状态" width="100">
             <template #default="{ row }">
-              <span v-if="isEnabled(row)" class="state state--on">可创建新评估</span>
-              <span v-else class="state state--off">仅保留历史结果</span>
+              <el-tag v-if="isEnabled(row)" type="success" effect="light" size="small">
+                启用中
+              </el-tag>
+              <el-tag v-else type="info" effect="plain" size="small">停用</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="Artifact SHA-256" min-width="190">
+            <template #default="{ row }">
+              <span v-if="row.artifactSha256" class="mono">{{ shortSha(row.artifactSha256) }}</span>
+              <span v-else class="state state--off">内置 · 未上传</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="更新时间" width="170">
+            <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="240">
+            <template #default="{ row }">
+              <div class="model-actions">
+                <el-switch
+                  :model-value="isEnabled(row)"
+                  :loading="togglingVersion === row.modelVersion"
+                  @change="(value) => toggleModel(row, value)"
+                />
+                <el-button
+                  v-if="!isEnabled(row)"
+                  link
+                  type="primary"
+                  size="small"
+                  :icon="RefreshLeft"
+                  :loading="rollbackVersion === row.modelVersion"
+                  @click="rollbackTo(row)"
+                >
+                  回滚到此版本
+                </el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -201,6 +239,64 @@
       </article>
     </div>
 
+    <el-dialog
+      v-model="uploadOpen"
+      title="上传模型版本"
+      width="560px"
+      :close-on-click-modal="false"
+      @closed="resetUpload"
+    >
+      <el-form label-position="top" class="upload-form" @submit.prevent>
+        <el-form-item label="Manifest（JSON）">
+          <input
+            ref="manifestInput"
+            type="file"
+            accept=".json,application/json"
+            class="file-input"
+            @change="onManifestSelected"
+          />
+          <p class="field-hint">
+            Manifest 必须包含 <code>modelVersion</code>；当前识别：
+            <strong>{{ manifestVersion || '尚未选择或缺少 modelVersion' }}</strong>
+          </p>
+        </el-form-item>
+
+        <el-form-item label="Artifact（模型文件）">
+          <input
+            ref="artifactInput"
+            type="file"
+            class="file-input"
+            @change="onArtifactSelected"
+          />
+          <p class="field-hint">
+            {{ artifactName || '尚未选择' }}
+            <template v-if="artifactSize"> · {{ formatBytes(artifactSize) }}</template>
+            · 上限 10 MB
+          </p>
+        </el-form-item>
+
+        <div class="hash-box">
+          <div>
+            <span>Artifact SHA-256</span>
+            <code>{{ hashComputing ? '计算中…' : artifactSha || '选择文件后由浏览器计算' }}</code>
+          </div>
+          <p>后端会重新计算并与此值比对；不一致直接拒绝，不会写入仓库。</p>
+        </div>
+      </el-form>
+
+      <template #footer>
+        <el-button :disabled="uploading" @click="uploadOpen = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="uploading"
+          :disabled="!canUpload"
+          @click="submitUpload"
+        >
+          校验并上传
+        </el-button>
+      </template>
+    </el-dialog>
+
     <p class="console-foot">
       控制台写入均需 ADMIN，并记录 <code>SYSTEM_*</code> 审计事件；模型开关仍走
       <code>PATCH /api/system/models/{version}</code>。
@@ -211,19 +307,22 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, RefreshLeft, Upload } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import request from '@/api/request.js'
 import {
   getAssessmentPolicy,
+  getModelRepository,
   getResearchHost,
   getRetentionPolicy,
   getSystemInfo,
+  rollbackModel,
   saveAssessmentPolicy,
   saveResearchHost,
   saveRetentionPolicy,
-  updateModelConfig
+  updateModelConfig,
+  uploadModelRelease
 } from '@/api/system.js'
 import { listUsers } from '@/api/users.js'
 
@@ -256,8 +355,29 @@ const probe = ref({ ok: false, latencyMs: null, message: '未探测' })
 const info = ref(null)
 const infoLoading = ref(false)
 const infoError = ref('')
-const models = computed(() => (Array.isArray(info.value?.models) ? info.value.models : []))
+const models = ref([])
+const modelLoading = ref(false)
+const modelError = ref('')
 const togglingVersion = ref('')
+const rollbackVersion = ref('')
+
+const uploadOpen = ref(false)
+const manifestInput = ref(null)
+const artifactInput = ref(null)
+const manifestFile = ref(null)
+const artifactFile = ref(null)
+const manifestVersion = ref('')
+const artifactName = ref('')
+const artifactSize = ref(0)
+const artifactSha = ref('')
+const hashComputing = ref(false)
+const uploading = ref(false)
+const canUpload = computed(
+  () =>
+    Boolean(manifestFile.value && artifactFile.value && manifestVersion.value && artifactSha.value) &&
+    !hashComputing.value &&
+    !uploading.value
+)
 
 const policy = ref(null)
 const policyDraft = ref(false)
@@ -265,10 +385,18 @@ const policySaving = ref(false)
 
 const host = ref(null)
 const hostSaving = ref(false)
+const hostHealth = computed(() => info.value?.researchHost || null)
 const hostState = computed(() => {
   if (!host.value) return { ok: false, label: '未配置' }
   if (!host.value.enabled) return { ok: false, label: '已停用' }
-  return host.value.configured ? { ok: true, label: '已配置' } : { ok: false, label: '待补全' }
+  if (!host.value.configured) return { ok: false, label: '待补全' }
+  const health = hostHealth.value
+  if (!health) return { ok: true, label: '已配置' }
+  if (health.available) {
+    const latency = Number(health.latencyMs)
+    return { ok: true, label: Number.isFinite(latency) ? `在线 · ${latency} ms` : '在线' }
+  }
+  return { ok: false, label: health.message || '不可达' }
 })
 const hostForm = reactive({
   baseUrl: '',
@@ -285,6 +413,103 @@ const accountsTotal = ref(null)
 function isEnabled(row) {
   const value = row?.enabled
   return value === true || value === 1 || value === '1'
+}
+
+function shortSha(value) {
+  return value ? `${value.slice(0, 12)}…${value.slice(-6)}` : '—'
+}
+
+function formatBytes(value) {
+  const bytes = Number(value) || 0
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
+async function sha256Hex(buffer) {
+  if (!window.crypto?.subtle) throw new Error('当前浏览器不支持 Web Crypto，无法校验 SHA-256')
+  const digest = await window.crypto.subtle.digest('SHA-256', buffer)
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function openUpload() {
+  resetUpload()
+  uploadOpen.value = true
+}
+
+function resetUpload() {
+  manifestFile.value = null
+  artifactFile.value = null
+  manifestVersion.value = ''
+  artifactName.value = ''
+  artifactSize.value = 0
+  artifactSha.value = ''
+  hashComputing.value = false
+  uploading.value = false
+  if (manifestInput.value) manifestInput.value.value = ''
+  if (artifactInput.value) artifactInput.value.value = ''
+}
+
+async function onManifestSelected(event) {
+  const file = event.target.files?.[0]
+  manifestFile.value = file || null
+  manifestVersion.value = ''
+  if (!file) return
+  try {
+    const parsed = JSON.parse(await file.text())
+    manifestVersion.value = String(parsed?.modelVersion || parsed?.version || '').trim()
+    if (!manifestVersion.value) ElMessage.warning('Manifest 缺少 modelVersion')
+  } catch {
+    ElMessage.error('Manifest 不是合法 JSON')
+  }
+}
+
+async function onArtifactSelected(event) {
+  const file = event.target.files?.[0]
+  artifactFile.value = file || null
+  artifactName.value = file?.name || ''
+  artifactSize.value = file?.size || 0
+  artifactSha.value = ''
+  if (!file) return
+  hashComputing.value = true
+  try {
+    const buffer = await file.arrayBuffer()
+    artifactSha.value = await sha256Hex(buffer)
+  } catch (problem) {
+    ElMessage.error(problem?.message || '无法计算 Artifact SHA-256')
+  } finally {
+    hashComputing.value = false
+  }
+}
+
+async function submitUpload() {
+  if (!canUpload.value) return
+  uploading.value = true
+  try {
+    const created = await uploadModelRelease({
+      manifest: manifestFile.value,
+      artifact: artifactFile.value,
+      artifactSha256: artifactSha.value
+    })
+    ElMessage.success(`模型 ${created?.modelVersion || manifestVersion.value} 已登记`)
+    uploadOpen.value = false
+    await loadModels()
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function loadModels() {
+  modelLoading.value = true
+  modelError.value = ''
+  try {
+    const data = await getModelRepository()
+    models.value = Array.isArray(data) ? data : []
+  } catch (problem) {
+    modelError.value = problem?.message || '模型仓库读取失败（需要管理员权限）'
+  } finally {
+    modelLoading.value = false
+  }
 }
 
 async function loadInfo() {
@@ -362,6 +587,7 @@ async function saveHost() {
     hostForm.bearerToken = ''
     hostForm.baseUrl = saved?.baseUrl || ''
     ElMessage.success('研究宿主已保存')
+    await loadInfo()
   } finally {
     hostSaving.value = false
   }
@@ -392,7 +618,7 @@ async function saveRetention() {
 }
 
 async function toggleModel(row, value) {
-  const version = row?.model_version
+  const version = row?.modelVersion
   if (!version) return
   togglingVersion.value = version
   try {
@@ -400,7 +626,29 @@ async function toggleModel(row, value) {
     ElMessage.success(`已${value ? '启用' : '停用'} ${version}`)
   } finally {
     togglingVersion.value = ''
-    await loadInfo()
+    await loadModels()
+  }
+}
+
+async function rollbackTo(row) {
+  const version = row?.modelVersion
+  if (!version) return
+  try {
+    await ElMessageBox.confirm(
+      `将停用当前启用版本，并启用 ${version}。研究宿主必须已加载同一 Artifact，实际打分才会改变。`,
+      '确认回滚模型',
+      { confirmButtonText: '回滚到此版本', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  rollbackVersion.value = version
+  try {
+    await rollbackModel(version)
+    ElMessage.success(`已回滚到 ${version}`)
+    await loadModels()
+  } finally {
+    rollbackVersion.value = ''
   }
 }
 
@@ -435,6 +683,7 @@ async function loadAll() {
     await Promise.all([
       probeBackend(),
       loadInfo(),
+      loadModels(),
       loadPolicy(),
       loadHost(),
       loadRetention(),
@@ -749,6 +998,95 @@ onMounted(loadAll)
 .unit {
   font-size: 13px;
   color: var(--muted);
+}
+
+.panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.model-version {
+  display: block;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.model-origin {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(47, 111, 143, 0.07);
+}
+
+.model-origin--uploaded {
+  color: #2b5f86;
+  background: rgba(47, 111, 143, 0.12);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.model-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed rgba(47, 111, 143, 0.3);
+  border-radius: 8px;
+  background: rgba(47, 111, 143, 0.03);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.hash-box {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(47, 111, 143, 0.05);
+}
+
+.hash-box > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.hash-box code {
+  word-break: break-all;
+}
+
+.hash-box p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--soft);
 }
 
 .console-foot {

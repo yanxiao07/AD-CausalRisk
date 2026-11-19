@@ -1,16 +1,26 @@
 <template>
   <div class="report-page">
-    <PageHeader back title="评估报告" subtitle="按时间倒序选择评估，进入独立的报告页查看 / 打印 / 导出。">
+    <PageHeader back title="评估报告" :subtitle="subtitle">
       <template #extra>
-        <el-button :icon="Refresh" :loading="listLoading" @click="loadPage(page)">刷新</el-button>
-        <el-button :icon="Download" :disabled="items.length === 0" @click="exportCsv">
+        <el-button :icon="Refresh" :loading="listLoading || researchLoading" @click="refreshCurrent">刷新</el-button>
+        <el-button
+          v-if="view === 'legacy'"
+          :icon="Download"
+          :disabled="items.length === 0"
+          @click="exportCsv"
+        >
           导出 CSV
         </el-button>
       </template>
     </PageHeader>
 
     <DataCard padding="none">
-      <div class="filter">
+      <el-tabs v-model="view" class="report-tabs" @tab-change="onViewChange">
+        <el-tab-pane label="旧规则报告" name="legacy" />
+        <el-tab-pane v-if="canViewResearch" label="研究验证报告" name="research" />
+      </el-tabs>
+
+      <div v-if="view === 'legacy'" class="filter">
         <el-radio-group v-model="filter" size="small" @change="loadPage(1)">
           <el-radio-button value="ALL">全部</el-radio-button>
           <el-radio-button value="PENDING">待复核</el-radio-button>
@@ -41,6 +51,7 @@
         <span class="filter__count">共 {{ total }} 条 · 当前页 {{ items.length }} 条</span>
       </div>
 
+      <template v-if="view === 'legacy'">
       <el-skeleton v-if="listLoading && items.length === 0" :rows="5" animated />
 
       <EmptyState
@@ -106,24 +117,115 @@
           @current-change="loadPage"
         />
       </div>
+      </template>
+
+      <template v-else>
+        <div class="filter">
+          <el-select
+            v-model="researchStatus"
+            class="filter__select"
+            size="small"
+            @change="loadResearchPage(1)"
+          >
+            <el-option label="全部状态" value="ALL" />
+            <el-option label="已完成" value="COMPLETED" />
+            <el-option label="被阻断" value="BLOCKED" />
+            <el-option label="失败" value="FAILED" />
+            <el-option label="结果未知" value="OUTCOME_UNKNOWN" />
+          </el-select>
+          <span class="filter__count">
+            共 {{ researchTotal }} 条 · 当前页 {{ researchItems.length }} 条
+          </span>
+        </div>
+
+        <el-skeleton v-if="researchLoading && researchItems.length === 0" :rows="5" animated />
+        <EmptyState
+          v-else-if="researchError"
+          :icon="WarningFilled"
+          title="研究验证报告加载失败"
+          :description="researchError"
+          action-text="重试"
+          @action="loadResearchPage(researchPage)"
+        />
+        <EmptyState
+          v-else-if="researchItems.length === 0"
+          :icon="Document"
+          title="还没有研究验证报告"
+          description="研究员完成研究模型评估后，结果会出现在这里。"
+        />
+        <el-table
+          v-else
+          :data="researchItems"
+          class="table"
+          row-key="taskId"
+          @row-click="openResearchReport"
+        >
+          <el-table-column prop="taskId" label="任务 ID" width="100" />
+          <el-table-column label="受试者" min-width="170">
+            <template #default="{ row }">
+              <div class="subject-cell">
+                <strong>{{ row.subjectCode || `#${row.subjectId}` }}</strong>
+                <span v-if="row.subjectAlias" class="subject-cell__alias">{{ row.subjectAlias }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="120">
+            <template #default="{ row }"><StatusTag :type="row.status" /></template>
+          </el-table-column>
+          <el-table-column label="AD 24m" width="100">
+            <template #default="{ row }">{{ researchCif(row, 'adCif24m') }}</template>
+          </el-table-column>
+          <el-table-column label="其他痴呆 24m" width="120">
+            <template #default="{ row }">{{ researchCif(row, 'otherDementiaCif24m') }}</template>
+          </el-table-column>
+          <el-table-column label="复核状态" width="120">
+            <template #default="{ row }">
+              <StatusTag :type="row.reviewStatus" :label="statusLabel(row.reviewStatus)" />
+            </template>
+          </el-table-column>
+          <el-table-column label="创建时间" min-width="150">
+            <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="120" fixed="right">
+            <template #default="{ row }">
+              <el-button text type="primary" @click.stop="openResearchReport(row)">查看报告</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div v-if="researchTotal > researchPageSize" class="pager">
+          <el-pagination
+            v-model:current-page="researchPage"
+            :page-size="researchPageSize"
+            :total="researchTotal"
+            layout="total, prev, pager, next"
+            background
+            @current-change="loadResearchPage"
+          />
+        </div>
+      </template>
     </DataCard>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user.js'
 import { Document, Download, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { listAssessments } from '@/api/assessments.js'
+import { listResearchReports } from '@/api/research.js'
 import { downloadCsv } from '@/utils/csv.js'
 import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
+const canViewResearch = computed(() => userStore.hasRole(['DOCTOR', 'RESEARCHER']))
 
 const items = ref([])
 const total = ref(0)
@@ -134,7 +236,21 @@ const riskFilter = ref('')
 const subjectFilter = ref('')
 const listLoading = ref(true)
 const listError = ref('')
+const view = ref('legacy')
+const subtitle = computed(() =>
+  view.value === 'research'
+    ? '研究模型输出的双原因 24 个月累积发生率；仅用于研究验证，不构成临床诊断。'
+    : '按时间倒序选择评估，进入独立的报告页查看 / 打印 / 导出。'
+)
+const researchItems = ref([])
+const researchTotal = ref(0)
+const researchPage = ref(1)
+const researchPageSize = ref(20)
+const researchStatus = ref('ALL')
+const researchLoading = ref(false)
+const researchError = ref('')
 let listSeq = 0
+let researchSeq = 0
 
 const timeFormatter = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
@@ -154,6 +270,7 @@ function statusLabel(status) {
     {
       PENDING: '待复核',
       ACKNOWLEDGED: '已确认',
+      CONFIRMED: '已确认',
       NEEDS_DATA: '要求补充数据',
       REJECTED: '已驳回'
     }[status] || '—'
@@ -201,6 +318,52 @@ function openReport(row) {
 
 const { onRowKeydown } = useTableKeyboard(items, openReport)
 
+async function loadResearchPage(target = researchPage.value) {
+  const seq = ++researchSeq
+  researchLoading.value = true
+  researchError.value = ''
+  try {
+    const data = await listResearchReports({
+      status: researchStatus.value,
+      page: target,
+      pageSize: researchPageSize.value
+    })
+    if (seq !== researchSeq) return
+    researchItems.value = Array.isArray(data?.items) ? data.items : []
+    researchTotal.value = Number(data?.total ?? researchItems.value.length)
+    researchPage.value = Number(data?.page ?? target)
+  } catch (problem) {
+    if (seq !== researchSeq) return
+    researchItems.value = []
+    researchTotal.value = 0
+    researchError.value = problem?.message || '请稍后重试'
+  } finally {
+    if (seq === researchSeq) researchLoading.value = false
+  }
+}
+
+function openResearchReport(row) {
+  router.push(`/reports/research/${row.taskId}`)
+}
+
+function researchCif(row, key) {
+  const value = row?.result?.prediction?.[key]
+  return typeof value === 'number' ? `${(value * 100).toFixed(2)}%` : '—'
+}
+
+function onViewChange(name) {
+  if (name === 'research' && researchItems.value.length === 0) {
+    loadResearchPage(1)
+  } else if (name === 'legacy' && items.value.length === 0) {
+    loadPage(1)
+  }
+}
+
+function refreshCurrent() {
+  if (view.value === 'research') loadResearchPage(researchPage.value)
+  else loadPage(page.value)
+}
+
 function exportCsv() {
   const rows = items.value.map((item) => [
     item.assessmentId,
@@ -224,6 +387,11 @@ onMounted(async () => {
     router.replace(`/reports/${legacyId}`)
     return
   }
+  if (route.query.tab === 'research' && canViewResearch.value) {
+    view.value = 'research'
+    await loadResearchPage(1)
+    return
+  }
   await loadPage(1)
 })
 </script>
@@ -233,6 +401,29 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.report-tabs {
+  padding: 0 18px;
+}
+
+.subject-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.subject-cell strong {
+  font-weight: 600;
+}
+
+.subject-cell__alias {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filter {

@@ -60,6 +60,14 @@ export function retryResearchSnapshotSync(snapshotId) {
   )
 }
 
+export function reRegisterResearchSnapshot(snapshotId) {
+  return request.post(
+    `/research/table-assessment-tasks/snapshots/${Number(snapshotId)}/re-register`,
+    null,
+    { silent: true }
+  )
+}
+
 export function submitResearchTableTask({ snapshotId, idempotencyKey }) {
   return request.post(
     '/research/table-assessment-tasks',
@@ -73,6 +81,40 @@ export function submitResearchTableTask({ snapshotId, idempotencyKey }) {
 
 export function getResearchTableTask(taskId) {
   return request.get(`/research/table-assessment-tasks/${taskId}`, { silent: true })
+}
+
+/** GET /api/research/table-assessment-tasks/reports/{id} —— 报告详情，复用报告的档案授权规则。 */
+export function getResearchReportTask(taskId) {
+  return request.get(`/research/table-assessment-tasks/reports/${Number(taskId)}`, { silent: true })
+}
+
+/**
+ * Fetches a report through the authenticated Java session instead of letting the browser
+ * open the protected URL directly. The server re-authorizes every export and audits it.
+ */
+export async function downloadResearchReport(taskId, format) {
+  const response = await fetch(
+    `/api/research/table-assessment-tasks/${Number(taskId)}/export?format=${encodeURIComponent(format)}`,
+    { credentials: 'include', headers: { Accept: '*/*' } }
+  )
+  if (!response.ok) {
+    let message = '报告导出失败，请稍后重试'
+    try {
+      const payload = await response.json()
+      message = payload?.message || message
+    } catch {
+      /* non-JSON error body */
+    }
+    const problem = new Error(message)
+    problem.httpStatus = response.status
+    throw problem
+  }
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const match = /filename="?([^";]+)"?/i.exec(disposition)
+  return {
+    blob: await response.blob(),
+    filename: match?.[1] || `research-task-${taskId}.${format}`
+  }
 }
 
 /**
@@ -124,9 +166,25 @@ export function reviewResearchTask(taskId, { decision, comment }) {
   )
 }
 
+/**
+ * GET /api/research/table-assessment-tasks/reports?status&page&pageSize
+ * 统一研究验证报告列表：医生按档案授权、研究员按本人任务。
+ */
+export function listResearchReports({ status = 'ALL', page = 1, pageSize = 20 } = {}) {
+  return request.get('/research/table-assessment-tasks/reports', {
+    params: { status, page, pageSize },
+    silent: true
+  })
+}
+
 /** GET /api/research/table-assessment-tasks/summary —— 当前研究员今日任务吞吐。 */
 export function getResearchTaskSummary() {
   return request.get('/research/table-assessment-tasks/summary', { silent: true })
+}
+
+/** GET /api/research/table-assessment-tasks/metrics — 研究验证指标，与旧规则评估分开统计。 */
+export function getResearchMetrics() {
+  return request.get('/research/table-assessment-tasks/metrics', { silent: true })
 }
 
 /**

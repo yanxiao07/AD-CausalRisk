@@ -29,8 +29,10 @@ spring:
       # CSV import uploads. The importer itself caps the three tables at 30000 UTF-8 bytes;
       # these limits sit above that so an oversized upload is answered with a controlled 400
       # by GlobalExceptionHandler instead of the framework's 1 MB default.
-      max-file-size: 64KB
-      max-request-size: 128KB
+      # CSV import uploads remain capped at 30 KB by the importer; model artifacts
+      # need a larger transport limit and are separately capped in the service.
+      max-file-size: 16MB
+      max-request-size: 32MB
 
 server:
   port: 8080
@@ -38,3 +40,23 @@ server:
     encoding:
       charset: UTF-8
       force: true
+
+# Research task leases. Each Java instance must set RESEARCH_TASK_EXECUTOR_ID when more than
+# one instance can run research tasks; the default is only a local-development fallback.
+app:
+  security:
+    # Browser sessions carry a CSRF cookie and echo it in X-CSRF-TOKEN. Keep this on in
+    # production; only the test profile turns it off for the pre-existing MVC suites.
+    csrf-enabled: ${APP_SECURITY_CSRF_ENABLED:true}
+  model-repository:
+    # Artifact bytes never enter Git. In production mount this directory as durable storage.
+    dir: ${ADCR_MODEL_REPOSITORY_DIR:runtime/model-repository}
+
+research:
+  task:
+    executor-id: ${RESEARCH_TASK_EXECUTOR_ID:local}
+    # The host may legitimately take up to 600s (host read timeout). Keep a wide margin so a
+    # live synchronous run is never reclaimed as an orphan before it can persist its result.
+    lease-seconds: ${RESEARCH_TASK_LEASE_SECONDS:900}
+    recovery-enabled: true
+    recovery-interval-ms: 60000

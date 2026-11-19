@@ -62,6 +62,13 @@ const routes = [
     meta: { title: '我的健康档案', layout: 'patient', roles: ['PATIENT'] }
   },
   {
+    // MenuCatalog 仍给患者下发 summary；这里落到同一个患者摘要页面，避免死菜单。
+    path: '/summary',
+    name: 'PatientSummary',
+    component: () => import('../views/patient/PatientHome.vue'),
+    meta: { title: '我的摘要', layout: 'patient', roles: ['PATIENT'] }
+  },
+  {
     path: '/subjects',
     name: 'PatientList',
     component: () => import('../views/doctor/PatientList.vue'),
@@ -101,7 +108,7 @@ const routes = [
     path: '/reports/research/:taskId(\\d+)',
     name: 'ResearchReportDetail',
     component: () => import('../views/doctor/ResearchReportDetail.vue'),
-    meta: { title: '模型验证报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER', 'ADMIN'] }
+    meta: { title: '模型验证报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER'] }
   },
   {
     path: '/reports/:assessmentId(\\d+)',

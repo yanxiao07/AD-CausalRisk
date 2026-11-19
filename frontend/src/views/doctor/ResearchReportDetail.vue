@@ -6,6 +6,19 @@
       :subtitle="task ? `研究任务 #${task.taskId} · 快照 #${task.snapshotId}` : '读取该受试者的研究验证结果'"
     >
       <template #extra>
+        <el-dropdown :disabled="!task || exporting" @command="exportReport">
+          <el-button :icon="Download" :disabled="!task">
+            导出报告
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="pdf">PDF</el-dropdown-item>
+              <el-dropdown-item command="html">HTML</el-dropdown-item>
+              <el-dropdown-item command="json">JSON</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>
     </PageHeader>
@@ -33,6 +46,10 @@
             </h2>
             <p class="report-note">
               该结果来自已登记冻结快照，由 Python 研究宿主计算；不是临床诊断，也不构成个体因果结论。
+            </p>
+            <p class="report-review">
+              复核状态：{{ reviewLabel }}
+              <template v-if="task.reviewComment"> · {{ task.reviewComment }}</template>
             </p>
           </div>
           <el-button type="primary" plain @click="goSubject">打开受试者档案</el-button>
@@ -143,12 +160,13 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Refresh, WarningFilled } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { ArrowDown, Download, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
-import { getResearchTableTask } from '@/api/research.js'
+import { downloadResearchReport, getResearchReportTask } from '@/api/research.js'
 import { formatDateTime } from '@/utils/datetime.js'
 
 const route = useRoute()
@@ -156,6 +174,7 @@ const router = useRouter()
 const task = ref(null)
 const loading = ref(true)
 const error = ref('')
+const exporting = ref(false)
 
 const result = computed(() => task.value?.result || {})
 const model = computed(() => result.value.model || {})
@@ -176,6 +195,36 @@ const subjectText = computed(() => {
   const subjectId = task.value?.subjectId
   return subjectId ? `受试者 #${subjectId}` : '研究验证结果'
 })
+const reviewLabel = computed(
+  () =>
+    ({
+      PENDING: '待复核',
+      CONFIRMED: '已确认',
+      NEEDS_DATA: '需补充数据',
+      REJECTED: '已驳回'
+    })[task.value?.reviewStatus] || '—'
+)
+
+async function exportReport(format) {
+  if (!task.value || exporting.value) return
+  exporting.value = true
+  try {
+    const { blob, filename } = await downloadResearchReport(task.value.taskId, format)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    ElMessage.success('报告已导出')
+  } catch (problem) {
+    ElMessage.error(problem?.message || '报告导出失败，请稍后重试')
+  } finally {
+    exporting.value = false
+  }
+}
 
 const statusTitle = computed(() => {
   return {
@@ -242,7 +291,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    task.value = await getResearchTableTask(taskId)
+    task.value = await getResearchReportTask(taskId)
   } catch (problem) {
     task.value = null
     error.value = problem?.message || '该研究结果不存在或当前账号无权查看'

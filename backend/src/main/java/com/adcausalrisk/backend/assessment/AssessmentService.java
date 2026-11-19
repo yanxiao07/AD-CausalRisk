@@ -793,7 +793,9 @@ public class AssessmentService {
 
     private AgentRequest buildRequest(Subject subject, int predictionWindowMonths) {
         List<AgentRequest.Visit> visits =
-                visitRepository.findBySubjectIdOrderByVisitDateAscIdAsc(subject.getId()).stream()
+                visitRepository
+                        .findBySubjectIdAndCurrentTrueOrderByVisitDateAscIdAsc(subject.getId())
+                        .stream()
                         .map(
                                 visit ->
                                         new AgentRequest.Visit(

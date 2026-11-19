@@ -5,6 +5,7 @@ import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
 import com.adcausalrisk.backend.importjob.IdempotencyRecordRepository;
 import com.adcausalrisk.backend.importjob.entity.IdempotencyRecord;
+import com.adcausalrisk.backend.qualitycheck.QualityCheckService;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.SubjectAccessPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -32,7 +33,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -65,13 +65,28 @@ class ResearchTableAssessmentService {
                 String reviewStatus, Long reviewedBy, Instant reviewedAt, String reviewComment) {}
 
     record ReviewQueue(List<Task> items, long total, int page, int pageSize) {}
-    record SnapshotOption(long snapshotId, Long taskId, String hostSyncStatus) {}
+    record SnapshotOption(long snapshotId, Long taskId, String hostSyncStatus,
+                          boolean compatible, String compatibilityMessage) {}
     record Registration(long snapshotId, String hostSyncStatus) {}
     record TaskSummary(long tasksToday, long completedToday, long failedToday, long averageSeconds,
                        List<Task> recent) {}
+
+    record Metrics(long tasksToday, long completed, long blocked, long failed, long running,
+                   long pendingReview, long syncedSnapshots, long averageSeconds) {}
     record BatchItem(long subjectId, Long snapshotId, String hostSyncStatus, Long taskId,
                      String taskStatus, String message) {}
     record BatchResult(List<BatchItem> items, int succeeded, int failed) {}
+
+    private record BatchVisit(
+            String visitDate,
+            BigDecimal mmse,
+            BigDecimal cdrSb,
+            String rawMmse,
+            String rawCdrSb,
+            String subjectDataVersion,
+            String qualityStatus,
+            String qualityDigest,
+            String qualityDataVersion) {}
 
     record MigrationResult(int migrated, int failed, int skipped, List<Long> failedSnapshotIds,
                            List<Long> skippedSnapshotIds) {}
@@ -87,6 +102,8 @@ class ResearchTableAssessmentService {
     private final ResearchTableClient client;
     private final ResearchTableProtocol protocol;
     private final ResearchModelIdentity modelIdentity;
+    private final ResearchTaskLease lease;
+    private final QualityCheckService qualityChecks;
     private final AuditService audit;
     private final Clock clock;
     @Value("${research.table.test-fixtures-enabled:false}")
@@ -95,7 +112,7 @@ class ResearchTableAssessmentService {
     ResearchTableAssessmentService(JdbcTemplate jdbc, PlatformTransactionManager manager,
             IdempotencyRecordRepository idempotency, SubjectAccessPolicy access,
             ResearchTableClient client, ResearchTableProtocol protocol, ResearchModelIdentity modelIdentity,
-            AuditService audit, Clock clock) {
+            ResearchTaskLease lease, QualityCheckService qualityChecks, AuditService audit, Clock clock) {
         this.jdbc = jdbc;
         transaction = new TransactionTemplate(manager);
         this.idempotency = idempotency;
@@ -103,6 +120,8 @@ class ResearchTableAssessmentService {
         this.client = client;
         this.protocol = protocol;
         this.modelIdentity = modelIdentity;
+        this.lease = lease;
+        this.qualityChecks = qualityChecks;
         this.audit = audit;
         this.clock = clock;
     }
@@ -184,6 +203,47 @@ class ResearchTableAssessmentService {
         return new Registration(id, syncToHost(id, principal));
     }
 
+    /**
+     * Creates a new, current-model snapshot from an old snapshot's frozen request. The old row is
+     * never rewritten: its clinical values, model identity and digest stay auditable. The only
+     * mutation is a fresh {@code runId} so the host can register the new image independently.
+     */
+    Registration reRegister(long snapshotId, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        var source = jdbc.query("""
+                SELECT subject_id,request_json,model_json
+                FROM research_table_snapshot
+                WHERE id=? AND data_scope='CONSTRUCTED_VALIDATION'
+                  AND (authorized_user_id=? OR ?=TRUE)
+                """, (row, index) -> new Object[] {
+                        row.getLong("subject_id"), row.getString("request_json"), row.getString("model_json")},
+                snapshotId, principal.userId(), principal.roleCodes().contains("ADMIN")).stream().findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+        long subjectId = (Long) source[0];
+        if (!access.canReadRawScores(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        ObjectNode request;
+        JsonNode storedModel;
+        try {
+            request = (ObjectNode) protocol.parse(
+                    ((String) source[1]).getBytes(StandardCharsets.UTF_8));
+            storedModel = protocol.parse(((String) source[2]).getBytes(StandardCharsets.UTF_8));
+        } catch (IOException | IllegalArgumentException invalid) {
+            throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "旧快照配置不可解析");
+        }
+        if (modelIdentity.identity().equals(storedModel)) {
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT,
+                    "该快照的模型身份仍与研究宿主兼容，无需重新登记");
+        }
+        request.put("runId", "run-rereg-" + snapshotId + "-"
+                + UUID.randomUUID().toString().substring(0, 12));
+        Registration registration = registerAndSync(subjectId, request, principal);
+        audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_REREGISTERED",
+                "oldSnapshotId=" + snapshotId + " newSnapshotId=" + registration.snapshotId());
+        return registration;
+    }
+
     Registration registerManualAndSync(long subjectId, JsonNode features, String indexDate, String dataVersion,
             String runId, AppUserPrincipal principal) {
         long id = registerManual(subjectId, features, indexDate, dataVersion, runId, principal);
@@ -216,25 +276,66 @@ class ResearchTableAssessmentService {
                     items.add(new BatchItem(subjectId, null, null, null, null, "没有该受试者的原始数据权限"));
                     continue;
                 }
-                var visit = jdbc.query("""
-                        SELECT v.visit_date,v.mmse,v.cdr_sb,s.data_version
+                BatchVisit visit = jdbc.query("""
+                        SELECT v.visit_date,v.mmse,v.cdr_sb,v.raw_mmse,v.raw_cdr_sb,
+                               s.data_version AS subject_data_version,
+                               q.quality_status,q.input_digest AS quality_digest,
+                               q.data_version AS quality_data_version
                         FROM visit v JOIN subject s ON s.id=v.subject_id
-                        WHERE v.subject_id=? ORDER BY v.visit_date DESC,v.id DESC LIMIT 1
-                        """, (row, index) -> new Object[] {row.getDate("visit_date").toLocalDate().toString(),
-                        row.getBigDecimal("mmse"), row.getBigDecimal("cdr_sb"), row.getString("data_version")},
+                        LEFT JOIN quality_check q ON q.id=(
+                            SELECT q2.id FROM quality_check q2
+                             WHERE q2.subject_id=v.subject_id
+                             ORDER BY q2.checked_at DESC,q2.id DESC LIMIT 1)
+                        WHERE v.subject_id=? AND v.is_current=TRUE
+                        ORDER BY v.visit_date DESC,v.id DESC LIMIT 1
+                        """, (row, index) -> new BatchVisit(
+                        row.getDate("visit_date").toLocalDate().toString(),
+                        row.getBigDecimal("mmse"), row.getBigDecimal("cdr_sb"),
+                        row.getString("raw_mmse"), row.getString("raw_cdr_sb"),
+                        row.getString("subject_data_version"), row.getString("quality_status"),
+                        row.getString("quality_digest"), row.getString("quality_data_version")),
                         subjectId).stream().findFirst().orElse(null);
                 if (visit == null) {
                     items.add(new BatchItem(subjectId, null, null, null, null, "没有可用于生成快照的访视数据"));
+                    continue;
+                }
+                if (!"PASS".equals(visit.qualityStatus())) {
+                    items.add(new BatchItem(subjectId, null, null, null, null,
+                            visit.qualityStatus() == null
+                                    ? "该受试者尚未完成质控，请先在质控页完成审核"
+                                    : "最新质控状态为 " + visit.qualityStatus() + "，请先处理质控异常"));
+                    continue;
+                }
+                if (visit.qualityDigest() == null
+                        || !visit.qualityDigest().equals(qualityChecks.inputDigest(subjectId))) {
+                    items.add(new BatchItem(subjectId, null, null, null, null,
+                            "最新质控未绑定当前数据（已有新访视或数据更正），请重新质控"));
+                    continue;
+                }
+                if (visit.qualityDataVersion() == null
+                        || !visit.qualityDataVersion().equals(visit.subjectDataVersion())) {
+                    items.add(new BatchItem(subjectId, null, null, null, null,
+                            "最新质控的数据版本早于当前档案，请重新质控"));
+                    continue;
+                }
+                BigDecimal mmse;
+                BigDecimal cdrSb;
+                try {
+                    mmse = rawScore(visit.rawMmse(), visit.mmse());
+                    cdrSb = rawScore(visit.rawCdrSb(), visit.cdrSb());
+                } catch (NumberFormatException invalid) {
+                    items.add(new BatchItem(subjectId, null, null, null, null,
+                            "原始认知分数不可解析，请先修正访视数据"));
                     continue;
                 }
                 ObjectNode features = JsonNodeFactory.instance.objectNode();
                 for (String feature : MANUAL_FEATURES) {
                     features.putNull(feature);
                 }
-                putIfPresent(features, "mmse", (BigDecimal) visit[1]);
-                putIfPresent(features, "cdr_sb", (BigDecimal) visit[2]);
-                Registration registration = registerManualAndSync(subjectId, features, (String) visit[0],
-                        (String) visit[3], null, principal);
+                putIfPresent(features, "mmse", mmse);
+                putIfPresent(features, "cdr_sb", cdrSb);
+                Registration registration = registerManualAndSync(subjectId, features, visit.visitDate(),
+                        visit.subjectDataVersion(), null, principal);
                 Long taskId = null;
                 String taskStatus = null;
                 String message = null;
@@ -257,6 +358,11 @@ class ResearchTableAssessmentService {
         return new BatchResult(items, succeeded, items.size() - succeeded);
     }
 
+    private static BigDecimal rawScore(String raw, BigDecimal derived) {
+        if (raw == null || raw.isBlank()) return derived;
+        return new BigDecimal(raw.trim());
+    }
+
     private static void putIfPresent(ObjectNode features, String name, BigDecimal value) {
         if (value == null) {
             features.putNull(name);
@@ -270,7 +376,7 @@ class ResearchTableAssessmentService {
     /** Today's research throughput for the researcher workbench (owner-scoped). */
     TaskSummary summary(AppUserPrincipal principal) {
         requireResearchRole(principal);
-        Instant start = LocalDate.now(clock).atStartOfDay(ZoneOffset.UTC).toInstant();
+        Instant start = LocalDate.now(clock).atStartOfDay(clock.getZone()).toInstant();
         List<Task> tasks = jdbc.query(TASK_QUERY + """
                  WHERE s.authorized_user_id=? AND t.created_at>=?
                  ORDER BY t.created_at DESC,t.id DESC
@@ -292,6 +398,70 @@ class ResearchTableAssessmentService {
                 .average().orElse(0));
         return new TaskSummary(tasks.size(), completed, failed, average,
                 tasks.stream().limit(5).toList());
+    }
+
+    Metrics metrics(AppUserPrincipal principal) {
+        requireMetricsRole(principal);
+        Instant start = LocalDate.now(clock).atStartOfDay(clock.getZone()).toInstant();
+        String scope;
+        List<Object> args = new ArrayList<>();
+        if (principal.roleCodes().contains("ADMIN")) {
+            scope = "";
+        } else if (principal.roleCodes().contains("DOCTOR")) {
+            scope = " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
+                    + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))";
+            args.add(principal.userId());
+        } else {
+            scope = " AND s.authorized_user_id=?";
+            args.add(principal.userId());
+        }
+        args.add(Timestamp.from(start));
+        List<Object[]> rows = jdbc.query("""
+                SELECT t.status,t.review_status,t.created_at,t.updated_at
+                FROM research_table_task t
+                JOIN research_table_snapshot s ON s.id=t.snapshot_id
+                WHERE 1=1
+                """ + scope + " AND t.created_at>=?", (row, index) -> new Object[] {
+                row.getString(1), row.getString(2), row.getTimestamp(3), row.getTimestamp(4)
+        }, args.toArray());
+
+        long completed = 0;
+        long blocked = 0;
+        long failed = 0;
+        long running = 0;
+        long pendingReview = 0;
+        long durationSeconds = 0;
+        long durationCount = 0;
+        for (Object[] row : rows) {
+            String status = (String) row[0];
+            String review = (String) row[1];
+            if ("COMPLETED".equals(status)) {
+                completed++;
+                if ("PENDING".equals(review)) {
+                    pendingReview++;
+                }
+                Timestamp created = (Timestamp) row[2];
+                Timestamp updated = (Timestamp) row[3];
+                if (created != null && updated != null) {
+                    durationSeconds += Math.max(0, Duration.between(created.toInstant(), updated.toInstant()).getSeconds());
+                    durationCount++;
+                }
+            } else if ("BLOCKED".equals(status)) {
+                blocked++;
+            } else if ("FAILED".equals(status) || OUTCOME_UNKNOWN.equals(status)) {
+                failed++;
+            } else if ("RUNNING".equals(status)) {
+                running++;
+            }
+        }
+
+        List<Object> syncArgs = args.subList(0, args.size() - 1);
+        Long synced = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM research_table_snapshot s WHERE s.host_sync_status='SYNCED'" + scope,
+                Long.class, syncArgs.toArray());
+        long averageSeconds = durationCount == 0 ? 0 : durationSeconds / durationCount;
+        return new Metrics(rows.size(), completed, blocked, failed, running, pendingReview,
+                synced == null ? 0 : synced, averageSeconds);
     }
 
     String syncToHost(long snapshotId, AppUserPrincipal principal) {
@@ -343,9 +513,12 @@ class ResearchTableAssessmentService {
             }
             if (reply == null || reply.httpStatus() != 200
                     || !"SYNCED".equals(reply.body().path("status").asText())) {
+                String hostError = reply == null ? "" : reply.body().path("errorCode").asText("");
                 updateSync(snapshotId, "FAILED");
                 audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_SYNC_FAILED",
-                        "snapshotId=" + snapshotId + " status=" + (reply == null ? "unavailable" : reply.httpStatus()));
+                        "snapshotId=" + snapshotId + " status="
+                                + (reply == null ? "unavailable" : reply.httpStatus())
+                                + (hostError.isBlank() ? "" : " hostError=" + hostError));
                 return "FAILED";
             }
             updateSync(snapshotId, "SYNCED");
@@ -496,8 +669,9 @@ class ResearchTableAssessmentService {
         if (!access.canReadRawScores(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
+        JsonNode currentModel = modelIdentity.identity();
         return jdbc.query("""
-                SELECT s.id,s.request_json,s.host_sync_status,t.id AS task_id
+                SELECT s.id,s.request_json,s.model_json,s.host_sync_status,t.id AS task_id
                 FROM research_table_snapshot s LEFT JOIN research_table_task t ON t.snapshot_id=s.id
                 WHERE s.subject_id=? AND s.authorized_user_id=? AND s.data_scope='CONSTRUCTED_VALIDATION'
                 ORDER BY s.id
@@ -507,8 +681,17 @@ class ResearchTableAssessmentService {
                         if (!TRAINED_MODEL.equals(request.path("modelKey").asText())) {
                             return null;
                         }
+                        boolean compatible;
+                        try {
+                            JsonNode storedModel = protocol.parse(
+                                    row.getString("model_json").getBytes(StandardCharsets.UTF_8));
+                            compatible = currentModel.equals(storedModel);
+                        } catch (IOException | IllegalArgumentException invalid) {
+                            compatible = false;
+                        }
                         return new SnapshotOption(row.getLong("id"), row.getObject("task_id", Long.class),
-                                row.getString("host_sync_status"));
+                                row.getString("host_sync_status"), compatible,
+                                compatible ? null : "旧模型身份或软件锁摘要与新研究宿主不兼容，请重新登记");
                     } catch (IOException | IllegalArgumentException invalid) {
                         throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "冻结研究快照配置无效");
                     }
@@ -556,6 +739,11 @@ class ResearchTableAssessmentService {
         }, keys);
         long id = keys.getKey().longValue();
         idempotency.saveAndFlush(new IdempotencyRecord(principal.userId(), OPERATION, key, digest, id));
+        // Claim inside the reservation transaction. An unowned RUNNING row never reaches another
+        // instance, while the conditional UPDATE still gives the task a visible lease.
+        if (!lease.claim(id, executionId)) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "研究任务无法取得执行租约");
+        }
         return new Submission(id, snapshot, executionId);
     }
 
@@ -621,7 +809,8 @@ class ResearchTableAssessmentService {
                 jdbc.update("""
                         UPDATE research_table_task
                         SET status='OUTCOME_UNKNOWN',error_code='RESEARCH_UNAVAILABLE',
-                            result_json=NULL,execution_id=NULL,updated_at=?
+                            result_json=NULL,execution_id=NULL,executor_id=NULL,lease_expires_at=NULL,
+                            updated_at=?
                         WHERE id=? AND status='RUNNING' AND execution_id=?
                         """, Timestamp.from(clock.instant()), taskId, executionId);
             }
@@ -630,9 +819,50 @@ class ResearchTableAssessmentService {
         // Only the execution that still owns the task may write its terminal state. A slow
         // attempt that was overtaken by a retry must not overwrite the newer outcome.
         jdbc.update("""
-                UPDATE research_table_task SET status=?,error_code=?,result_json=?,updated_at=?
+                UPDATE research_table_task
+                SET status=?,error_code=?,result_json=?,executor_id=NULL,lease_expires_at=NULL,updated_at=?
                 WHERE id=? AND status='RUNNING' AND execution_id=?
                 """, status, code, result, Timestamp.from(clock.instant()), taskId, executionId);
+    }
+
+    private record ReportScope(String filter, List<Object> params) {}
+
+    /**
+     * The report list, report detail and export share one authorization rule. A doctor needs an
+     * explicit VIEW/MANAGE grant for the subject; a researcher is limited to their own snapshots
+     * unless they have full raw-score visibility, in which case every researcher snapshot is
+     * readable. This intentionally does not fall back to the broader task detail rule.
+     */
+    private ReportScope reportScope(AppUserPrincipal principal) {
+        requireReportRole(principal);
+        List<Object> params = new ArrayList<>();
+        String filter;
+        if (principal.roleCodes().contains("DOCTOR")) {
+            filter = " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
+                    + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))";
+            params.add(principal.userId());
+        } else {
+            filter = " AND s.authorized_user_id=?";
+            params.add(principal.userId());
+            if (!access.hasFullRawScoreVisibility(principal)) {
+                filter += " AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id"
+                        + " AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))";
+                params.add(principal.userId());
+            }
+        }
+        return new ReportScope(filter, List.copyOf(params));
+    }
+
+    Task report(long id, AppUserPrincipal principal) {
+        ReportScope scope = reportScope(principal);
+        List<Object> params = new ArrayList<>();
+        params.add(id);
+        params.addAll(scope.params());
+        return jdbc.query(TASK_QUERY + " WHERE t.id=?" + scope.filter(),
+                        (row, index) -> mapTask(row, principal), params.toArray())
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
     }
 
     Task find(long id, AppUserPrincipal principal) {
@@ -660,6 +890,34 @@ class ResearchTableAssessmentService {
         if (!all) params.add(status.toUpperCase(Locale.ROOT));
         params.add(principal.userId());
 
+        Long total = jdbc.queryForObject("SELECT COUNT(*) " + from, Long.class, params.toArray());
+        String select = """
+                SELECT t.id,t.snapshot_id,t.run_id,t.status,t.error_code,t.result_json,t.created_at,t.updated_at,
+                       t.review_status,t.reviewed_by,t.reviewed_at,t.review_comment,
+                       s.subject_id,s.authorized_user_id,sub.subject_code,sub.alias AS subject_alias
+                """ + from + " ORDER BY t.created_at DESC,t.id DESC LIMIT ? OFFSET ?";
+        List<Object> pageParams = new ArrayList<>(params);
+        pageParams.add(safeSize);
+        pageParams.add((long) (safePage - 1) * safeSize);
+        List<Task> items = jdbc.query(select, (row, index) -> mapTask(row, principal), pageParams.toArray());
+        return new ReviewQueue(items, total == null ? 0 : total, safePage, safeSize);
+    }
+
+    ReviewQueue reports(String status, int page, int pageSize, AppUserPrincipal principal) {
+        ReportScope scope = reportScope(principal);
+        int safePage = Math.max(1, page);
+        int safeSize = Math.max(1, Math.min(100, pageSize));
+        boolean all = status == null || status.isBlank() || "ALL".equalsIgnoreCase(status);
+        String statusFilter = all ? " AND t.status<>'RUNNING'" : " AND t.status=?";
+        List<Object> params = new ArrayList<>();
+        if (!all) params.add(status.toUpperCase(Locale.ROOT));
+        params.addAll(scope.params());
+        String from = """
+                FROM research_table_task t
+                JOIN research_table_snapshot s ON s.id=t.snapshot_id
+                JOIN subject sub ON sub.id=s.subject_id
+                WHERE 1=1
+                """ + statusFilter + scope.filter();
         Long total = jdbc.queryForObject("SELECT COUNT(*) " + from, Long.class, params.toArray());
         String select = """
                 SELECT t.id,t.snapshot_id,t.run_id,t.status,t.error_code,t.result_json,t.created_at,t.updated_at,
@@ -812,14 +1070,21 @@ class ResearchTableAssessmentService {
         // would be left RUNNING without an executor.
         client.requireConfigured();
         String executionId = UUID.randomUUID().toString();
-        int claimed = jdbc.update("""
-                UPDATE research_table_task SET status='RUNNING',execution_id=?,error_code=NULL,
-                    result_json=NULL,updated_at=?
-                WHERE id=? AND status IN ('FAILED','OUTCOME_UNKNOWN')
-                """, executionId, Timestamp.from(clock.instant()), taskId);
-        if (claimed == 0) {
-            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "任务状态已变化，请刷新后重试");
-        }
+        // Reset and claim in one transaction so scheduled lease recovery can never observe a
+        // transient RUNNING row with no owner between the two statements.
+        transaction.executeWithoutResult(status -> {
+            int claimed = jdbc.update("""
+                    UPDATE research_table_task SET status='RUNNING',execution_id=?,error_code=NULL,
+                        result_json=NULL,executor_id=NULL,lease_expires_at=NULL,updated_at=?
+                    WHERE id=? AND status IN ('FAILED','OUTCOME_UNKNOWN')
+                    """, executionId, Timestamp.from(clock.instant()), taskId);
+            if (claimed == 0) {
+                throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "任务状态已变化，请刷新后重试");
+            }
+            if (!lease.claim(taskId, executionId)) {
+                throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "任务已被其他实例领取，请刷新后重试");
+            }
+        });
         audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_RETRY",
                 "taskId=" + taskId + " executionId=" + executionId);
         execute(taskId, snapshot, executionId);
@@ -869,6 +1134,22 @@ class ResearchTableAssessmentService {
                 WHERE subject_id=? AND user_id=? AND permission_type IN ('VIEW','MANAGE')
                 """, Long.class, subjectId, userId);
         return count != null && count > 0;
+    }
+
+    private static void requireMetricsRole(AppUserPrincipal principal) {
+        if (principal.roleCodes().contains("PATIENT")
+                || (!principal.roleCodes().contains("ADMIN")
+                && !principal.roleCodes().contains("DOCTOR")
+                && !principal.roleCodes().contains("RESEARCHER"))) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+    }
+
+    private static void requireReportRole(AppUserPrincipal principal) {
+        if (principal.roleCodes().contains("PATIENT")
+                || (!principal.roleCodes().contains("DOCTOR") && !principal.roleCodes().contains("RESEARCHER"))) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
     }
 
     private static void requireReviewRole(AppUserPrincipal principal) {

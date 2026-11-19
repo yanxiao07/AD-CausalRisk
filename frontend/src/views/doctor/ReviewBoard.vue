@@ -123,7 +123,7 @@
     </DataCard>
       </el-tab-pane>
 
-      <el-tab-pane label="研究模型复核" name="research">
+      <el-tab-pane v-if="isDoctor" label="研究模型复核" name="research">
         <DataCard padding="none">
           <div class="filter">
             <el-radio-group v-model="researchFilter" size="small" @change="loadResearch(1)">
@@ -380,7 +380,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document, Refresh, WarningFilled } from '@element-plus/icons-vue'
@@ -394,9 +394,14 @@ import { getSubjectCapabilities } from '@/api/subjects.js'
 import { listResearchReviews, reviewResearchTask } from '@/api/research.js'
 import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
 import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
+import { useUserStore } from '@/stores/user.js'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
+
+/** 研究模型复核只有 DOCTOR 能读/写；RESEARCHER 仍可看旧规则复核。 */
+const isDoctor = computed(() => userStore.hasRole('DOCTOR'))
 
 const page = ref(1)
 const pageSize = ref(20)
@@ -619,6 +624,7 @@ function formatCif(value) {
 let researchSeq = 0
 
 async function loadResearch(target = researchPage.value) {
+  if (!isDoctor.value) return
   const seq = ++researchSeq
   researchLoading.value = true
   researchError.value = ''
@@ -686,6 +692,11 @@ watch(view, (value) => {
 })
 
 onMounted(async () => {
+  if (String(route.query.tab || '') === 'research' && isDoctor.value) {
+    view.value = 'research'
+    await loadResearch(1)
+    return
+  }
   const statusFromQuery = String(route.query.status || '').toUpperCase()
   if (['PENDING', 'ACKNOWLEDGED'].includes(statusFromQuery)) {
     filter.value = statusFromQuery

@@ -81,6 +81,7 @@ defineProps({
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   flex-shrink: 0;
 }
 
@@ -88,5 +89,27 @@ defineProps({
   padding: 14px 24px;
   border-top: 1px solid var(--line);
   background: var(--bg-soft);
+}
+
+@media (max-width: 767px) {
+  .data-card__header {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 16px 16px 0;
+  }
+
+  .data-card--pad-sm .data-card__body,
+  .data-card--pad-md .data-card__body,
+  .data-card--pad-lg .data-card__body {
+    padding: 16px;
+  }
+
+  .data-card__extra {
+    width: 100%;
+  }
+
+  .data-card__footer {
+    padding: 12px 16px;
+  }
 }
 </style>

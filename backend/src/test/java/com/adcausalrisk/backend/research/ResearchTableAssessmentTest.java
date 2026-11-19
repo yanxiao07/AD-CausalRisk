@@ -31,6 +31,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
@@ -66,7 +68,9 @@ class ResearchTableAssessmentTest {
     @Autowired ObjectMapper json;
     @Autowired ResearchTableProtocol protocol;
     @Autowired ResearchTableAssessmentService service;
+    @Autowired com.adcausalrisk.backend.qualitycheck.QualityCheckService qualityChecks;
     @Autowired ResearchTaskRecovery recovery;
+    @Autowired ResearchTaskLease lease;
     @Autowired com.adcausalrisk.backend.config.SystemSettingService settings;
     @Autowired ResearchTableClient client;
 
@@ -167,6 +171,59 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void marksOlderModelSnapshotsIncompatibleAndReRegistersWithoutRewritingHistory() throws Exception {
+        String code = "DEMO-COMPAT-" + UUID.randomUUID().toString().substring(0, 8);
+        long subjectId = subject(code);
+        var request = uniqueRequest().put("subjectCode", code).put("modelKey", "trained-seven-logistic");
+
+        var payload = json.createObjectNode();
+        payload.put("subjectId", subjectId);
+        payload.set("request", request);
+        JsonNode created = body(mvc.perform(post(PATH + "/snapshots/register")
+                .with(authentication(actor("admin", "ADMIN")))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(payload.toString())));
+        long oldSnapshotId = created.get("data").get("snapshotId").longValue();
+
+        var oldRow = jdbc.queryForMap(
+                "SELECT request_json,model_json FROM research_table_snapshot WHERE id=?", oldSnapshotId);
+        var oldModel = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree((String) oldRow.get("model_json"));
+        oldModel.put("softwareLockSha256", "0".repeat(64));
+        jdbc.update("UPDATE research_table_snapshot SET model_json=? WHERE id=?",
+                oldModel.toString(), oldSnapshotId);
+
+        JsonNode listed = body(mvc.perform(get(PATH + "/snapshots?subjectId=" + subjectId)
+                .with(authentication(actor("admin", "ADMIN")))));
+        JsonNode oldOption = null;
+        for (JsonNode item : listed.get("data")) {
+            if (item.get("snapshotId").longValue() == oldSnapshotId) oldOption = item;
+        }
+        assertThat(oldOption).isNotNull();
+        assertThat(oldOption.get("compatible").asBoolean()).isFalse();
+        assertThat(oldOption.get("compatibilityMessage").asText()).contains("重新登记");
+
+        JsonNode reRegistered = body(mvc.perform(post(
+                        PATH + "/snapshots/" + oldSnapshotId + "/re-register")
+                .with(authentication(actor("admin", "ADMIN")))));
+        long newSnapshotId = reRegistered.get("data").get("snapshotId").longValue();
+        assertThat(newSnapshotId).isNotEqualTo(oldSnapshotId);
+
+        var oldAfter = jdbc.queryForMap(
+                "SELECT request_json,model_json FROM research_table_snapshot WHERE id=?", oldSnapshotId);
+        assertThat(oldAfter.get("model_json")).isEqualTo(oldModel.toString());
+        assertThat(oldAfter.get("request_json")).isEqualTo(oldRow.get("request_json"));
+
+        JsonNode after = body(mvc.perform(get(PATH + "/snapshots?subjectId=" + subjectId)
+                .with(authentication(actor("admin", "ADMIN")))));
+        JsonNode newOption = null;
+        for (JsonNode item : after.get("data")) {
+            if (item.get("snapshotId").longValue() == newSnapshotId) newOption = item;
+        }
+        assertThat(newOption).isNotNull();
+        assertThat(newOption.get("compatible").asBoolean()).isTrue();
+    }
+
+    @Test
     void registersManualSevenVariableFeatures() throws Exception {
         String code = "DEMO-MANUAL-" + UUID.randomUUID();
         long subjectId = subject(code);
@@ -208,10 +265,11 @@ class ResearchTableAssessmentTest {
         String code = "DEMO-BATCH-" + UUID.randomUUID();
         long subjectId = subject(code);
         jdbc.update("""
-                INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb)
-                VALUES(?,?,?,?,?)
+                INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb,raw_mmse,raw_cdr_sb)
+                VALUES(?,?,?,?,?,?,?)
                 """, subjectId, "V-BATCH", java.sql.Date.valueOf("2026-11-13"),
-                new java.math.BigDecimal("28.0"), new java.math.BigDecimal("0.5"));
+                new java.math.BigDecimal("28.0"), new java.math.BigDecimal("0.5"), "27.5", "0.5");
+        insertQuality(subjectId, "PASS");
 
         var payload = json.createObjectNode();
         payload.putArray("subjectIds").add(subjectId);
@@ -227,13 +285,92 @@ class ResearchTableAssessmentTest {
         var row = jdbc.queryForMap("SELECT * FROM research_table_snapshot WHERE id=?", snapshotId);
         JsonNode request = json.readTree((String) row.get("request_json"));
         assertThat(request.get("indexDate").asText()).isEqualTo("2026-11-13");
-        assertThat(request.get("features").get("mmse").get("value").asInt()).isEqualTo(28);
+        assertThat(request.get("features").get("mmse").get("value").decimalValue())
+                .isEqualByComparingTo("27.5");
         assertThat(request.get("features").get("cdr_sb").get("value").decimalValue())
                 .isEqualByComparingTo("0.5");
         assertThat(request.get("features").get("age_years").get("missingReason").asText())
                 .isEqualTo("NOT_COLLECTED");
         assertThat(request.get("features").get("mmse").get("value").isDouble()).isTrue();
-        assertThat(request.get("features").get("mmse").get("value").asText()).isEqualTo("28.0");
+        assertThat(request.get("features").get("mmse").get("value").asText()).isEqualTo("27.5");
+    }
+
+    @Test
+    void batchRefusesSubjectWhoseLatestQualityCheckIsNotPassing() throws Exception {
+        String code = "DEMO-BATCH-QC-" + UUID.randomUUID();
+        long subjectId = subject(code);
+        jdbc.update("""
+                INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb)
+                VALUES(?,?,?,?,?)
+                """, subjectId, "V-BATCH-QC", java.sql.Date.valueOf("2026-11-13"),
+                new java.math.BigDecimal("28.0"), new java.math.BigDecimal("0.5"));
+        insertQuality(subjectId, "WARN");
+
+        var payload = json.createObjectNode();
+        payload.putArray("subjectIds").add(subjectId);
+        payload.put("evaluate", false);
+        JsonNode created = body(mvc.perform(post(PATH + "/snapshots/batch")
+                .with(authentication(actor("admin", "ADMIN")))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(payload.toString())));
+        JsonNode item = created.get("data").get("items").get(0);
+        assertThat(item.get("snapshotId").isNull()).isTrue();
+        assertThat(item.get("message").asText()).contains("WARN");
+    }
+
+    @Test
+    void batchRejectsPassThatWasBoundToAnOlderVisitAfterANewVisitArrives() throws Exception {
+        String code = "DEMO-BATCH-STALE-QC-" + UUID.randomUUID().toString().substring(0, 8);
+        long subjectId = subject(code);
+        jdbc.update("""
+                INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb)
+                VALUES(?,?,?,?,?)
+                """, subjectId, "V-BATCH-OLD", java.sql.Date.valueOf("2026-11-13"),
+                new java.math.BigDecimal("28.0"), new java.math.BigDecimal("0.5"));
+        insertQuality(subjectId, "PASS");
+        jdbc.update("""
+                INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb)
+                VALUES(?,?,?,?,?)
+                """, subjectId, "V-BATCH-NEW", java.sql.Date.valueOf("2026-11-18"),
+                new java.math.BigDecimal("27.0"), new java.math.BigDecimal("0.5"));
+
+        var payload = json.createObjectNode();
+        payload.putArray("subjectIds").add(subjectId);
+        payload.put("evaluate", true);
+        JsonNode created = body(mvc.perform(post(PATH + "/snapshots/batch")
+                .with(authentication(actor("admin", "ADMIN")))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(payload.toString())));
+        JsonNode item = created.get("data").get("items").get(0);
+        assertThat(item.get("snapshotId").isNull()).isTrue();
+        assertThat(item.get("message").asText()).contains("未绑定当前数据");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM research_table_snapshot WHERE subject_id=?", Long.class, subjectId))
+                .isZero();
+    }
+
+    @Test
+    void batchUsesCurrentArchiveVersionWhenOnlyFeatureEvidenceChanged() throws Exception {
+        String code = "DEMO-BATCH-VERSION-" + UUID.randomUUID().toString().substring(0, 8);
+        long subjectId = subject(code);
+        jdbc.update("""
+                INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb,data_version)
+                VALUES(?,?,?,?,?,?)
+                """, subjectId, "V-BATCH-VERSION", java.sql.Date.valueOf("2026-11-13"),
+                new java.math.BigDecimal("28.0"), new java.math.BigDecimal("0.5"), "demo-v1");
+        jdbc.update("UPDATE subject SET data_version='demo-v2' WHERE id=?", subjectId);
+        insertQuality(subjectId, "PASS");
+
+        var payload = json.createObjectNode();
+        payload.putArray("subjectIds").add(subjectId);
+        payload.put("evaluate", false);
+        JsonNode created = body(mvc.perform(post(PATH + "/snapshots/batch")
+                .with(authentication(actor("admin", "ADMIN")))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(payload.toString())));
+        JsonNode item = created.get("data").get("items").get(0);
+        assertThat(item.get("snapshotId").isNull()).isFalse();
+        assertThat(item.get("hostSyncStatus").asText()).isEqualTo("SYNCED");
     }
 
     @Test
@@ -245,6 +382,7 @@ class ResearchTableAssessmentTest {
                 VALUES(?,?,?,?,?)
                 """, subjectId, "V-BATCH-EVAL", java.sql.Date.valueOf("2026-11-13"),
                 new java.math.BigDecimal("28.00"), new java.math.BigDecimal("0.50"));
+        insertQuality(subjectId, "PASS");
 
         ResearchTableClient original = (ResearchTableClient) org.springframework.test.util.ReflectionTestUtils
                 .getField(service, "client");
@@ -546,6 +684,58 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void reportsRespectRoleAndSubjectGrant() throws Exception {
+        var request = fixture("request-seven");
+        long snapshot = snapshot(request, fixture("response-seven"), "admin");
+        reply(request, fixture("response-seven"), 200, false);
+        JsonNode task = body(submit(snapshot, "reports", actor("admin", "ADMIN"))).get("data");
+        long subjectId = task.get("subjectId").asLong();
+
+        mvc.perform(get(PATH + "/reports").with(authentication(actor("admin", "ADMIN"))))
+                .andExpect(status().isForbidden());
+
+        var doctor = actor("doctor", "DOCTOR");
+        JsonNode empty = body(mvc.perform(get(PATH + "/reports").with(authentication(doctor)))).get("data");
+        assertThat(empty.get("total").asLong()).isZero();
+
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,?)",
+                subjectId, userId("doctor"), "VIEW");
+        JsonNode visible = body(mvc.perform(get(PATH + "/reports").with(authentication(doctor)))).get("data");
+        assertThat(visible.get("total").asLong()).isEqualTo(1);
+        assertThat(visible.get("items").get(0).get("taskId").asLong()).isEqualTo(task.get("taskId").asLong());
+    }
+
+    @Test
+    void researcherReportsExcludeRevokedSubjectInsteadOfFailingWholePage() throws Exception {
+        var request = fixture("request-seven");
+        long snapshot = snapshot(request, fixture("response-seven"), "researcher");
+        reply(request, fixture("response-seven"), 200, false);
+        JsonNode task = body(submit(snapshot, "reports-revoked",
+                actor("researcher", "RESEARCHER"))).get("data");
+        long subjectId = task.get("subjectId").asLong();
+        long researcherId = userId("researcher");
+        String originalScope = jdbc.queryForObject(
+                "SELECT data_scope FROM sys_user WHERE id=?", String.class, researcherId);
+        jdbc.update("UPDATE sys_user SET data_scope='ASSIGNED' WHERE id=?", researcherId);
+        try {
+            jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,?)",
+                    subjectId, researcherId, "VIEW");
+            var researcher = actor("researcher", "RESEARCHER");
+            JsonNode visible = body(mvc.perform(get(PATH + "/reports")
+                    .with(authentication(researcher)))).get("data");
+            assertThat(visible.get("total").asLong()).isGreaterThanOrEqualTo(1);
+
+            jdbc.update("DELETE FROM subject_permission WHERE subject_id=? AND user_id=?",
+                    subjectId, researcherId);
+            JsonNode revoked = body(mvc.perform(get(PATH + "/reports")
+                    .with(authentication(researcher)))).get("data");
+            assertThat(revoked.get("total").asLong()).isZero();
+        } finally {
+            jdbc.update("UPDATE sys_user SET data_scope=? WHERE id=?", originalScope, researcherId);
+        }
+    }
+
+    @Test
     void dualRoleResearcherWithGlobalReadCannotReviewWithoutSubjectGrant() throws Exception {
         var request = fixture("request-seven");
         long snapshot = snapshot(request, fixture("response-seven"), "admin");
@@ -569,11 +759,18 @@ class ResearchTableAssessmentTest {
                     .containsExactlyInAnyOrder("DOCTOR", "RESEARCHER");
             var dualRole = actor("research_doctor", "DOCTOR", "RESEARCHER");
 
-            // Global read scope must still let the treating doctor read the task result.
-            mvc.perform(get(PATH + "/" + taskId).with(authentication(dualRole)))
-                    .andExpect(status().isOk());
+            // Report list, detail and export all require the explicit archive grant. Global
+            // research visibility alone must not widen the report use case.
+            mvc.perform(get(PATH + "/reports/" + taskId).with(authentication(dualRole)))
+                    .andExpect(status().isForbidden());
+            mvc.perform(get(PATH + "/" + taskId + "/export")
+                            .with(authentication(dualRole)))
+                    .andExpect(status().isForbidden());
+            JsonNode hiddenReports = body(mvc.perform(get(PATH + "/reports")
+                    .with(authentication(dualRole)))).get("data");
+            assertThat(hiddenReports.get("total").asLong()).isZero();
 
-            // But review submission additionally needs an explicit subject grant.
+            // Review submission also needs an explicit subject grant.
             JsonNode queue = body(mvc.perform(get(PATH + "/reviews")
                     .with(authentication(dualRole)))).get("data");
             assertThat(queue.get("total").asLong()).isZero();
@@ -581,6 +778,23 @@ class ResearchTableAssessmentTest {
                             .with(authentication(dualRole)).contentType(MediaType.APPLICATION_JSON)
                             .content("{\"decision\":\"CONFIRMED\",\"comment\":\"无档案授权不得复核\"}"))
                     .andExpect(status().isForbidden());
+
+            jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,?)",
+                    task.get("subjectId").asLong(), dualUserId, "VIEW");
+            try {
+                mvc.perform(get(PATH + "/reports/" + taskId).with(authentication(dualRole)))
+                        .andExpect(status().isOk());
+                mvc.perform(get(PATH + "/" + taskId + "/export")
+                                .with(authentication(dualRole))
+                                .param("format", "json"))
+                        .andExpect(status().isOk());
+                JsonNode visibleReports = body(mvc.perform(get(PATH + "/reports")
+                        .with(authentication(dualRole)))).get("data");
+                assertThat(visibleReports.get("total").asLong()).isEqualTo(1);
+            } finally {
+                jdbc.update("DELETE FROM subject_permission WHERE subject_id=? AND user_id=?",
+                        task.get("subjectId").asLong(), dualUserId);
+            }
         } finally {
             jdbc.update("UPDATE sys_user SET data_scope=? WHERE id=?", originalScope, dualUserId);
         }
@@ -809,6 +1023,126 @@ class ResearchTableAssessmentTest {
         assertThat(row.get("execution_id")).isNull();
     }
 
+    @Test
+    void onlyOneExecutorClaimsARunningTask() throws Exception {
+        long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        String executionId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,execution_id,created_at,updated_at)
+                VALUES(?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, snapshot, "run-claim", "RUNNING", executionId);
+        long taskId = jdbc.queryForObject(
+                "SELECT id FROM research_table_task WHERE run_id='run-claim'", Long.class);
+
+        var start = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> {
+                start.await();
+                return lease.claim(taskId, executionId, "executor-a");
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return lease.claim(taskId, executionId, "executor-b");
+            });
+            start.countDown();
+            assertThat(List.of(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
+        }
+        var row = jdbc.queryForMap(
+                "SELECT status,executor_id,lease_expires_at FROM research_table_task WHERE id=?", taskId);
+        assertThat(row.get("status")).isEqualTo("RUNNING");
+        assertThat(row.get("executor_id")).isIn("executor-a", "executor-b");
+        assertThat(row.get("lease_expires_at")).isNotNull();
+    }
+
+    @Test
+    void recoveryReclaimsOnlyExpiredLeases() throws Exception {
+        long activeSnapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        long expiredSnapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,execution_id,executor_id,
+                    lease_expires_at,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, activeSnapshot, "run-active", "RUNNING", UUID.randomUUID().toString(), "executor-live",
+                Timestamp.from(Instant.now().plusSeconds(300)));
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,execution_id,executor_id,
+                    lease_expires_at,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, expiredSnapshot, "run-expired", "RUNNING", UUID.randomUUID().toString(), "executor-dead",
+                Timestamp.from(Instant.now().minusSeconds(1)));
+
+        assertThat(recovery.recoverInterrupted()).isEqualTo(1);
+        var active = jdbc.queryForMap(
+                "SELECT status,executor_id,lease_expires_at FROM research_table_task WHERE run_id='run-active'");
+        assertThat(active.get("status")).isEqualTo("RUNNING");
+        assertThat(active.get("executor_id")).isEqualTo("executor-live");
+        assertThat(active.get("lease_expires_at")).isNotNull();
+
+        var expired = jdbc.queryForMap("""
+                SELECT status,error_code,execution_id,executor_id,lease_expires_at
+                FROM research_table_task WHERE run_id='run-expired'
+                """);
+        assertThat(expired.get("status")).isEqualTo("OUTCOME_UNKNOWN");
+        assertThat(expired.get("error_code")).isEqualTo(ResearchTaskRecovery.INTERRUPTED_CODE);
+        assertThat(expired.get("execution_id")).isNull();
+        assertThat(expired.get("executor_id")).isNull();
+        assertThat(expired.get("lease_expires_at")).isNull();
+    }
+
+    @Test
+    void inFlightTaskAtFullRequestLeaseIsNotReclaimed() throws Exception {
+        long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,execution_id,executor_id,
+                    lease_expires_at,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, snapshot, "run-in-flight", "RUNNING", UUID.randomUUID().toString(), "executor-live",
+                Timestamp.from(Instant.now().plusSeconds(ResearchTaskLease.MINIMUM_LEASE_SECONDS)));
+
+        assertThat(recovery.recoverInterrupted()).isZero();
+        var active = jdbc.queryForMap("""
+                SELECT status,executor_id,lease_expires_at
+                FROM research_table_task WHERE run_id='run-in-flight'
+                """);
+        assertThat(active.get("status")).isEqualTo("RUNNING");
+        assertThat(active.get("executor_id")).isEqualTo("executor-live");
+        assertThat(active.get("lease_expires_at")).isNotNull();
+    }
+
+    @Test
+    void metricsSeparateResearchTasksByRole() throws Exception {
+        long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        body(submit(snapshot, "metrics", actor("admin", "ADMIN")));
+
+        JsonNode admin = body(mvc.perform(get(PATH + "/metrics")
+                .with(authentication(actor("admin", "ADMIN"))))).get("data");
+        assertThat(admin.get("tasksToday").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(admin.get("completed").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(admin.get("syncedSnapshots").asLong()).isGreaterThanOrEqualTo(1);
+
+        JsonNode doctorWithoutGrant = body(mvc.perform(get(PATH + "/metrics")
+                .with(authentication(actor("doctor", "DOCTOR"))))).get("data");
+        assertThat(doctorWithoutGrant.get("tasksToday").asLong()).isZero();
+
+        jdbc.update("""
+                INSERT INTO subject_permission(subject_id,user_id,permission_type)
+                SELECT subject_id,?,'VIEW' FROM research_table_snapshot WHERE id=?
+                """, userId("doctor"), snapshot);
+        JsonNode doctorWithGrant = body(mvc.perform(get(PATH + "/metrics")
+                .with(authentication(actor("doctor", "DOCTOR"))))).get("data");
+        assertThat(doctorWithGrant.get("tasksToday").asLong()).isGreaterThanOrEqualTo(1);
+        assertThat(doctorWithGrant.get("completed").asLong()).isGreaterThanOrEqualTo(1);
+
+        JsonNode researcher = body(mvc.perform(get(PATH + "/metrics")
+                .with(authentication(actor("researcher", "RESEARCHER"))))).get("data");
+        assertThat(researcher.get("tasksToday").asLong()).isZero();
+        assertThat(researcher.get("syncedSnapshots").asLong()).isZero();
+
+        mvc.perform(get(PATH + "/metrics")
+                .with(authentication(actor("patient", "PATIENT")))).andExpect(status().isForbidden());
+    }
+
     private ResultActions submit(long snapshot, String key, UsernamePasswordAuthenticationToken actor) throws Exception {
         return mvc.perform(post(PATH).with(authentication(actor)).header("Idempotency-Key", key)
                 .contentType(MediaType.APPLICATION_JSON).content("{\"snapshotId\":" + snapshot + "}"));
@@ -847,6 +1181,16 @@ class ResearchTableAssessmentTest {
         jdbc.update("INSERT INTO subject(subject_code,alias,status,data_version,created_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)",
                 code, "登记测试档案", "ACTIVE", "demo-rt");
         return jdbc.queryForObject("SELECT id FROM subject WHERE subject_code=?", Long.class, code);
+    }
+
+    private void insertQuality(long subjectId, String status) {
+        String dataVersion =
+                jdbc.queryForObject("SELECT data_version FROM subject WHERE id=?", String.class, subjectId);
+        jdbc.update("""
+                INSERT INTO quality_check(subject_id,quality_status,issues,checked_at,rule_version,data_version,input_digest)
+                VALUES(?,?,?,?,?,?,?)
+                """, subjectId, status, "[]", new Timestamp(System.currentTimeMillis()),
+                "qc-rules-demo-v2", dataVersion, qualityChecks.inputDigest(subjectId));
     }
 
     private long userId(String name) {

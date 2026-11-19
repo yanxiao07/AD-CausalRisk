@@ -1,6 +1,7 @@
 package com.adcausalrisk.backend.auth;
 
 import com.adcausalrisk.backend.auth.dto.ChangePasswordRequest;
+import com.adcausalrisk.backend.auth.dto.CsrfTokenView;
 import com.adcausalrisk.backend.auth.dto.CurrentUserView;
 import com.adcausalrisk.backend.auth.dto.LoginRequest;
 import com.adcausalrisk.backend.auth.dto.MyProfileView;
@@ -13,6 +14,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 
 import org.springframework.security.core.Authentication;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,8 +23,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * The three authentication operations of the frozen contract: {@code POST /api/auth/login}, {@code
- * POST /api/auth/logout} and {@code GET /api/me}.
+ * The authentication operations of the frozen contract: {@code POST /api/auth/login}, {@code
+ * POST /api/auth/logout}, {@code GET /api/auth/csrf} and {@code GET /api/me}.
  *
  * <p>The controller only maps HTTP and DTOs; every rule lives in {@link AuthService}.
  */
@@ -42,6 +44,18 @@ public class AuthController {
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
         return Envelope.success(authService.login(request, httpRequest, httpResponse));
+    }
+
+    /**
+     * Issues (or reuses) the CSRF token for the browser session.
+     *
+     * <p>The token is public: it is not an authentication credential, and the login endpoint is
+     * intentionally exempt from CSRF. The corresponding cookie is written by Spring Security's
+     * {@code CookieCsrfTokenRepository}; the browser echoes the raw value in {@code X-CSRF-TOKEN}.
+     */
+    @GetMapping("/auth/csrf")
+    public Envelope<CsrfTokenView> csrf(CsrfToken token) {
+        return Envelope.success(new CsrfTokenView(token.getToken(), token.getHeaderName()));
     }
 
     @PostMapping("/auth/logout")
