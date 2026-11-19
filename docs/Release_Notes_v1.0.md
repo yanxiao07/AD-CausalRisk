@@ -78,10 +78,10 @@
 - 单条评估拒绝上一档案迟到的快照响应，并在加载、提交前后核对当前受试者。
 - 研究报告列表在计数/分页前过滤已撤权档案；JSON/HTML/PDF 导出由后端重新鉴权并记录审计，禁止浏览器缓存完整任务。
 - 质控只读取当前访视版本；批量评估改用档案级 `data_version` 绑定质控证据，修复访视更正或仅特征变更后的误阻断。
-- 模型上传使用独立不可变文件路径，避免并发同版本上传互相删除；任务租约默认 900 秒，高于宿主 600 秒读超时。
+- 模型上传使用独立不可变文件路径，避免并发同版本上传互相删除；任务租约默认 900 秒，最低 632 秒。
 - 报告 PDF/HTML 归因列直接读取数值型贡献；患者摘要即使 `predictionAllowed=false` 也保留“已复核、输入有限”状态，不再误报“数据不足”。
 - 报告列表、报告详情和导出统一使用报告档案授权：医生必须有明确的 VIEW/MANAGE，研究员限本人登记，非全量研究视角再校验档案权限；任务详情接口保持独立。
-- 租约不再只依赖默认值：配置小于等于宿主读超时 600 秒时启动直接失败，避免部署调短后提前回收运行中任务。
+- 租约不再只依赖默认值：配置必须覆盖 2s 连接 + 600s 读取 + 30s 结果落库余量（最少 632s），否则启动直接失败，避免部署调短后提前回收运行中任务。
 - 模型启用/停用/回滚在同一事务内先锁定 `model_configuration` 再串行切换，保证并发启用后恰好一个版本处于 enabled。
 
 ## 真实七变量闭环
@@ -104,7 +104,7 @@
 
 ## 验证记录
 
-- 后端：`.\mvnw.cmd -B -ntp clean verify` → 370 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
+- 后端：`.\mvnw.cmd -B -ntp clean verify` → 373 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
 - 前端：`npm run build` → 2395 modules，构建成功。
 - Python：`tests.test_contracts_and_fixture` + `tests.test_lock_digest` 7/7；`tests.test_dynamic_host` 6/6。
 - CI：Python research primitives、Java backend、Python service 全部通过。

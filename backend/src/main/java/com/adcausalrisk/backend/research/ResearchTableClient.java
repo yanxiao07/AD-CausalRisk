@@ -28,6 +28,7 @@ import java.time.Duration;
 public final class ResearchTableClient {
 
     private static final Logger log = LoggerFactory.getLogger(ResearchTableClient.class);
+    static final int CONNECT_TIMEOUT_SECONDS = 2;
 
     record Reply(int httpStatus, JsonNode body) {}
 
@@ -77,7 +78,7 @@ public final class ResearchTableClient {
                 connection.setInstanceFollowRedirects(false);
             }
         };
-        factory.setConnectTimeout(Duration.ofSeconds(2));
+        factory.setConnectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS));
         factory.setReadTimeout(Duration.ofSeconds(host.readTimeoutSeconds()));
         runtime =
                 new Runtime(

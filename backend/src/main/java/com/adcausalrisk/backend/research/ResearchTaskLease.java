@@ -20,6 +20,19 @@ import java.time.Instant;
 @Component
 final class ResearchTaskLease {
 
+    /**
+     * The host request has a 2s connect timeout, up to 600s read timeout, and then the Java side
+     * still has to persist the result. A lease that is only one second longer than the read
+     * timeout can therefore expire while a perfectly healthy request is still in flight. Keep a
+     * fixed grace period for the result write and recovery scheduling.
+     */
+    static final long RESULT_WRITE_GRACE_SECONDS = 30;
+
+    static final long MINIMUM_LEASE_SECONDS =
+            ResearchTableClient.CONNECT_TIMEOUT_SECONDS
+                    + SystemSettingService.MAX_RESEARCH_TIMEOUT_SECONDS
+                    + RESULT_WRITE_GRACE_SECONDS;
+
     private final JdbcTemplate jdbc;
     private final Clock clock;
     private final String executorId;
@@ -28,11 +41,18 @@ final class ResearchTaskLease {
     ResearchTaskLease(JdbcTemplate jdbc, Clock clock,
             @Value("${research.task.executor-id:local}") String executorId,
             @Value("${research.task.lease-seconds:900}") long leaseSeconds) {
-        if (leaseSeconds <= SystemSettingService.MAX_RESEARCH_TIMEOUT_SECONDS) {
+        if (leaseSeconds < MINIMUM_LEASE_SECONDS) {
             throw new IllegalStateException(
-                    "research.task.lease-seconds must be greater than the research host read timeout ("
-                            + SystemSettingService.MAX_RESEARCH_TIMEOUT_SECONDS + "s), but was "
-                            + leaseSeconds + "s");
+                    "research.task.lease-seconds must cover the full host request"
+                            + " (2s connect + "
+                            + SystemSettingService.MAX_RESEARCH_TIMEOUT_SECONDS
+                            + "s read + "
+                            + RESULT_WRITE_GRACE_SECONDS
+                            + "s result-write grace; minimum "
+                            + MINIMUM_LEASE_SECONDS
+                            + "s), but was "
+                            + leaseSeconds
+                            + "s");
         }
         this.jdbc = jdbc;
         this.clock = clock;

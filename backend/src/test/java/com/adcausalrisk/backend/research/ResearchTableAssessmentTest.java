@@ -1091,6 +1091,26 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void inFlightTaskAtFullRequestLeaseIsNotReclaimed() throws Exception {
+        long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,execution_id,executor_id,
+                    lease_expires_at,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, snapshot, "run-in-flight", "RUNNING", UUID.randomUUID().toString(), "executor-live",
+                Timestamp.from(Instant.now().plusSeconds(ResearchTaskLease.MINIMUM_LEASE_SECONDS)));
+
+        assertThat(recovery.recoverInterrupted()).isZero();
+        var active = jdbc.queryForMap("""
+                SELECT status,executor_id,lease_expires_at
+                FROM research_table_task WHERE run_id='run-in-flight'
+                """);
+        assertThat(active.get("status")).isEqualTo("RUNNING");
+        assertThat(active.get("executor_id")).isEqualTo("executor-live");
+        assertThat(active.get("lease_expires_at")).isNotNull();
+    }
+
+    @Test
     void metricsSeparateResearchTasksByRole() throws Exception {
         long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
         body(submit(snapshot, "metrics", actor("admin", "ADMIN")));
