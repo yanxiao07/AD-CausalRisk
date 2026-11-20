@@ -150,6 +150,10 @@ try {
   // ---------------- 管理员大屏 ----------------
   const { page, errors } = await loginAs('admin', (path) => {
     if (path === '/api/dashboard/summary') return { body: DASHBOARD }
+    if (path === '/api/research/table-assessment-tasks/metrics') {
+      return { body: { tasksToday: 8, completed: 6, blocked: 0, failed: 2, running: 0,
+        pendingReview: 3, syncedSnapshots: 8, averageSeconds: 1 } }
+    }
     if (path === '/api/subjects') return { body: ADMIN_SUBJECTS }
     if (path === '/api/qc/stats') return { body: QC_STATS }
     if (path === '/api/audit-logs') return { body: AUDIT }
@@ -164,7 +168,7 @@ try {
   const metricValues = await page.evaluate(() =>
     [...document.querySelectorAll('.metric__value')].map((n) => n.textContent.trim())
   )
-  check('四个指标来自 dashboard summary', metricValues.join(',') === '42,3,2,5', metricValues.join(','))
+  check('工作台使用档案、随访和研究评估指标', metricValues.join(',') === '42,3,2,5', metricValues.join(','))
   check('两个 ECharts 图表渲染', true, 'canvas=2')
   const auditRows = await page.evaluate(() => document.querySelectorAll('.audit .el-table__row').length)
   check('审计流渲染（上限 8 条）', auditRows === 5, `rows=${auditRows}`)
@@ -190,7 +194,7 @@ try {
 
   // ---------------- 患者：A 未绑定档案 ----------------
   const a = await loginAs('patient', (path) => {
-    if (path === '/api/patients/me/summary') {
+    if (path === '/api/patients/me/research-summary') {
       return {
         body: {
           subjectId: null,
@@ -215,13 +219,14 @@ try {
 
   // ---------------- 患者：B 已绑定 + 有复诊 ----------------
   const b = await loginAs('patient', (path) => {
-    if (path === '/api/patients/me/summary') {
+    if (path === '/api/patients/me/research-summary') {
       return {
         body: {
           subjectId: 1,
           subjectCode: 'DEMO-001',
           alias: '张样本',
-          summary: '医生已复核课程演示结果：演示排序较低。它不能判断您的真实患病风险，请按医嘱随访。',
+          state: 'CONFIRMED',
+          summary: '医生已复核研究验证结果。',
           followUpSummary: '下次复诊：2026-12-15 09:00',
           limitations: ['课程演示结果，不构成诊断。']
         }
@@ -243,22 +248,26 @@ try {
   await b.page.waitForFunction(() => document.body.textContent.includes('张样本'), { timeout: 20000 })
   const bVisit = await b.page.evaluate(() => document.querySelector('.hcard__value')?.textContent.trim())
   check('患者已绑定 → 显示复诊日期', /2026/.test(bVisit || ''), bVisit || '(empty)')
+  const visitPurpose = await b.page.$eval('.hcard--visit', (element) => element.innerText)
+  check('患者已绑定 → 显示复诊事项', visitPurpose.includes('认知量表复查 + 影像'), '')
+  const dialLink = await b.page.$('a[href="tel:0100000"]')
+  check('患者有联系方式 → 显示拨号链接', Boolean(dialLink), '')
   await b.page.screenshot({ path: join(shotDir, 'p4-patient-bound.png'), fullPage: true })
   await b.page.close()
 
   // ---------------- 患者：C 403 降级 ----------------
   const c = await loginAs('patient', (path) => {
-    if (path === '/api/patients/me/summary') return { status: 403, body: null }
+    if (path === '/api/patients/me/research-summary') return { status: 403, body: null }
     return null
   })
   await c.page.waitForFunction(
-    () => document.body.textContent.includes('暂时无法查看您的档案'),
+    () => document.body.textContent.includes('暂时无法读取评估进度'),
     { timeout: 20000 }
   )
-  const cText = await c.page.evaluate(() => document.querySelector('.hcard__note')?.textContent.trim())
-  check('患者 403 → 优雅降级', /暂时无法查看您的档案/.test(cText || ''), (cText || '').slice(0, 40))
-  const cStatus = await c.page.evaluate(() => document.querySelector('.hcard__status')?.textContent.trim())
-  check('患者 403 → 状态文案一致', /暂时无法查看您的档案/.test(cStatus || ''), cStatus || '')
+  const cText = await c.page.evaluate(() => document.querySelector('.hcard--research button')?.textContent.trim())
+  check('患者 403 → 可重试', /重新加载/.test(cText || ''), (cText || '').slice(0, 40))
+  const cStatus = await c.page.evaluate(() => document.querySelector('.hcard--research .hcard__status')?.textContent.trim())
+  check('患者 403 → 状态文案一致', /暂时无法读取评估进度/.test(cStatus || ''), cStatus || '')
   await c.page.screenshot({ path: join(shotDir, 'p4-patient-403.png'), fullPage: true })
   await c.page.close()
 } finally {

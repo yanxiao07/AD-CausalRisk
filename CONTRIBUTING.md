@@ -18,7 +18,7 @@ git push -u origin backend/auth-and-subjects
 
 以PR评审和CI检查作为合并条件；维护者在仓库设置中管理main保护。不要强制推送或直接覆盖共享分支。GitHub操作见[创建PR](https://docs.github.com/en/pull-requests/how-tos/create-pull-requests/creating-a-pull-request)。
 
-当前CI包括Python 3.11/3.12与共同契约检查，以及Java 21后端Maven构建/H2测试；实际结果以对应提交的GitHub Actions为准。MySQL、跨服务与浏览器端到端仍需单独验收，前端工程完成后由负责人接入构建和组件/页面测试。验收以 README、docs/Integration_Contract.md 与 contracts/ 中的接口契约为准；历史需求基线见 docs/Course_SRS_V3_2.md。
+CI 覆盖 Python 3.11/3.12、共享契约、Java 21 的 Maven/H2 与合成跨服务 HTTP 测试，以及 Node.js 22 的 Vue 生产构建。MySQL 和浏览器端到端按场景单独验收。提交的实际结果以 GitHub Actions 为准。接口见 [集成契约](docs/Integration_Contract.md)，运行步骤见 [项目 README](README.md)。
 
 提交使用本人Git身份，按功能拆分。使用AI时遵循[AI协作指南](docs/AI_Collaboration.md)：先明确任务与文件范围，完成后检查差异、运行测试，再提交。
 

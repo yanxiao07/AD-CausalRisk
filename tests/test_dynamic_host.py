@@ -3,12 +3,18 @@ from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase, mock
+from http.server import HTTPServer
+from threading import Thread
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+import json
 import os
 import sys
 
 from research_runtime.dynamic_host import DynamicResearchHost
 from research_runtime.dynamic_snapshot import DynamicSnapshotError, bundle_from_parts, write_bundle
 from research_runtime.examples.input_admission_constructed import constructed_pair
+from research_runtime.examples.research_table_http import MODEL_STATUS_ROUTE, handler
 from research_runtime.research_table_protocol import CONTRACT, ResearchAgentError
 
 
@@ -78,6 +84,25 @@ class DynamicHostTests(TestCase):
         with self.assertRaises(ResearchAgentError) as caught:
             self.host().resolve("run-unknown", self.request)
         self.assertEqual(caught.exception.code, "RUN_ID_INVALID")
+
+    def test_model_status_reports_only_verified_models_to_authorized_callers(self):
+        host = self.host()
+        with HTTPServer(("127.0.0.1", 0), handler(host.resolve, b"Bearer model-test", models=host.model_status)) as server:
+            worker = Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            endpoint = f"http://127.0.0.1:{server.server_port}{MODEL_STATUS_ROUTE}"
+            try:
+                with self.assertRaises(HTTPError) as unauthorized:
+                    urlopen(endpoint, timeout=2)
+                self.assertEqual(unauthorized.exception.code, 401)
+                with urlopen(Request(endpoint, headers={"Authorization": "Bearer model-test"}), timeout=2) as response:
+                    payload = json.load(response)
+                self.assertEqual(payload, {"models": [{"specification": "seven", "family": "logistic",
+                    "manifestSha256": "a" * 64, "artifactSha256": "b" * 64}]})
+                self.assertEqual(host.run_ids, ())
+            finally:
+                server.shutdown()
+                worker.join(timeout=2)
 
     def test_request_digest_mismatch_is_rejected(self):
         write_bundle(DIRECTORY / "one.json", self.bundle)

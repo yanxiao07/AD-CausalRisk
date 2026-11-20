@@ -68,7 +68,7 @@ class ResearchReportExportServiceTest {
                 """);
         return new ResearchTableAssessmentService.Task(
                 taskId, 9, 203, "DEMO-SMOKE-252019", "测试受试者",
-                "run-manual-test", "COMPLETED", null, result,
+                "run-manual-test", "COMPLETED", null, "CONSTRUCTED_VALIDATION", result,
                 Instant.parse("2026-11-15T09:49:32Z"), Instant.parse("2026-11-15T09:49:32Z"),
                 "PENDING", null, null, null);
     }

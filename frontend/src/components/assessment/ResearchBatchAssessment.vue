@@ -563,6 +563,7 @@ async function processRow(row) {
     }
     if (!intentKeys.has(snapshotId)) intentKeys.set(snapshotId, newIdempotencyKey())
     const task = await submitResearchTableTask({
+      subjectId: props.subjectId,
       snapshotId,
       idempotencyKey: intentKeys.get(snapshotId)
     })

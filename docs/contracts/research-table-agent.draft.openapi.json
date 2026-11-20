@@ -12,6 +12,68 @@
     }
   ],
   "paths": {
+    "/api/research-table/v1/models": {
+      "get": {
+        "operationId": "getLoadedResearchModelCatalog",
+        "x-implementation-state": "HOST_LOADED_CATALOG",
+        "summary": "Report the default and additional models verified at host startup",
+        "responses": {
+          "200": {
+            "description": "Verified loaded model identities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "models"
+                  ],
+                  "properties": {
+                    "models": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 12,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "specification",
+                          "family",
+                          "manifestSha256",
+                          "artifactSha256"
+                        ],
+                        "properties": {
+                          "specification": {
+                            "type": "string"
+                          },
+                          "family": {
+                            "type": "string"
+                          },
+                          "manifestSha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          },
+                          "artifactSha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bearer token missing or invalid"
+          },
+          "404": {
+            "description": "Catalog not available in this host mode"
+          }
+        }
+      }
+    },
     "/api/research-table/v1/assessments": {
       "post": {
         "operationId": "assessResearchTable",

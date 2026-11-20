@@ -31,7 +31,7 @@ export const MENU_REGISTRY = {
   tasks: { label: '评估任务', path: '/tasks', icon: Cpu, ready: true },
   reviews: { label: '业务复核', path: '/reviews', icon: ChatLineSquare, ready: true },
   followups: { label: '随访计划', path: '/followups', icon: Timer, ready: true },
-  graph: { label: '因果图谱', path: '/graph', icon: Share, ready: true },
+  graph: { label: '评估贡献图', path: '/graph', icon: Share, ready: true },
   reports: { label: '评估报告', path: '/reports', icon: Document, ready: true },
   audit: { label: '审计日志', path: '/admin/audit', icon: Tickets, ready: true },
   users: { label: '账号管理', path: '/admin/users', icon: UserFilled, ready: true },
@@ -45,13 +45,24 @@ export const MENU_REGISTRY = {
  * 后端没给 key 就不渲染；后端给了但前端没登记（版本错位）时降级成一条禁用项，
  * 避免整块菜单凭空消失，也方便排查契约不一致。
  */
-export function buildMenuItems(menus = []) {
+export function buildMenuItems(menus = [], role) {
+  if (role === 'DOCTOR') {
+    const priorities = ['subjects', 'reviews', 'reports', 'graph', 'followups']
+    menus = [...priorities.filter(key => menus.includes(key)),
+      ...menus.filter(key => !priorities.includes(key))]
+  } else if (role === 'ADMIN') {
+    const priorities = ['users', 'system', 'audit']
+    menus = [...priorities.filter(key => menus.includes(key)), ...menus.filter(key => !priorities.includes(key))]
+  }
   return menus.map((key) => {
     const entry = MENU_REGISTRY[key]
     if (!entry) {
       return { key, label: key, path: null, icon: Document, ready: false, unknown: true }
     }
-    return { key, ...entry }
+    const label = role === 'DOCTOR'
+      ? ({ subjects: '患者档案', reviews: '结果复核' })[key] || entry.label
+      : entry.label
+    return { key, ...entry, label }
   })
 }
 

@@ -1,5 +1,7 @@
 import request from './request.js'
 
+export const getLoadedResearchModels = () => request.get('/system/research-models', { silent: true })
+
 /**
  * GET /api/system/info —— 运行时版本 / 研究宿主健康 / 模型开关（仅 ADMIN）。
  */
@@ -67,20 +69,6 @@ export function getResearchHost() {
  */
 export function saveResearchHost(payload) {
   return request.put('/system/research-host', payload)
-}
-
-/**
- * GET /api/system/assessment-policy —— 旧规则评估通道（test-rule-enabled）当前状态。
- */
-export function getAssessmentPolicy() {
-  return request.get('/system/assessment-policy')
-}
-
-/**
- * PUT /api/system/assessment-policy —— 开启 / 关闭旧规则评估通道。
- */
-export function saveAssessmentPolicy(testRuleEnabled) {
-  return request.put('/system/assessment-policy', { testRuleEnabled })
 }
 
 /**

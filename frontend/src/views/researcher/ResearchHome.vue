@@ -2,7 +2,7 @@
   <div class="research-home">
     <PageHeader
       title="研究员工作台"
-      subtitle="数据导入、质控与模型评估的日常入口；批量快照从已入库的访视数据生成。"
+      subtitle="数据导入、质控与模型评估的日常入口。"
     >
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
@@ -53,28 +53,25 @@
         </div>
       </DataCard>
 
-      <DataCard title="批量生成快照" subtitle="从最新一次访视生成七变量快照，并可直接提交模型。">
+      <DataCard title="核验受控研究资料" subtitle="查看档案的资料来源、测量时间与质控记录。">
         <div class="batch-card">
           <div class="batch-card__point">
             <el-icon><Files /></el-icon>
-            <span>MMSE、CDR-SB 取最新访视；缺失变量标记 <code>NOT_COLLECTED</code>，不补 0。</span>
+            <span>从档案选择已登记的资料快照，提交核验。</span>
           </div>
           <div class="batch-card__point">
             <el-icon><Connection /></el-icon>
-            <span>登记后自动同步研究宿主；勾选“同时评估”会立即生成研究任务。</span>
+            <span>打开核验报告，查看仍需补证或复核的项目。</span>
           </div>
-          <el-button type="primary" @click="router.push('/quality')">
-            去质控页选择受试者
+          <el-button type="primary" @click="router.push('/tasks')">
+            打开评估任务
             <el-icon class="el-icon--right"><ArrowRight /></el-icon>
           </el-button>
-          <p class="batch-card__hint">
-            也可以先到「数据导入」入库 CSV，再回质控页批量生成；单条补录入口在受试者档案抽屉。
-          </p>
         </div>
       </DataCard>
     </div>
 
-    <DataCard title="最近研究任务" subtitle="来自后端的持久化任务历史，刷新页面不会丢失。" padding="none">
+    <DataCard title="今日评估任务" subtitle="受控研究" padding="none">
       <template #header-extra>
         <el-button text type="primary" @click="router.push('/tasks')">查看全部</el-button>
       </template>
@@ -83,7 +80,7 @@
       <EmptyState
         v-else-if="recentTasks.length === 0"
         title="还没有研究任务"
-        description="从质控页批量生成快照后，这里会出现模型任务与结果。"
+        description="提交受控研究评估后，可在这里查看当日进度。"
         :icon="Cpu"
       />
       <el-table v-else :data="recentTasks" class="task-table" row-key="taskId">
@@ -94,7 +91,7 @@
           <template #default="{ row }">#{{ row.snapshotId }}</template>
         </el-table-column>
         <el-table-column label="受试者" min-width="160">
-          <template #default="{ row }">#{{ row.subjectId }}</template>
+          <template #default="{ row }">{{ row.subjectCode || `#${row.subjectId}` }}</template>
         </el-table-column>
         <el-table-column label="状态" width="120">
           <template #default="{ row }"><StatusTag :type="row.status" /></template>
@@ -129,6 +126,7 @@ import StatusTag from '@/components/common/StatusTag.vue'
 import { listImportJobs } from '@/api/imports.js'
 import { listQualityChecks } from '@/api/qc.js'
 import { getResearchTaskSummary } from '@/api/research.js'
+import { CONTROLLED_RESEARCH } from '@/utils/researchResults.js'
 import { formatDateTime } from '@/utils/datetime.js'
 
 const router = useRouter()
@@ -150,7 +148,7 @@ const stats = computed(() => {
     },
     {
       key: 'tasks',
-      label: '今日模型任务',
+      label: '今日受控评估',
       value: data.tasksToday ?? '—',
       hint: `完成 ${data.completedToday ?? 0} · 失败 ${data.failedToday ?? 0}`
     },
@@ -186,9 +184,7 @@ function formatTime(value) {
 }
 
 function formatCif(value) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) return '—'
-  return `${(number * 100).toFixed(2)}%`
+  return Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : '—'
 }
 
 function issuesOf(row) {
@@ -218,7 +214,7 @@ async function load() {
   const today = todayKey()
   const [imports, taskSummary, warn, blocked] = await Promise.allSettled([
     listImportJobs({ page: 1, pageSize: 1, from: today, to: today }),
-    getResearchTaskSummary(),
+    getResearchTaskSummary(CONTROLLED_RESEARCH),
     listQualityChecks({ status: 'WARN', page: 1, pageSize: 5 }),
     listQualityChecks({ status: 'BLOCKED', page: 1, pageSize: 1 })
   ])

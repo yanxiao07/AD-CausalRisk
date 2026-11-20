@@ -1,8 +1,10 @@
 package com.adcausalrisk.backend.patient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.adcausalrisk.backend.subject.SubjectRepository;
@@ -96,6 +98,8 @@ class PatientResearchSummaryApiTest {
 
     @AfterEach
     void cleanUp() {
+        jdbc.update("DELETE FROM patient_research_publication WHERE task_id IN (SELECT id FROM research_table_task WHERE snapshot_id=?)",
+                snapshotId);
         jdbc.update(
                 "DELETE FROM research_table_task WHERE snapshot_id IN"
                         + " (SELECT id FROM research_table_snapshot WHERE subject_id = ?)",
@@ -106,7 +110,7 @@ class PatientResearchSummaryApiTest {
     }
 
     @Test
-    void confirmedResearchSummaryIsQualitativeAndDeidentified() throws Exception {
+    void patientSeesOnlyExplicitlyPublishedDoctorMessageAndWithdrawalPreservesReview() throws Exception {
         insertTask(
                 "CONFIRMED",
                 """
@@ -121,15 +125,32 @@ class PatientResearchSummaryApiTest {
         JsonNode data = body.get("data");
 
         assertThat(data.get("state").asText()).isEqualTo("CONFIRMED");
-        assertThat(data.get("summary").asText())
-                .contains("医生已复核")
-                .contains("偏高")
-                .contains("建议咨询医生");
+        assertThat(data.get("summary").asText()).contains("医生已完成复核").doesNotContain("偏高");
+        assertThat(data.path("publishedMessage").isNull()).isTrue();
         assertThat(data.get("notice").asText()).contains("研究验证用途").contains("非临床诊断");
         assertThat(data.get("researchUseOnly").asBoolean()).isTrue();
         assertThat(body.toString())
                 .doesNotContain("0.31", "0.12", "adCif", "otherDementiaCif", "weights", "graph",
                         "resultJson", "logistic");
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'MANAGE')",
+                subjectId, doctorId);
+        long id = jdbc.queryForObject("SELECT id FROM research_table_task WHERE snapshot_id=?", Long.class, snapshotId);
+        String publication = "/api/research/table-assessment-tasks/" + id + "/patient-publication";
+        String message = "复诊时请带上已经保存的检查记录。";
+        String payload = objectMapper.writeValueAsString(Map.of("message", message));
+        mockMvc.perform(put(publication).session(patient).contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isForbidden());
+        MockHttpSession doctor = login("doctor");
+        assertThat(bodyOf(put(publication).contentType(MediaType.APPLICATION_JSON).content(payload), doctor)
+                .at("/data/published").asBoolean()).isTrue();
+        assertThat(bodyOf(get("/api/patients/me/research-summary"), patient).at("/data/publishedMessage").asText())
+                .isEqualTo(message);
+        assertThat(bodyOf(delete(publication), doctor).at("/data/published").asBoolean()).isFalse();
+        var withdrawn = bodyOf(get("/api/patients/me/research-summary"), patient);
+        assertThat(withdrawn.at("/data/publishedMessage").isNull()).isTrue();
+        assertThat(withdrawn.at("/data/state").asText()).isEqualTo("CONFIRMED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM patient_research_publication WHERE task_id=?",
+                Integer.class, id)).isEqualTo(2);
     }
 
     @Test
@@ -148,8 +169,8 @@ class PatientResearchSummaryApiTest {
 
         assertThat(data.get("state").asText()).isEqualTo("CONFIRMED");
         assertThat(data.get("summary").asText())
-                .contains("医生已复核")
-                .contains("不用于临床决策");
+                .contains("医生已完成复核")
+                .doesNotContain("偏高");
         assertThat(data.get("notice").asText()).contains("研究验证用途").contains("非临床诊断");
         assertThat(body.toString()).doesNotContain("0.31", "0.12", "adCif", "otherDementiaCif");
     }
@@ -170,6 +191,22 @@ class PatientResearchSummaryApiTest {
         assertThat(data.get("state").asText()).isEqualTo("PENDING");
         assertThat(data.get("summary").asText()).contains("等待医生复核");
         assertThat(body.toString()).doesNotContain("0.31", "0.12", "adCif", "otherDementiaCif");
+    }
+
+    @Test
+    void anUnevaluatedControlledSnapshotPreventsFallingBackToADemoResult() throws Exception {
+        insertTask("CONFIRMED", """
+                {"admission":{"predictionAllowed":true},"prediction":{"adCif24m":0.31}}
+                """);
+        jdbc.update("""
+                INSERT INTO research_table_snapshot(subject_id,authorized_user_id,request_json,wire_sha256,
+                  request_sha256,model_json,data_scope,input_sha256,context_sha256,host_sync_status)
+                VALUES (?,?,'{}',?,?,'{}','CONTROLLED_RESEARCH',?,?,'SYNCED')
+                """, subjectId, doctorId, "e".repeat(64), "f".repeat(64), "1".repeat(64), "2".repeat(64));
+
+        JsonNode body = bodyOf(get("/api/patients/me/research-summary"), login("patient"));
+        assertThat(body.at("/data/state").asText()).isEqualTo("NO_TASK");
+        assertThat(body.toString()).doesNotContain("测试样例", "偏高");
     }
 
     @Test

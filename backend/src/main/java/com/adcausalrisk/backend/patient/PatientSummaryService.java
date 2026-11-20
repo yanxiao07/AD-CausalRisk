@@ -75,13 +75,8 @@ public class PatientSummaryService {
             List<String> limitations) {}
 
     public PatientSummaryView currentSummary(AppUserPrincipal principal) {
-        if (!principal.roleCodes().contains("PATIENT")) {
-            throw new BusinessException(ErrorCode.ACCESS_DENIED, "仅患者本人可查看该摘要");
-        }
-
-        List<Long> boundSubjects =
-                permissionRepository.findDistinctSubjectIdByUserId(principal.userId());
-        if (boundSubjects.isEmpty()) {
+        Long subjectId = subjectForPatient(principal);
+        if (subjectId == null) {
             return new PatientSummaryView(
                     null,
                     null,
@@ -94,10 +89,6 @@ public class PatientSummaryService {
                     List.of("如需绑定，请联系您的主治医生。"));
         }
 
-        // A patient normally holds exactly one subject. If a misconfiguration grants several,
-        // prefer the one with the most recent result (that is the report the patient cares about),
-        // then fall back to the smallest id so the answer stays deterministic.
-        Long subjectId = pickSubject(boundSubjects);
         Subject subject = subjectRepository.findById(subjectId).orElse(null);
         RiskAssessment latest =
                 assessmentRepository.findFirstBySubjectIdOrderByIdDesc(subjectId).orElse(null);
@@ -113,6 +104,14 @@ public class PatientSummaryService {
                 buildSummary(latest, result),
                 buildFollowUpSummary(subjectId),
                 buildLimitations(result));
+    }
+
+    Long subjectForPatient(AppUserPrincipal principal) {
+        if (!principal.roleCodes().contains("PATIENT")) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "仅患者本人可查看该摘要");
+        }
+        List<Long> subjects = permissionRepository.findDistinctSubjectIdByUserId(principal.userId());
+        return subjects.isEmpty() ? null : pickSubject(subjects);
     }
 
     /**

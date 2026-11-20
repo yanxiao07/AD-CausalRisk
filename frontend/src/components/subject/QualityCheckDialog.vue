@@ -8,8 +8,7 @@
     @update:model-value="emit('update:modelValue', $event)"
   >
     <p class="qc-hint">
-      按当前规则检查该档案的输入数据（人口学、量表、访视等），结果会落库并影响能否发起评估：
-      PASS 通过、WARN 需关注、BLOCKED 阻断评估。
+      检查当前档案的访视量表、记录日期和已录入特征。检查结果随资料版本保存。
     </p>
 
     <div class="qc-actions">
@@ -34,8 +33,8 @@
         type="error"
         :closable="false"
         show-icon
-        title="该档案当前被阻断"
-        description="在问题修复前，发起评估会返回 BLOCKED，系统不会给出风险分数。"
+        title="档案资料暂不能通过本次质控"
+        description="请修正下方问题并重新检查，再继续办理。"
       />
       <el-alert
         v-else-if="result.qualityStatus === 'WARN'"
@@ -44,15 +43,21 @@
         :closable="false"
         show-icon
         title="存在需要关注的问题"
-        description="可以继续发起评估，但结果解释里会带上这些数据质量提示。"
+        description="请查看下方提示。开通账号还要核对核心量表，研究评估还有自己的来源与用途要求。"
       />
 
       <div class="qc-issues">
-        <div class="qc-issues__title">问题明细（{{ issues.length }}）</div>
-        <ul v-if="issues.length" class="qc-issues__list">
-          <li v-for="(issue, index) in issues" :key="index">{{ issue }}</li>
+        <div class="qc-issues__title">资料问题（{{ primaryIssues.length }}）</div>
+        <ul v-if="primaryIssues.length" class="qc-issues__list">
+          <li v-for="(issue, index) in primaryIssues" :key="index">{{ issue }}</li>
         </ul>
-        <p v-else class="qc-issues__empty">没有发现问题。</p>
+        <p v-else class="qc-issues__empty">未发现其他资料问题。</p>
+        <el-button v-if="canRecordVisit && missingVisit" type="primary" plain @click="recordVisit">
+          去录入访视量表
+        </el-button>
+        <p v-if="optionalMissing.length" class="qc-hint">
+          未录入的其他特征：{{ optionalMissing.join('、') }}。它们的缺失只作为本次档案质控提示。
+        </p>
       </div>
 
       <el-collapse class="qc-json">
@@ -85,9 +90,10 @@ import { runQualityCheck } from '@/api/subjects.js'
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   subjectId: { type: [Number, String], default: null },
-  subjectLabel: { type: String, default: '' }
+  subjectLabel: { type: String, default: '' },
+  canRecordVisit: { type: Boolean, default: false }
 })
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'checked', 'record-visit'])
 
 const running = ref(false)
 const result = ref(null)
@@ -104,6 +110,19 @@ const issues = computed(() => {
     return [raw]
   }
 })
+const optionalMissingNames = {
+  'APOE_E4_COUNT 缺失': 'APOE ε4',
+  'MRI_HIPPOCAMPUS_L 缺失': '左侧海马影像指标',
+  'MRI_HIPPOCAMPUS_R 缺失': '右侧海马影像指标'
+}
+const primaryIssues = computed(() => issues.value.filter(issue => !optionalMissingNames[issue]))
+const optionalMissing = computed(() => issues.value.map(issue => optionalMissingNames[issue]).filter(Boolean))
+const missingVisit = computed(() => issues.value.some(issue => issue.startsWith('最近访视没有可用的核心认知观测')))
+
+function recordVisit() {
+  emit('update:modelValue', false)
+  emit('record-visit')
+}
 
 const pretty = computed(() => {
   try {
@@ -138,6 +157,7 @@ async function run() {
   error.value = ''
   try {
     result.value = await runQualityCheck(props.subjectId)
+    emit('checked', result.value)
   } catch (problem) {
     result.value = null
     error.value = problem?.message || '请稍后重试'

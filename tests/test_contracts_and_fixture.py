@@ -10,7 +10,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class ContractTests(unittest.TestCase):
     def test_both_openapi_documents_are_valid_and_operations_unique(self):
-        for name,count in [('python-agent.openapi.json',3),('java-business.target.openapi.json',93)]:
+        for name,count in [('python-agent.openapi.json',3),('java-business.target.openapi.json',115)]:
             spec=json.loads((ROOT/'contracts'/name).read_text(encoding='utf-8'));validate(spec)
             operations=[value for path in spec['paths'].values() for method,value in path.items() if method in ('get','post','put','patch','delete')]
             self.assertEqual(len(operations),count)
@@ -19,7 +19,9 @@ class ContractTests(unittest.TestCase):
         spec=json.loads((ROOT/'contracts/java-business.target.openapi.json').read_text(encoding='utf-8'))
         self.assertIn(spec['x-implementation-state'],['PLANNED_NOT_IMPLEMENTED_IN_BASELINE','IMPLEMENTED_BY_TEAM','IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION'])
         for path in spec['paths'].values():
-            for operation in path.values():
+            for method, operation in path.items():
+                if method not in ('get','post','put','patch','delete'):
+                    continue
                 self.assertIn(operation['x-implementation-state'], [
                     'TO_IMPLEMENT_BY_BACKEND_OWNER', 'IMPLEMENTED_BY_BACKEND_OWNER',
                     'IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION', 'IMPLEMENTED_TRAINED_MODEL_DEMO',

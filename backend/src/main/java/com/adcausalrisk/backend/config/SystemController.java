@@ -83,6 +83,11 @@ public class SystemController {
         return Envelope.success(service.researchHost((AppUserPrincipal) auth.getPrincipal()));
     }
 
+    @GetMapping("/api/system/research-models")
+    public Envelope<?> researchModels(Authentication auth) {
+        return Envelope.success(service.researchModels((AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @PutMapping("/api/system/research-host")
     public Envelope<?> saveResearchHost(
             @RequestBody ResearchHostUpdate body, Authentication auth) {

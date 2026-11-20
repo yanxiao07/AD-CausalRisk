@@ -12,6 +12,1287 @@
   ],
   "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
   "paths": {
+    "/api/patient-account-requests/{id}/responsible-doctor": {
+      "post": {
+        "operationId": "handoffPatientDoctor",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "security": [{ "sessionCookie": [] }],
+        "summary": "Confirm reassignment of the responsible doctor",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "status": {
+                              "enum": [
+                                "PENDING",
+                                "ISSUED"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "status"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "doctorId": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "identityVerified": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "doctorId",
+                  "identityVerified"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/table-assessment-tasks/{id}/patient-publication": {
+      "get": {
+        "operationId": "getPatientPublication",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "security": [{ "sessionCookie": [] }],
+        "summary": "Read publication status as the treating doctor",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PatientPublication"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "publishPatientMessage",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "security": [{ "sessionCookie": [] }],
+        "summary": "Publish a patient-facing note after doctor confirmation",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PatientPublication"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "message"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "withdrawPatientPublication",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "security": [{ "sessionCookie": [] }],
+        "summary": "Withdraw the patient-facing note and preserve history",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/PatientPublication"
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/system/research-models": {
+      "get": {
+        "operationId": "getLoadedResearchModels",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "security": [{ "sessionCookie": [] }],
+        "summary": "Read the model identities reported by the configured research host",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "status": {
+                              "enum": [
+                                "NOT_CONFIGURED",
+                                "UNSUPPORTED",
+                                "UNAVAILABLE",
+                                "INVALID",
+                                "REPORTED"
+                              ]
+                            },
+                            "models": {
+                              "type": "array",
+                              "maxItems": 12,
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "specification": {
+                                    "type": "string"
+                                  },
+                                  "family": {
+                                    "type": "string"
+                                  },
+                                  "manifestSha256": {
+                                    "type": "string",
+                                    "pattern": "^[a-f0-9]{64}$"
+                                  },
+                                  "artifactSha256": {
+                                    "type": "string",
+                                    "pattern": "^[a-f0-9]{64}$"
+                                  }
+                                },
+                                "required": [
+                                  "specification",
+                                  "family",
+                                  "manifestSha256",
+                                  "artifactSha256"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "models"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/table-assessment-tasks/snapshots/batch-csv": {
+      "post": {
+        "operationId": "importTestModelCsv",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "security": [{ "sessionCookie": [] }],
+        "summary": "Preview or register filtered complete seven-variable test snapshots",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "row": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "subjectCode": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "enum": [
+                                  "READY",
+                                  "SAVED",
+                                  "INVALID"
+                                ]
+                              },
+                              "snapshotId": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "hostSyncStatus": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "message": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "row",
+                              "subjectCode",
+                              "status"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "data"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "preview",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/patients/me/follow-up/{id}/response": {
+      "post": {
+        "operationId": "respondToOwnFollowUp",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "患者确认本人复诊或提交改期申请",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "appointmentRevision",
+                  "action"
+                ],
+                "properties": {
+                  "appointmentRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "action": {
+                    "enum": [
+                      "CONFIRM",
+                      "REQUEST_RESCHEDULE"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 280
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "bound": {
+                              "type": "boolean"
+                            },
+                            "next": {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/components/schemas/PatientAppointment"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "overdueCount": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "appointments": {
+                              "type": "array",
+                              "maxItems": 100,
+                              "items": {
+                                "$ref": "#/components/schemas/PatientAppointment"
+                              }
+                            }
+                          },
+                          "required": [
+                            "bound"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权操作该复诊",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "复诊安排或申请状态发生变化",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/follow-ups/{followUpId}/decline-reschedule": {
+      "post": {
+        "operationId": "declineFollowUpReschedule",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "授权医生或管理员保留原复诊安排",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "followUpId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "appointmentRevision"
+                ],
+                "properties": {
+                  "appointmentRevision": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "操作已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权操作该复诊",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "复诊安排或申请状态发生变化",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/subjects/{subjectId}/assessment-request": {
+      "parameters": [{"name":"subjectId","in":"path","required":true,"schema":{"type":"integer","minimum":1}}],
+      "get": {
+        "operationId":"getDoctorAssessmentRequestStatus",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary":"医生查看档案评估申请及当前质控状态",
+        "responses": {
+          "200":{"description":"当前状态","content":{"application/json":{"schema":{"$ref":"#/components/schemas/DoctorAssessmentRequestEnvelope"}}}},
+          "403":{"description":"缺少医生角色或档案管理权限"}
+        }
+      },
+      "post": {
+        "operationId":"requestDoctorAssessment",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary":"固定当前资料并申请评估。测试资料可自动运行，受控资料进入待办",
+        "responses": {
+          "200":{"description":"申请状态","content":{"application/json":{"schema":{"$ref":"#/components/schemas/DoctorAssessmentRequestEnvelope"}}}},
+          "403":{"description":"缺少医生角色或档案管理权限"},
+          "409":{"description":"当前访视或质控与评估资料不匹配"},
+          "503":{"description":"评估宿主或快照暂不可用"}
+        }
+      }
+    },
+    "/api/research/assessment-requests": {
+      "get": {
+        "operationId":"listControlledAssessmentRequests",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary":"研究员按档案对象授权查看医生提交的受控评估申请",
+        "parameters":[{"name":"page","in":"query","schema":{"type":"integer","minimum":1,"default":1}}],
+        "responses": {
+          "200":{"description":"评估申请列表","content":{"application/json":{"schema":{"allOf":[
+            {"$ref":"#/components/schemas/Envelope"},
+            {"type":"object","properties":{"data":{"type":"object","required":["items","total","page","pageSize"],"properties":{
+              "items":{"type":"array","items":{"$ref":"#/components/schemas/ControlledAssessmentRequest"}},
+              "total":{"type":"integer"},"page":{"type":"integer"},"pageSize":{"type":"integer"}
+            }}}}
+          ]}}}},
+          "403":{"description":"缺少研究员角色"}
+        }
+      }
+    },
+    "/api/research/assessment-requests/{id}/execute": {
+      "post": {
+        "operationId":"executeControlledAssessmentRequest",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary":"研究员确认后执行由宿主和部署方共同授权的固定快照",
+        "parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"integer","minimum":1}}],
+        "responses": {
+          "200":{"description":"任务状态","content":{"application/json":{"schema":{"allOf":[
+            {"$ref":"#/components/schemas/Envelope"},
+            {"type":"object","properties":{"data":{"$ref":"#/components/schemas/ControlledAssessmentRequest"}}}
+          ]}}}},
+          "403":{"description":"缺少研究员角色或档案授权"},
+          "409":{"description":"质控变化或缺少匹配的执行和入库许可"},
+          "503":{"description":"评估宿主或快照暂不可用"}
+        }
+      }
+    },
+    "/api/research/supplements": {
+      "get": {
+        "operationId": "listResearchSupplements",
+        "summary": "按档案授权查看研究补件单",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "parameters": [
+          {
+            "name": "originalTaskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "dataScope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CONTROLLED_RESEARCH",
+                "CONSTRUCTED_VALIDATION"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "分页的补件单",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSupplementPageEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "无效参数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无工作台访问权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createResearchSupplement",
+        "summary": "医生从阻断任务或需补充资料的复核创建补件单",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "originalTaskId",
+                  "note"
+                ],
+                "properties": {
+                  "originalTaskId": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 1
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "补件单或原请求回读",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSupplementEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "无效参数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "缺少档案或医生授权",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "原任务状态不符或已有不同补件单",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/supplements/{id}": {
+      "patch": {
+        "operationId": "updateResearchSupplement",
+        "summary": "领取、退回待领取或关联新核验任务",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "action"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "CLAIM",
+                      "RELEASE",
+                      "RETURN"
+                    ]
+                  },
+                  "replacementTaskId": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 1,
+                    "description": "仅 RETURN 时必填。须是当前领取人经同档案、同资料范围的新快照产生的已保存任务。"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的补件单",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSupplementEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "动作或编号无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无档案授权或无当前动作权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "状态冲突或新旧任务绑定无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/table-assessment-tasks/intake-state": {
+      "get": {
+        "operationId": "getResearchIntakeState",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "查看当前受试者的测试资料研究交接状态",
+        "parameters": [{"name": "subjectId", "in": "query", "required": true, "schema": {"type": "integer", "minimum": 1}}],
+        "responses": {"200": {"description": "交接状态，READY / WAITING_RESEARCH_GRANT / NO_INTAKE"}, "403": {"description": "无档案研究权限"}}
+      }
+    },
+    "/api/patient-account-requests/status": {
+      "get": {
+        "operationId": "getPatientOnboardingStatus",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "医生查看档案质控与患者账号绑定状态",
+        "parameters": [{"name":"subjectId","in":"query","required":true,"schema":{"type":"integer","minimum":1}}],
+        "responses": {
+          "200": {
+            "description": "最新资料检查与开通状态",
+            "content": {"application/json":{"schema":{"allOf":[
+              {"$ref":"#/components/schemas/Envelope"},
+              {"type":"object","properties":{"data":{"$ref":"#/components/schemas/PatientOnboardingStatus"}}}
+            ]}}}
+          },
+          "403": {"description": "缺少档案管理授权"}
+        }
+      }
+    },
+    "/api/patient-account-requests": {
+      "get": {
+        "operationId": "listPatientAccountRequests",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "管理员查看患者账号申请",
+        "responses": {"200": {"description": "账号申请列表"}, "403": {"description": "缺少管理员权限"}}
+      },
+      "post": {
+        "operationId": "requestPatientAccount",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "医生基于当前质控为档案申请账号或更新待发放申请",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "required": ["subjectId"], "properties": {"subjectId": {"type": "integer", "minimum": 1}}
+        }}}},
+        "responses": {"200": {"description": "待发放"}, "403": {"description": "缺少档案管理权限"}, "409": {"description": "当前质控不合格、申请冲突或已绑定"}}
+      }
+    },
+    "/api/patient-account-requests/{id}/issue": {
+      "post": {
+        "operationId": "issuePatientAccount",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "管理员核对患者与责任医生，复查当前质控后原子发放并绑定",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "integer", "minimum": 1}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "required": ["username", "password", "identityVerified"], "properties": {
+            "username": {"type": "string"}, "password": {"type": "string", "format": "password", "writeOnly": true},
+            "identityVerified": {"const": true, "description": "管理员已经核对患者、档案和责任医生"}
+          }
+        }}}},
+        "responses": {"200": {"description": "账号及责任医生已绑定"}, "400": {"description": "账号信息或核对确认缺失"}, "403": {"description": "缺少管理员权限"}, "409": {"description": "质控或医生权限变化、申请已处理或不存在"}}
+      }
+    },
+    "/api/research/table-assessment-tasks/snapshots/doctor-intake": {
+      "get": {
+        "operationId": "listDoctorSimulationIntakeHistory",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "医生按明确管理权限回看已保存的测试模型资料",
+        "parameters": [
+          {"name":"subjectId","in":"query","required":true,"schema":{"type":"integer","minimum":1}},
+          {"name":"page","in":"query","schema":{"type":"integer","minimum":1,"default":1}},
+          {"name":"pageSize","in":"query","schema":{"type":"integer","minimum":1,"maximum":100,"default":20}}
+        ],
+        "responses": {
+          "200": {"description":"测试快照历史，按编号倒序","content":{"application/json":{"schema":{"allOf":[
+            {"$ref":"#/components/schemas/Envelope"},
+            {"type":"object","properties":{"data":{
+              "type":"object","required":["items","page","pageSize","total"],"properties":{
+                "items":{"type":"array","items":{"$ref":"#/components/schemas/DoctorSimulationIntakeView"}},
+                "page":{"type":"integer"},"pageSize":{"type":"integer"},"total":{"type":"integer"}
+              }
+            }}}
+          ]}}}},
+          "400": {"description":"档案或页参数无效"},
+          "403": {"description":"缺少医生角色、明确管理授权或测试档案资格"}
+        }
+      },
+      "post": {
+        "operationId": "recordDoctorSimulationIntake",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "医生保存模拟评估资料供后续申请或研究提交",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {
+          "type": "object", "required": ["subjectId", "indexDate", "features"], "properties": {
+            "subjectId": {"type": "integer", "minimum": 1}, "indexDate": {"type": "string", "format": "date"},
+            "features": {"type": "object", "additionalProperties": {"type": "number"}}
+          }
+        }}}},
+        "responses": {"200": {"description": "资料和冻结快照已登记"}, "403": {"description": "缺少档案管理权限"}}
+      }
+    },
     "/api/auth/csrf": {
       "get": {
         "summary": "发放 CSRF token",
@@ -379,6 +1660,19 @@
           }
         },
         "parameters": [
+          {
+            "name": "dataScope",
+            "in": "query",
+            "required": false,
+            "description": "按档案资料版本筛选。受控研究使用 adni-，测试样例使用 demo-。省略时兼容原调用的全部资料范围。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CONTROLLED_RESEARCH",
+                "CONSTRUCTED_VALIDATION"
+              ]
+            }
+          },
           {
             "name": "page",
             "in": "query",
@@ -2628,6 +3922,16 @@
           },
           "403": {
             "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "复诊安排已变化，请刷新",
             "content": {
               "application/json": {
                 "schema": {
@@ -6629,21 +7933,7 @@
                         "next": {
                           "anyOf": [
                             {
-                              "type": "object",
-                              "properties": {
-                                "scheduledAt": {
-                                  "type": "string",
-                                  "format": "date-time"
-                                },
-                                "purpose": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "scheduledAt",
-                                "purpose"
-                              ],
-                              "additionalProperties": false
+                              "$ref": "#/components/schemas/PatientAppointment"
                             },
                             {
                               "type": "null"
@@ -6653,6 +7943,13 @@
                         "overdueCount": {
                           "type": "integer",
                           "minimum": 0
+                        },
+                        "appointments": {
+                          "type": "array",
+                          "maxItems": 100,
+                          "items": {
+                            "$ref": "#/components/schemas/PatientAppointment"
+                          }
                         }
                       },
                       "required": [
@@ -7466,6 +8763,12 @@
                     "type": "integer",
                     "minimum": 1,
                     "format": "int64"
+                  },
+                  "subjectId": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "format": "int64",
+                    "description": "若提供，必须与冻结快照所属受试者一致"
                   }
                 },
                 "required": [
@@ -8024,7 +9327,9 @@
                           "taskId",
                           "hostSyncStatus",
                           "compatible",
-                          "compatibilityMessage"
+                          "compatibilityMessage",
+                          "modelKey",
+                          "dataScope"
                         ],
                         "additionalProperties": false,
                         "properties": {
@@ -8054,10 +9359,20 @@
                           "compatible": {
                             "type": "boolean"
                           },
+                          "modelKey": {
+                            "type": "string"
+                          },
                           "compatibilityMessage": {
                             "type": [
                               "string",
                               "null"
+                            ]
+                          },
+                          "dataScope": {
+                            "type": "string",
+                            "enum": [
+                              "CONTROLLED_RESEARCH",
+                              "CONSTRUCTED_VALIDATION"
                             ]
                           }
                         }
@@ -9333,6 +10648,22 @@
       "get": {
         "operationId": "getResearchTaskSummary",
         "summary": "研究员工作台当日模型任务吞吐摘要",
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO",
+        "parameters": [
+          {
+            "name": "dataScope",
+            "in": "query",
+            "required": false,
+            "description": "按冻结快照的资料范围筛选。省略时兼容原调用的全部范围。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CONTROLLED_RESEARCH",
+                "CONSTRUCTED_VALIDATION"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "今日任务数、完成/失败数与最近任务",
@@ -9404,8 +10735,7 @@
               }
             }
           }
-        },
-        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+        }
       }
     },
     "/api/me/profile": {
@@ -9676,6 +11006,19 @@
               "minimum": 1,
               "maximum": 100
             }
+          },
+          {
+            "name": "dataScope",
+            "in": "query",
+            "required": false,
+            "description": "按冻结快照的资料范围筛选。省略时兼容原调用的全部范围。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CONTROLLED_RESEARCH",
+                "CONSTRUCTED_VALIDATION"
+              ]
+            }
           }
         ],
         "responses": {
@@ -9863,7 +11206,7 @@
     "/api/research/table-assessment-tasks/reports": {
       "get": {
         "operationId": "listResearchTaskReports",
-        "summary": "医生或研究员查看已完成的研究验证报告",
+        "summary": "按创建时间倒序查看当前模型评估报告及阻断状态",
         "parameters": [
           {
             "name": "status",
@@ -9897,6 +11240,30 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 100
+            }
+          },
+          {
+            "name": "dataScope",
+            "in": "query",
+            "required": false,
+            "description": "按冻结快照的资料范围筛选。省略时兼容原调用的全部范围。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CONTROLLED_RESEARCH",
+                "CONSTRUCTED_VALIDATION"
+              ]
+            }
+          },
+          {
+            "name": "subjectId",
+            "in": "query",
+            "required": false,
+            "description": "仅返回该授权档案的评估报告。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
             }
           }
         ],
@@ -10056,6 +11423,22 @@
       "get": {
         "operationId": "getResearchTaskMetrics",
         "summary": "研究验证任务指标聚合（与旧规则评估分开统计）",
+        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO",
+        "parameters": [
+          {
+            "name": "dataScope",
+            "in": "query",
+            "required": false,
+            "description": "按冻结快照的资料范围筛选。省略时兼容原调用的全部范围。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CONTROLLED_RESEARCH",
+                "CONSTRUCTED_VALIDATION"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "今日研究任务、完成/阻断/失败/运行、待复核、宿主同步快照与平均耗时",
@@ -10127,13 +11510,315 @@
               }
             }
           }
-        },
-        "x-implementation-state": "IMPLEMENTED_TRAINED_MODEL_DEMO"
+        }
       }
     }
   },
   "components": {
     "schemas": {
+      "PatientAppointment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "scheduledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "visitLocation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preparation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "appointmentRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "responseStatus": {
+            "enum": [
+              "CONFIRMED",
+              "RESCHEDULE_REQUESTED",
+              "RESCHEDULE_DECLINED",
+              null
+            ]
+          },
+          "rescheduled": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "PLANNED",
+              "COMPLETED",
+              "CANCELLED"
+            ]
+          },
+          "canRespond": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "scheduledAt",
+          "purpose"
+        ]
+      },
+      "PatientPublication": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "published": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "published"
+        ]
+      },
+      "DoctorAssessmentRequestEnvelope": {
+        "allOf":[
+          {"$ref":"#/components/schemas/Envelope"},
+          {"type":"object","properties":{"data":{"type":"object","required":["dataScope","qualityStatus","state","requestId","taskId"],"properties":{
+            "dataScope":{"enum":["CONSTRUCTED_VALIDATION","CONTROLLED_RESEARCH"]},"qualityStatus":{"type":"string"},
+            "state":{"$ref":"#/components/schemas/DoctorAssessmentRequestState"},
+            "requestId":{"type":["integer","null"]},"taskId":{"type":["integer","null"]}
+          }}}}
+        ]
+      },
+      "DoctorAssessmentRequestState": {
+        "enum":["NEEDS_QUALITY","NEEDS_SNAPSHOT","NEEDS_SYNC","READY","RESEARCH_REVIEW","RUNNING","REVIEW_PENDING","REVIEWED","BLOCKED","FAILED","OUTCOME_UNKNOWN"]
+      },
+      "ControlledAssessmentRequest": {
+        "type":"object","required":["id","subjectId","subjectCode","alias","state","taskId","canExecute"],
+        "properties":{
+          "id":{"type":"integer"},"subjectId":{"type":"integer"},"subjectCode":{"type":"string"},
+          "alias":{"type":["string","null"]},"state":{"$ref":"#/components/schemas/DoctorAssessmentRequestState"},
+          "taskId":{"type":["integer","null"]},"canExecute":{"type":"boolean"}
+        }
+      },
+      "DoctorSimulationIntakeView": {
+        "type":"object","required":["snapshotId","indexDate","hostSyncStatus","features"],
+        "properties":{
+          "snapshotId":{"type":"integer","minimum":1},
+          "indexDate":{"type":"string","format":"date"},
+          "hostSyncStatus":{"type":"string","enum":["PENDING","SYNCED","FAILED"]},
+          "features":{"type":"object","additionalProperties":false,
+            "required":["age_years","education_years","mmse","cdr_sb","cdr_global","adas__total13","faq__faqtotal"],
+            "properties":{
+              "age_years":{"type":["number","null"]},
+              "education_years":{"type":["number","null"]},
+              "mmse":{"type":["number","null"]},
+              "cdr_sb":{"type":["number","null"]},
+              "cdr_global":{"type":["number","null"]},
+              "adas__total13":{"type":["number","null"]},
+              "faq__faqtotal":{"type":["number","null"]}
+            }
+          }
+        }
+      },
+      "PatientOnboardingStatus": {
+        "type": "object",
+        "required": ["accountStatus", "qualityStatus", "qualityCheckId", "canApply", "resubmissionRequired"],
+        "properties": {
+          "accountStatus": {"type":"string","enum":["NONE","PENDING","ISSUED"]},
+          "qualityStatus": {"type":"string","enum":["NO_CHECK","STALE","INCOMPLETE","BLOCKED","WARN","PASS","ISSUED","ARCHIVED"]},
+          "qualityCheckId": {"type":["integer","null"],"minimum":1},
+          "canApply": {"type":"boolean"},
+          "resubmissionRequired": {"type":"boolean"}
+        }
+      },
+      "ResearchSupplement": {
+        "type": "object",
+        "required": [
+          "id",
+          "originalTaskId",
+          "originalSnapshotId",
+          "subjectId",
+          "subjectCode",
+          "dataScope",
+          "requestedBy",
+          "note",
+          "issues",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "originalTaskId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "originalSnapshotId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "subjectId": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "subjectCode": {
+            "type": "string"
+          },
+          "subjectAlias": {
+            "type": "string"
+          },
+          "dataScope": {
+            "type": "string",
+            "enum": [
+              "CONTROLLED_RESEARCH",
+              "CONSTRUCTED_VALIDATION"
+            ]
+          },
+          "requestedBy": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "issues": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "required": [
+                "feature",
+                "code",
+                "severity"
+              ],
+              "properties": {
+                "feature": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "CLAIMED",
+              "RETURNED"
+            ]
+          },
+          "assignedTo": {
+            "type": ["integer", "null"],
+            "format": "int64",
+            "minimum": 1
+          },
+          "assigneeName": {
+            "type": ["string", "null"]
+          },
+          "replacementTaskId": {
+            "type": ["integer", "null"],
+            "format": "int64",
+            "minimum": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ResearchSupplementEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/ResearchSupplement"
+              }
+            }
+          }
+        ]
+      },
+      "ResearchSupplementPageEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "required": [
+                  "items",
+                  "page",
+                  "pageSize",
+                  "total"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ResearchSupplement"
+                    }
+                  },
+                  "page": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 1
+                  },
+                  "pageSize": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  },
+                  "total": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
       "ResearchTableTask": {
         "type": "object",
         "properties": {
@@ -10222,6 +11907,14 @@
               "string",
               "null"
             ]
+          },
+          "dataScope": {
+            "type": "string",
+            "enum": [
+              "CONTROLLED_RESEARCH",
+              "CONSTRUCTED_VALIDATION"
+            ],
+            "description": "冻结快照的资料范围，任务无结果时仍有此字段。"
           }
         },
         "required": [
@@ -10239,7 +11932,8 @@
           "reviewStatus",
           "reviewedBy",
           "reviewedAt",
-          "reviewComment"
+          "reviewComment",
+          "dataScope"
         ],
         "additionalProperties": false,
         "if": {
@@ -10548,6 +12242,14 @@
               "COMPLETED",
               "CANCELLED"
             ]
+          },
+          "visitLocation": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "preparation": {
+            "type": "string",
+            "maxLength": 1000
           }
         },
         "required": [
@@ -11227,6 +12929,7 @@
       "PatientResearchSummary": {
         "type": "object",
         "properties": {
+          "publishedMessage": { "type": ["string", "null"], "maxLength": 1000 },
           "subjectId": {
             "type": [
               "integer",
@@ -11458,6 +13161,39 @@
                 "type": "null"
               }
             ]
+          },
+          "visitLocation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          },
+          "preparation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "appointmentRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "responseStatus": {
+            "enum": [
+              "CONFIRMED",
+              "RESCHEDULE_REQUESTED",
+              "RESCHEDULE_DECLINED",
+              null
+            ]
+          },
+          "responseNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 280
           }
         },
         "required": [
@@ -11839,6 +13575,18 @@
           "subjectId": {
             "type": "integer",
             "minimum": 1
+          },
+          "visitLocation": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "preparation": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "appointmentRevision": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [],
@@ -12220,6 +13968,39 @@
           },
           "subjectAlias": {
             "type": "string"
+          },
+          "visitLocation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255
+          },
+          "preparation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "appointmentRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "responseStatus": {
+            "enum": [
+              "CONFIRMED",
+              "RESCHEDULE_REQUESTED",
+              "RESCHEDULE_DECLINED",
+              null
+            ]
+          },
+          "responseNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 280
           }
         },
         "required": [

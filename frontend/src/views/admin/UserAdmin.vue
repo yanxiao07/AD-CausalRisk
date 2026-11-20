@@ -3,7 +3,7 @@
     <PageHeader
       back
       title="账号管理"
-      subtitle="维护账号、角色与档案授权；密码只在创建或重置时下发。"
+      subtitle="维护工作人员账号与授权。请在「患者账号申请」核对并发放患者账号。"
     >
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>
@@ -12,6 +12,28 @@
     </PageHeader>
 
     <el-tabs v-model="tab" class="users-tabs">
+      <el-tab-pane label="患者账号申请" name="patientRequests">
+        <el-button :icon="Refresh" @click="loadPatientRequests">刷新申请</el-button>
+        <el-table :data="patientRequests" empty-text="暂无账号申请">
+          <el-table-column prop="subjectCode" label="档案编号" />
+          <el-table-column prop="alias" label="档案别名" />
+          <el-table-column prop="doctor" label="责任医生" />
+          <el-table-column label="当前资料">
+            <template #default="{row}">{{ onboardingQualityLabel(row.qualityStatus) }}</template>
+          </el-table-column>
+          <el-table-column label="状态">
+            <template #default="{row}">
+              {{ row.status === 'ISSUED' ? '已发放' : row.canIssue ? '待核对发放' : '待医生核对并重新提交' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作">
+            <template #default="{row}">
+              <el-button v-if="row.canIssue" type="primary" link @click="prepareIssue(row)">核对并绑定</el-button>
+              <el-button link @click="prepareHandoff(row)">交接责任医生</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
       <!-- 用户账号 -->
       <el-tab-pane label="用户账号" name="users">
         <DataCard padding="none">
@@ -192,6 +214,17 @@
         </DataCard>
       </el-tab-pane>
     </el-tabs>
+    <el-dialog v-model="handoffOpen" title="交接责任医生" width="min(480px, 94vw)">
+      <p>请核对档案 {{ handoffRow?.subjectCode }}，并选择具备该档案管理权限的接手医生。</p>
+      <el-select v-model="handoffDoctorId" filterable aria-label="接手医生" placeholder="选择接手医生" style="width: 100%">
+        <el-option v-for="doctor in handoffOptions" :key="doctor.id" :label="doctorLabel(doctor)" :value="doctor.id" />
+      </el-select>
+      <p v-if="handoffOptions.length === 0">暂无可选医生。可先在「档案授权」为接手医生添加管理权限。</p>
+      <template #footer>
+        <el-button @click="handoffOpen = false">取消</el-button>
+        <el-button type="primary" :loading="handoffBusy" :disabled="!handoffDoctorId" @click="saveHandoff">确认交接</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 编辑账号 -->
     <el-dialog v-model="dialogOpen" title="编辑账号" width="560px" destroy-on-close>
@@ -289,29 +322,27 @@
                 <el-option label="管理员（ADMIN）" value="ADMIN" />
                 <el-option label="医生（DOCTOR）" value="DOCTOR" />
                 <el-option label="研究员（RESEARCHER）" value="RESEARCHER" />
-                <el-option label="患者（PATIENT）" value="PATIENT" />
+
               </el-select>
             </el-form-item>
-            <el-form-item v-if="!isPatient" label="附加角色">
+            <el-form-item label="附加角色">
               <el-select
                 v-model="createForm.extraRoles"
                 multiple
                 class="form__wide"
-                placeholder="可选；患者不能添加附加角色"
+                placeholder="可选附加角色"
               >
                 <el-option label="管理员（ADMIN）" value="ADMIN" />
                 <el-option label="医生（DOCTOR）" value="DOCTOR" />
                 <el-option label="研究员（RESEARCHER）" value="RESEARCHER" />
               </el-select>
-              <p class="form__hint">单主角色 + 可选附加角色；患者必须独立使用 PATIENT 角色。</p>
             </el-form-item>
             <el-form-item label="显示名">
               <el-input
                 v-model="createForm.displayName"
-                :placeholder="isPatient ? '患者姓名，用于报告与患者端展示' : '用于报告与患者端展示'"
+                placeholder="用于报告与患者端展示"
               />
             </el-form-item>
-            <template v-if="!isPatient">
               <template v-if="createForm.primaryRole === 'DOCTOR'">
                 <el-form-item label="科室">
                   <el-input v-model="createForm.department" />
@@ -326,7 +357,6 @@
               <p v-else class="form__hint form__hint--block">
                 管理员与研究员账号不需要填写医生联系方式；如需展示给患者，请使用医生角色。
               </p>
-            </template>
             <el-form-item label="状态">
               <el-radio-group v-model="createForm.status">
                 <el-radio-button value="ACTIVE">启用</el-radio-button>
@@ -337,67 +367,6 @@
         </template>
 
         <template v-else-if="createStep === 1">
-          <template v-if="isPatient">
-            <el-alert
-              class="wizard-block"
-              type="info"
-              :closable="false"
-              show-icon
-              title="患者必须同时绑定档案与主治医生"
-              description="未选择档案或主治医生时不能进入下一步；创建后患者端会显示主治医生的姓名、科室与联系电话。"
-            />
-            <el-form label-width="110px">
-              <el-form-item label="受试者档案" required>
-                <el-select
-                  v-model="createForm.subjectId"
-                  class="form__wide"
-                  filterable
-                  clearable
-                  placeholder="选择患者对应的档案"
-                >
-                  <el-option
-                    v-for="subject in subjects"
-                    :key="subject.id"
-                    :label="`${subject.alias || '—'}（${subject.subjectCode}）`"
-                    :value="subject.id"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="主治医生" required>
-                <el-select
-                  v-model="createForm.doctorId"
-                  class="form__wide"
-                  filterable
-                  clearable
-                  placeholder="选择主治医生"
-                >
-                  <el-option
-                    v-for="doctor in doctorOptions"
-                    :key="doctor.id"
-                    :label="doctorLabel(doctor)"
-                    :value="doctor.id"
-                  />
-                </el-select>
-                <div v-if="selectedDoctor" class="doctor-preview">
-                  <div><span>姓名</span><strong>{{ selectedDoctor.displayName || selectedDoctor.username }}</strong></div>
-                  <div><span>科室</span><strong>{{ selectedDoctor.department || '—' }}</strong></div>
-                  <div><span>联系电话</span><strong>{{ selectedDoctor.phone || '未填写' }}</strong></div>
-                  <div><span>门诊时间</span><strong>{{ selectedDoctor.officeHours || '—' }}</strong></div>
-                </div>
-                <p
-                  v-if="selectedDoctor && !selectedDoctor.phone"
-                  class="form__hint form__hint--warning"
-                >
-                  该医生未填写联系电话，患者端只能看到姓名与科室。
-                </p>
-              </el-form-item>
-            </el-form>
-            <p class="form__hint">
-              创建后会为患者授予该档案的「摘要读取」，并为主治医生授予「查看 / 管理」权限。
-            </p>
-          </template>
-
-          <template v-else>
             <el-form label-width="110px">
               <el-form-item label="数据范围">
                 <el-radio-group v-model="createForm.dataScope">
@@ -407,7 +376,6 @@
               </el-form-item>
             </el-form>
             <p class="form__hint">创建后可在「档案授权」页继续为该账号分配档案。</p>
-          </template>
         </template>
 
         <template v-else>
@@ -418,51 +386,23 @@
             <el-descriptions-item label="状态">
               {{ createForm.status === 'ACTIVE' ? '启用' : '停用' }}
             </el-descriptions-item>
-            <template v-if="isPatient">
-              <el-descriptions-item label="绑定档案">
-                {{ selectedSubject ? `${selectedSubject.alias || '—'}（${selectedSubject.subjectCode}）` : '—' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="主治医生">
-                {{ selectedDoctor?.displayName || '—' }}
-              </el-descriptions-item>
-            </template>
-            <template v-else>
               <el-descriptions-item label="数据范围">
                 {{ createForm.dataScope === 'ALL' ? '全部' : '授权范围' }}
               </el-descriptions-item>
               <el-descriptions-item v-if="createForm.primaryRole === 'DOCTOR'" label="科室">
                 {{ createForm.department || '—' }}
               </el-descriptions-item>
-            </template>
           </el-descriptions>
 
-          <el-alert
-            v-if="isPatient"
-            class="wizard-block"
-            type="info"
-            :closable="false"
-            show-icon
-            title="患者绑定将自动完成"
-            description="创建账号后，系统会为该患者授予所选档案的摘要读取，并为主治医生授予查看/管理权限。"
-          />
-          <el-alert
-            v-if="bindingError"
-            class="wizard-block"
-            type="error"
-            :closable="false"
-            show-icon
-            title="账号已创建，但绑定未全部完成"
-            :description="bindingError"
-          />
         </template>
       </div>
 
       <template #footer>
         <el-button @click="createOpen = false">取消</el-button>
-        <el-button v-if="createStep > 0 && !createdUserId" @click="createStep -= 1">上一步</el-button>
+        <el-button v-if="createStep > 0" @click="createStep -= 1">上一步</el-button>
         <el-button v-if="createStep < 2" type="primary" @click="nextCreateStep">下一步</el-button>
         <el-button v-else type="primary" :loading="creating" @click="submitCreate">
-          {{ createdUserId ? '重试绑定' : '创建账号' }}
+          创建账号
         </el-button>
       </template>
     </el-dialog>
@@ -470,7 +410,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Lock, Plus, Refresh, Search, User, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -487,6 +428,7 @@ import {
   updateUser
 } from '@/api/users.js'
 import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
+import { listPatientAccountRequests, issuePatientAccount, handoffPatientDoctor, onboardingQualityLabel } from '@/api/patientAccountRequests.js'
 
 const ROLE_LABELS = {
   ADMIN: '管理员',
@@ -495,7 +437,63 @@ const ROLE_LABELS = {
   PATIENT: '患者'
 }
 
+const route = useRoute()
 const tab = ref('users')
+const patientRequests = ref([])
+const handoffOpen = ref(false)
+const handoffRow = ref(null)
+const handoffDoctorId = ref(null)
+const handoffOptions = ref([])
+const handoffBusy = ref(false)
+async function prepareHandoff(row) {
+  const [permissions] = await Promise.all([listSubjectPermissions(row.subjectId), loadDoctorOptions()])
+  const permitted = new Set(permissions.filter(grant => grant.permissionType === 'MANAGE').map(grant => grant.userId))
+  handoffOptions.value = doctorOptions.value.filter(doctor => permitted.has(doctor.id))
+  handoffDoctorId.value = null
+  handoffRow.value = row
+  handoffOpen.value = true
+}
+async function saveHandoff() {
+  handoffBusy.value = true
+  try {
+    await handoffPatientDoctor(handoffRow.value.id, handoffDoctorId.value)
+    handoffOpen.value = false
+    await loadPatientRequests()
+    ElMessage.success('责任医生已更新')
+  } finally {
+    handoffBusy.value = false
+  }
+}
+async function loadPatientRequests() {
+  patientRequests.value = await listPatientAccountRequests()
+}
+watch(() => route.query.tab, value => {
+  if (value === 'patientRequests') tab.value = 'patientRequests'
+}, { immediate: true })
+watch(tab, value => {
+  if (value === 'patientRequests') loadPatientRequests().catch(() => {})
+}, { immediate: true })
+async function prepareIssue(row) {
+  try {
+    await ElMessageBox.confirm(
+      `请核对本人身份及档案 ${row.subjectCode}（${row.alias || '未填别名'}），并确认责任医生为 ${row.doctor}。`,
+      '确认患者、档案和责任医生',
+      { confirmButtonText: '已核对，继续', cancelButtonText: '取消', type: 'info' }
+    )
+    const { value: username } = await ElMessageBox.prompt(`为 ${row.subjectCode} 输入用户名`, '发放患者账号', {
+      inputPattern: /^[A-Za-z0-9_-]{2,50}$/, inputErrorMessage: '请输入 2–50 个字母、数字、下划线或连字符'
+    })
+    const { value: password } = await ElMessageBox.prompt('设置初始密码', '发放并绑定', {
+      inputType: 'password', inputPattern: /^.{6,100}$/, inputErrorMessage: '请输入 6–100 个字符'
+    })
+    await issuePatientAccount(row.id, { username, password, identityVerified: true })
+    await loadPatientRequests()
+    await reload()
+    ElMessage.success('账号已发放并绑定。')
+  } catch {
+    // Cancelled dialogs require no action. The client displays API errors.
+  }
+}
 
 // ---- 用户列表 ----
 const items = ref([])
@@ -517,28 +515,17 @@ const form = ref(emptyForm())
 const createOpen = ref(false)
 const createStep = ref(0)
 const creating = ref(false)
-const createdUserId = ref(null)
-const bindingError = ref('')
 const createForm = ref(emptyCreateForm())
 const doctorOptions = ref([])
 
-const isPatient = computed(() => createForm.value.primaryRole === 'PATIENT')
 const createRoles = computed(() => {
   const primary = createForm.value.primaryRole
   if (!primary) return []
-  if (primary === 'PATIENT') return ['PATIENT']
   return [...new Set([primary, ...createForm.value.extraRoles])]
 })
 const createRoleNames = computed(() =>
   createRoles.value.map((role) => roleLabel(role)).join('、') || '—'
 )
-const selectedSubject = computed(
-  () => subjects.value.find((subject) => subject.id === createForm.value.subjectId) || null
-)
-const selectedDoctor = computed(
-  () => doctorOptions.value.find((doctor) => doctor.id === createForm.value.doctorId) || null
-)
-
 // ---- 档案授权 ----
 const subjects = ref([])
 /** 授权下拉的账号选项：独立加载前 100 个，避免只能选到当前页的 20 个 */
@@ -575,9 +562,7 @@ function emptyCreateForm() {
     department: '',
     phone: '',
     officeHours: '',
-    dataScope: 'ASSIGNED',
-    subjectId: null,
-    doctorId: null
+    dataScope: 'ASSIGNED'
   }
 }
 
@@ -664,8 +649,6 @@ function openCreate() {
 function resetCreate() {
   createStep.value = 0
   creating.value = false
-  createdUserId.value = null
-  bindingError.value = ''
   createForm.value = emptyCreateForm()
 }
 
@@ -688,14 +671,11 @@ async function loadDoctorOptions() {
 }
 
 function onPrimaryRoleChange() {
-  if (isPatient.value) createForm.value.extraRoles = []
   if (createForm.value.primaryRole !== 'DOCTOR') {
     createForm.value.department = ''
     createForm.value.phone = ''
     createForm.value.officeHours = ''
   }
-  createForm.value.subjectId = null
-  createForm.value.doctorId = null
 }
 
 function nextCreateStep() {
@@ -714,84 +694,22 @@ function nextCreateStep() {
       return
     }
   }
-  if (createStep.value === 1 && isPatient.value) {
-    if (!createForm.value.subjectId) {
-      ElMessage.warning('请选择患者对应的受试者档案')
-      return
-    }
-    if (!createForm.value.doctorId) {
-      ElMessage.warning('请选择患者的主治医生')
-      return
-    }
-  }
   createStep.value += 1
-}
-
-async function bindCreatedUser() {
-  bindingError.value = ''
-  if (!isPatient.value) return true
-  const userId = createdUserId.value
-  const subjectId = createForm.value.subjectId
-  const doctorId = createForm.value.doctorId
-  const failures = []
-  try {
-    await grantSubjectPermission(subjectId, { userId, permissionType: 'SUMMARY_READ' })
-  } catch (problem) {
-    failures.push(`患者摘要读取：${problem?.message || '授权失败'}`)
-  }
-  for (const permissionType of ['VIEW', 'MANAGE']) {
-    try {
-      await grantSubjectPermission(subjectId, { userId: doctorId, permissionType })
-    } catch (problem) {
-      failures.push(
-        `主治医生${permissionType === 'VIEW' ? '查看' : '管理'}权限：${problem?.message || '授权失败'}`
-      )
-    }
-  }
-  bindingError.value = failures.join('；')
-  return failures.length === 0
 }
 
 async function submitCreate() {
   if (creating.value) return
   creating.value = true
   try {
-    if (!createdUserId.value) {
-      const payload = {
-        username: createForm.value.username.trim(),
-        password: createForm.value.password,
-        status: createForm.value.status,
-        roles: createRoles.value,
-        displayName: createForm.value.displayName.trim(),
-        department: createForm.value.department.trim(),
-        phone: createForm.value.phone.trim(),
-        officeHours: createForm.value.officeHours.trim(),
-        dataScope: isPatient.value ? 'ASSIGNED' : createForm.value.dataScope
-      }
-      const data = await createUser(payload)
-      const id = Number(data?.id)
-      if (!Number.isInteger(id) || id <= 0) {
-        throw new Error('账号已创建，但服务端未返回账号 ID')
-      }
-      createdUserId.value = id
-    }
-
-    const bound = await bindCreatedUser()
-    if (bound) {
-      ElMessage.success('账号已创建')
-      createOpen.value = false
-      await loadUsers(1)
-      await loadGrantUserOptions()
-      await loadSubjects()
-    } else {
-      ElMessage.warning('账号已创建，但绑定未全部完成，请在当前页重试')
-    }
-  } catch (problem) {
-    if (!createdUserId.value) {
-      // request.js 已提示具体错误（用户名重复、角色约束等）
-    } else {
-      bindingError.value = problem?.message || '绑定失败，请重试'
-    }
+    const form = createForm.value
+    await createUser({
+      username: form.username.trim(), password: form.password, status: form.status,
+      roles: createRoles.value, displayName: form.displayName.trim(), department: form.department.trim(),
+      phone: form.phone.trim(), officeHours: form.officeHours.trim(), dataScope: form.dataScope
+    })
+    createOpen.value = false
+    await loadUsers(1)
+    await loadGrantUserOptions()
   } finally {
     creating.value = false
   }

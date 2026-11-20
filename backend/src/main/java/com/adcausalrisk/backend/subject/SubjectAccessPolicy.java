@@ -63,6 +63,11 @@ public class SubjectAccessPolicy {
         return principal.roleCodes().stream().anyMatch(CREATOR_ROLES::contains);
     }
 
+    public boolean canCreateArchive(AppUserPrincipal principal) {
+        return !principal.roleCodes().contains("PATIENT")
+                && (canCreate(principal) || principal.roleCodes().contains("DOCTOR"));
+    }
+
     /**
      * Whether the given principal may start an assessment for <i>this</i> subject ({@code POST
      * /api/assessment-tasks}).

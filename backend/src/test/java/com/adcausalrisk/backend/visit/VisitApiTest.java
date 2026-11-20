@@ -940,20 +940,18 @@ class VisitApiTest {
     }
 
     @Test
-    void doctorWithManageGrantStillCannotCreateVisit() throws Exception {
+    void doctorWithManageGrantCanCreateVisit() throws Exception {
         MockHttpSession doctor = login("doctor");
         Subject subject = seedSubject("DEMO-V-MANAGE");
-        // Visit creation is guarded by SubjectAccessPolicy.canCreate, which is role-based;
-        // a per-subject MANAGE grant does not entitle the holder to create visits.
         subjectPermissionRepository.save(new SubjectPermission(
                 subject.getId(), userId("doctor"), PermissionType.MANAGE));
 
         JsonNode body = bodyOf(mockMvc.perform(createVisit(subject.getId(), "BL", "2025-01-01", null, null, null)
                         .session(doctor))
-                .andExpect(status().isForbidden())
+                .andExpect(status().isOk())
                 .andReturn());
 
-        assertThat(body.get("errorCode").asText()).isEqualTo("ACCESS_DENIED");
+        assertThat(body.path("code").asInt()).isZero();
     }
 
     @Test

@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Calls the controlled research table host.
@@ -30,7 +32,11 @@ public final class ResearchTableClient {
     private static final Logger log = LoggerFactory.getLogger(ResearchTableClient.class);
     static final int CONNECT_TIMEOUT_SECONDS = 2;
 
-    record Reply(int httpStatus, JsonNode body) {}
+    record Reply(int httpStatus, JsonNode body, URI endpoint) {
+        Reply(int httpStatus, JsonNode body) {
+            this(httpStatus, body, null);
+        }
+    }
 
     static boolean reachableStatus(int status) {
         return status < 500 || status == 501;
@@ -46,7 +52,51 @@ public final class ResearchTableClient {
             String baseUrl,
             String message) {}
 
-    private record Runtime(RestClient client, String token) {}
+    public record LoadedModel(String specification, String family, String manifestSha256, String artifactSha256) {}
+    public record ModelStatus(String status, List<LoadedModel> models) {}
+
+    public ModelStatus loadedModels() {
+        var host = settings.researchHost();
+        if (!host.enabled() || !host.configured()) return new ModelStatus("NOT_CONFIGURED", List.of());
+        HttpURLConnection connection = null;
+        try {
+            URI endpoint = URI.create(host.baseUrl()).resolve("/api/research-table/v1/models");
+            connection = (HttpURLConnection) endpoint.toURL().openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(2000);
+            connection.setReadTimeout(2000);
+            connection.setInstanceFollowRedirects(false);
+            connection.setRequestProperty("Authorization", "Bearer " + host.token());
+            int status = connection.getResponseCode();
+            if (status == 404 || status == 405 || status == 501) return new ModelStatus("UNSUPPORTED", List.of());
+            if (status != 200) return new ModelStatus("UNAVAILABLE", List.of());
+            try (var stream = connection.getInputStream()) {
+                var payload = stream.readNBytes(8193);
+                if (payload.length > 8192) return new ModelStatus("INVALID", List.of());
+                var models = protocol.parse(payload).path("models");
+                if (!models.isArray() || models.isEmpty() || models.size() > 12) return new ModelStatus("INVALID", List.of());
+                var loaded = new ArrayList<LoadedModel>();
+                for (var model : models) {
+                    String specification = model.path("specification").asText();
+                    String family = model.path("family").asText();
+                    String manifest = model.path("manifestSha256").asText();
+                    String artifact = model.path("artifactSha256").asText();
+                    if (!specification.matches("[a-z0-9_]{1,40}") || !family.matches("[a-z0-9_]{1,40}")
+                            || !manifest.matches("[a-f0-9]{64}") || !artifact.matches("[a-f0-9]{64}")) {
+                        return new ModelStatus("INVALID", List.of());
+                    }
+                    loaded.add(new LoadedModel(specification, family, manifest, artifact));
+                }
+                return new ModelStatus("REPORTED", List.copyOf(loaded));
+            }
+        } catch (IOException | RuntimeException unavailable) {
+            return new ModelStatus("UNAVAILABLE", List.of());
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private record Runtime(RestClient client, String token, URI assessmentEndpoint) {}
 
     private final RestClient.Builder builder;
     private final ResearchTableProtocol protocol;
@@ -83,7 +133,7 @@ public final class ResearchTableClient {
         runtime =
                 new Runtime(
                         builder.baseUrl(host.baseUrl()).requestFactory(factory).build(),
-                        host.token());
+                        host.token(), URI.create(host.baseUrl()).resolve(ResearchTableProtocol.PATH));
     }
 
     private Runtime runtime() {
@@ -101,13 +151,16 @@ public final class ResearchTableClient {
         }
     }
 
+    URI configuredAssessmentEndpoint() {
+        Runtime current = runtime();
+        return current == null ? null : current.assessmentEndpoint();
+    }
+
     /**
      * Probes the configured research host without calling a business endpoint.
      *
-     * <p>A 4xx response still proves the HTTP service is listening. The research host deliberately
-     * implements only POST business routes, so a GET to {@code /} returns HTTP 501; that is a
-     * reachable listener, not an outage. Other 5xx responses remain unavailable. The token is never
-     * sent here.
+     * <p>The root is only a listener probe. A 4xx response or the legacy host's 501 can indicate
+     * a reachable listener. The authenticated model catalog is checked separately.
      */
     public Health health() {
         SystemSettingService.ResearchHost host = settings.researchHost();
@@ -193,8 +246,12 @@ public final class ResearchTableClient {
     }
 
     Reply assess(byte[] request) {
+        return assess(request, null);
+    }
+
+    Reply assess(byte[] request, URI requiredEndpoint) {
         Runtime current = runtime();
-        if (current == null) {
+        if (current == null || (requiredEndpoint != null && !requiredEndpoint.equals(current.assessmentEndpoint()))) {
             throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE);
         }
         try {
@@ -218,7 +275,7 @@ public final class ResearchTableClient {
                                         received.getBody()
                                                 .readNBytes(ResearchTableProtocol.MAX_BYTES + 1);
                                 try {
-                                    return new Reply(status, protocol.parse(payload));
+                                    return new Reply(status, protocol.parse(payload), sent.getURI());
                                 } catch (IOException invalid) {
                                     throw new IllegalArgumentException("RESEARCH_PROTOCOL_INVALID");
                                 }

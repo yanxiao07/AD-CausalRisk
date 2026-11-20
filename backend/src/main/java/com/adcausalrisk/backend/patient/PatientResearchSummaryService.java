@@ -6,11 +6,6 @@ import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.SubjectPermissionRepository;
 import com.adcausalrisk.backend.subject.SubjectRepository;
 import com.adcausalrisk.backend.subject.entity.Subject;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -22,20 +17,12 @@ import java.util.List;
  * Patient-facing research validation summary.
  *
  * <p>The research model output contains uncalibrated CIFs, model identity, explanation weights and
- * a graph. None of those may reach a patient. This service keeps the derivation on the server and
- * exposes only a qualitative sentence, a state and the fixed research-use limitation.
+ * a graph. The patient sees progress, the research-use limitation and any separately published doctor message.
  *
- * <p>Only a doctor-confirmed result is shown as a conclusion. A pending, rejected or failed task
- * produces a plain-language status instead of falling back to an older result.
+ * <p>Review updates progress. Publication controls whether a doctor's message is visible.
  */
 @Service
 public class PatientResearchSummaryService {
-
-    private static final Logger log = LoggerFactory.getLogger(PatientResearchSummaryService.class);
-
-    /** Qualitative bands for the research CIF; deliberately coarse and not clinically calibrated. */
-    private static final double CIF_MEDIUM_THRESHOLD = 0.10;
-    private static final double CIF_HIGH_THRESHOLD = 0.20;
 
     private static final String NOTICE = "研究验证用途，非临床诊断。";
 
@@ -46,12 +33,19 @@ public class PatientResearchSummaryService {
 
     private static final String LATEST_TASK_SQL =
             """
-            SELECT t.id,t.status,t.review_status,t.reviewed_at,t.result_json,t.created_at,
-                   s.subject_id,sub.subject_code,sub.alias
+            SELECT t.id,t.status,t.review_status,t.created_at,p.message AS published_message,
+                   s.subject_id,s.data_scope,sub.subject_code,sub.alias
               FROM research_table_task t
               JOIN research_table_snapshot s ON s.id=t.snapshot_id
               JOIN subject sub ON sub.id=s.subject_id
+              LEFT JOIN patient_research_publication p ON p.task_id=t.id AND p.action='PUBLISHED'
+                AND p.id=(SELECT MAX(p2.id) FROM patient_research_publication p2 WHERE p2.task_id=t.id)
              WHERE s.subject_id=?
+               AND (s.data_scope='CONTROLLED_RESEARCH'
+                    OR (s.data_scope='CONSTRUCTED_VALIDATION' AND sub.subject_code LIKE 'DEMO-%'
+                        AND NOT EXISTS (SELECT 1 FROM research_table_snapshot controlled
+                                        WHERE controlled.subject_id=s.subject_id
+                                          AND controlled.data_scope='CONTROLLED_RESEARCH')))
              ORDER BY t.created_at DESC,t.id DESC
              LIMIT 1
             """;
@@ -59,17 +53,14 @@ public class PatientResearchSummaryService {
     private final SubjectPermissionRepository permissionRepository;
     private final SubjectRepository subjectRepository;
     private final JdbcTemplate jdbc;
-    private final ObjectMapper objectMapper;
 
     public PatientResearchSummaryService(
             SubjectPermissionRepository permissionRepository,
             SubjectRepository subjectRepository,
-            JdbcTemplate jdbc,
-            ObjectMapper objectMapper) {
+            JdbcTemplate jdbc) {
         this.permissionRepository = permissionRepository;
         this.subjectRepository = subjectRepository;
         this.jdbc = jdbc;
-        this.objectMapper = objectMapper;
     }
 
     /** De-identified shape: no task id, no result JSON, no model/CIF fields. */
@@ -81,7 +72,8 @@ public class PatientResearchSummaryService {
             String summary,
             String notice,
             boolean researchUseOnly,
-            List<String> limitations) {}
+            List<String> limitations,
+            String publishedMessage) {}
 
     public ResearchSummaryView currentSummary(AppUserPrincipal principal) {
         if (!principal.roleCodes().contains("PATIENT")) {
@@ -99,7 +91,7 @@ public class PatientResearchSummaryService {
                     "您的账号还没有绑定健康档案，绑定后这里会显示医生复核过的研究验证结果。",
                     NOTICE,
                     true,
-                    List.of("如需绑定，请联系您的主治医生。"));
+                    List.of("如需绑定，请联系您的主治医生。"), null);
         }
 
         ResearchCandidate selected = null;
@@ -108,10 +100,7 @@ public class PatientResearchSummaryService {
             if (candidate == null) {
                 continue;
             }
-            if (selected == null
-                    || candidate.createdAt().isAfter(selected.createdAt())
-                    || (candidate.createdAt().equals(selected.createdAt())
-                            && candidate.taskId() > selected.taskId())) {
+            if (selected == null || candidate.isPreferredTo(selected)) {
                 selected = candidate;
             }
         }
@@ -127,7 +116,7 @@ public class PatientResearchSummaryService {
                     "目前还没有可展示的研究验证结果，医生完成研究评估后会在这里更新。",
                     NOTICE,
                     true,
-                    LIMITATIONS);
+                    LIMITATIONS, null);
         }
 
         return toView(selected);
@@ -161,31 +150,9 @@ public class PatientResearchSummaryService {
                     view(task, "NEEDS_DATA", "医生希望补充一些资料后再确认研究验证结果，请留意复诊通知。");
             case "REJECTED" ->
                     view(task, "REJECTED", "本次研究验证结果未通过医生复核，请联系医生了解下一步安排。");
-            case "CONFIRMED" -> confirmedView(task);
+            case "CONFIRMED" -> view(task, "CONFIRMED", "医生已完成复核。请查看医生发布的说明和复诊安排。");
             default -> view(task, "PENDING", "研究验证结果正在等待医生复核确认。");
         };
-    }
-
-    private ResearchSummaryView confirmedView(ResearchCandidate task) {
-        JsonNode result = parse(task.resultJson());
-        Double cif = researchCif(result);
-        if (cif == null || !predictionAllowed(result)) {
-            // The review itself is complete. Keep the reviewed state and explain the limitation
-            // instead of presenting the task as an unreviewed/unavailable result.
-            return view(
-                    task,
-                    "CONFIRMED",
-                    "医生已复核本次研究验证结果；当前输入尚不足以形成个人风险提示，"
-                            + "本次结论不用于临床决策，请按医嘱随访。");
-        }
-        String band =
-                cif >= CIF_HIGH_THRESHOLD
-                        ? "偏高"
-                        : cif >= CIF_MEDIUM_THRESHOLD ? "中等" : "较低";
-        return view(
-                task,
-                "CONFIRMED",
-                "医生已复核研究验证结果：模型提示痴呆相关风险信号" + band + "。建议咨询医生，结合面诊进一步评估。");
     }
 
     private ResearchSummaryView view(ResearchCandidate task, String state, String summary) {
@@ -195,9 +162,10 @@ public class PatientResearchSummaryService {
                 task.alias(),
                 state,
                 summary,
-                NOTICE,
+                task.controlled() ? NOTICE : "测试样例。" + NOTICE,
                 true,
-                LIMITATIONS);
+                LIMITATIONS,
+                "CONFIRMED".equals(state) ? task.publishedMessage() : null);
     }
 
     private ResearchCandidate latestTask(Long subjectId) {
@@ -208,13 +176,13 @@ public class PatientResearchSummaryService {
                                 new ResearchCandidate(
                                         rs.getLong("id"),
                                         rs.getLong("subject_id"),
+                                        "CONTROLLED_RESEARCH".equals(rs.getString("data_scope")),
                                         rs.getString("subject_code"),
                                         rs.getString("alias"),
                                         rs.getString("status"),
                                         rs.getString("review_status"),
-                                        instant(rs.getTimestamp("reviewed_at")),
                                         instant(rs.getTimestamp("created_at")),
-                                        rs.getString("result_json")),
+                                        rs.getString("published_message")),
                         subjectId);
         return rows.isEmpty() ? null : rows.getFirst();
     }
@@ -223,50 +191,20 @@ public class PatientResearchSummaryService {
         return timestamp == null ? Instant.EPOCH : timestamp.toInstant();
     }
 
-    private JsonNode parse(String json) {
-        if (json == null || json.isBlank()) {
-            return null;
-        }
-        try {
-            return objectMapper.readTree(json);
-        } catch (Exception failure) {
-            log.warn("研究验证结果 JSON 无法解析，患者摘要降级为通用文案");
-            return null;
-        }
-    }
-
-    private boolean predictionAllowed(JsonNode result) {
-        return result != null
-                && result.path("admission").path("predictionAllowed").asBoolean(false);
-    }
-
-    private Double researchCif(JsonNode result) {
-        if (result == null) {
-            return null;
-        }
-        Double ad = number(result.path("prediction").path("adCif24m"));
-        Double other = number(result.path("prediction").path("otherDementiaCif24m"));
-        if (ad == null) {
-            return other;
-        }
-        if (other == null) {
-            return ad;
-        }
-        return Math.max(ad, other);
-    }
-
-    private Double number(JsonNode node) {
-        return node != null && node.isNumber() ? node.asDouble() : null;
-    }
-
     private record ResearchCandidate(
             long taskId,
             Long subjectId,
+            boolean controlled,
             String subjectCode,
             String alias,
             String status,
             String reviewStatus,
-            Instant reviewedAt,
             Instant createdAt,
-            String resultJson) {}
+            String publishedMessage) {
+        boolean isPreferredTo(ResearchCandidate other) {
+            if (controlled != other.controlled) return controlled;
+            return createdAt.isAfter(other.createdAt)
+                    || (createdAt.equals(other.createdAt) && taskId > other.taskId);
+        }
+    }
 }

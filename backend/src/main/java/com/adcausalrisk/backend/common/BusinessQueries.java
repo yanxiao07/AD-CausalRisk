@@ -154,6 +154,12 @@ public class BusinessQueries {
                 id = "s.id";
                 date = "s.created_at";
                 where = scope(id, user, false);
+                where += switch (text(filter, "dataScope")) {
+                    case "" -> "";
+                    case "CONTROLLED_RESEARCH" -> " AND s.data_version LIKE 'adni-%'";
+                    case "CONSTRUCTED_VALIDATION" -> " AND s.data_version LIKE 'demo-%'";
+                    default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "无效的档案资料范围");
+                };
                 order = "s.id DESC";
             }
             case "assessments" -> {
@@ -185,8 +191,11 @@ public class BusinessQueries {
                     throw new BusinessException(ErrorCode.ACCESS_DENIED, "请使用本人摘要查看随访安排");
                 from =
                         "follow_up_plan f JOIN subject s ON s.id=f.subject_id JOIN sys_user u ON"
-                                + " u.id=f.owner_id";
-                select = "f.*,s.subject_code,s.alias subject_alias,u.username owner_name";
+                                + " u.id=f.owner_id LEFT JOIN follow_up_response booking"
+                                + " ON booking.follow_up_id=f.id AND booking.appointment_revision=f.appointment_revision";
+                boolean clinicalRole = user.roleCodes().contains("DOCTOR") || user.roleCodes().contains("ADMIN");
+                select = "f.*,s.subject_code,s.alias subject_alias,u.username owner_name,booking.response_status,"
+                        + (clinicalRole ? "booking.response_note" : "NULL AS response_note");
                 id = "f.subject_id";
                 date = "f.scheduled_at";
                 where = scope(id, user, true);
@@ -363,7 +372,7 @@ public class BusinessQueries {
                 "manage",
                 policy.canManage(user, id),
                 "record",
-                policy.canCreate(user) && policy.canManage(user, id),
+                policy.canCreateArchive(user) && policy.canManage(user, id),
                 "writeClinical",
                 policy.canWriteClinical(user, id),
                 "requestAssessment",

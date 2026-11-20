@@ -56,7 +56,7 @@ public class FeatureService {
     @org.springframework.transaction.annotation.Transactional
     public FeatureResultView create(
             Long subjectId, FeatureCreateRequest request, AppUserPrincipal principal) {
-        if (!accessPolicy.canCreate(principal) || !accessPolicy.canManage(principal, subjectId)) {
+        if (!accessPolicy.canCreateArchive(principal) || !accessPolicy.canManage(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权录入特征");
         }
         if (!subjectRepository.existsById(subjectId)) {

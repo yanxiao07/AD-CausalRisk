@@ -1,8 +1,8 @@
 <template>
   <div class="admin-home">
     <PageHeader
-      title="数据大屏"
-      :subtitle="`运营总览 · 指标每 ${Math.round(REFRESH_MS / 1000)} 秒刷新 · 审计每 ${Math.round((REFRESH_MS * AUDIT_REFRESH_EVERY) / 1000)} 秒刷新`"
+      title="管理工作台"
+      subtitle="处理患者账号申请，查看评估服务和操作记录。"
     >
       <template #extra>
         <span class="admin-updated">数据截至 {{ lastUpdatedText }}</span>
@@ -11,6 +11,17 @@
         </el-button>
       </template>
     </PageHeader>
+
+    <article class="panel">
+      <header class="panel__head">
+        <div>
+          <h2>患者账号待发放</h2>
+          <p>{{ requestsFailed ? '申请列表暂不可用，请打开账号管理重试。'
+            : pendingAccounts == null ? '正在读取申请…' : `当前有 ${pendingAccounts} 份待处理申请` }}</p>
+        </div>
+        <el-button type="primary" @click="router.push('/admin/users?tab=patientRequests')">处理申请</el-button>
+      </header>
+    </article>
 
     <div class="admin-grid admin-grid--metrics">
       <article v-for="metric in metrics" :key="metric.key" class="panel metric">
@@ -26,29 +37,28 @@
     <article class="panel research-metrics">
       <header class="panel__head">
         <div>
-          <h2>研究验证</h2>
-          <p>研究模型任务独立统计，不与旧规则评估混算。</p>
+          <h2>受控研究评估服务</h2>
+          <p>查看评估任务是否正常完成。</p>
         </div>
-        <span class="panel__tag">独立口径</span>
+        <el-button link type="primary" @click="router.push('/admin/system')">系统设置</el-button>
       </header>
       <div class="research-metrics__grid">
         <div><span>今日任务</span><strong>{{ researchMetrics?.tasksToday ?? '—' }}</strong></div>
         <div><span>已完成</span><strong>{{ researchMetrics?.completed ?? '—' }}</strong></div>
         <div><span>待复核</span><strong>{{ researchMetrics?.pendingReview ?? '—' }}</strong></div>
-        <div><span>已同步快照</span><strong>{{ researchMetrics?.syncedSnapshots ?? '—' }}</strong></div>
+        <div><span>已准备的评估资料</span><strong>{{ researchMetrics?.syncedSnapshots ?? '—' }}</strong></div>
       </div>
       <p v-if="researchMetrics" class="research-metrics__note">
         阻断 {{ researchMetrics.blocked }} · 失败 {{ researchMetrics.failed }} · 运行中
         {{ researchMetrics.running }} · 平均耗时 {{ researchMetrics.averageSeconds }} 秒
       </p>
-      <p v-else class="research-metrics__note">研究指标暂不可用，请稍后刷新。</p>
+      <p v-else class="research-metrics__note">评估统计暂不可用，请刷新重试。</p>
     </article>
 
     <div class="admin-grid admin-grid--charts">
       <article class="panel chart">
         <header class="panel__head">
           <h2>近 7 天建档趋势</h2>
-          <span class="panel__tag">GET /api/dashboard/summary</span>
         </header>
         <EChart v-if="hasSummary" :option="trendOption" :height="240" />
         <div v-else class="chart__empty">
@@ -60,7 +70,6 @@
       <article class="panel chart">
         <header class="panel__head">
           <h2>档案状态分布</h2>
-          <span class="panel__tag">服务端汇总</span>
         </header>
         <EChart v-if="hasSummary" :option="statusOption" :height="240" />
         <div v-else class="chart__empty">
@@ -73,7 +82,7 @@
     <article class="panel audit">
       <header class="panel__head">
         <h2>实时审计</h2>
-        <span class="panel__tag">GET /api/audit-logs · 最近 {{ AUDIT_LIMIT }} 条</span>
+        <el-button link type="primary" @click="router.push('/admin/audit')">查看全部日志</el-button>
       </header>
       <AuditStream
         :events="auditEvents"
@@ -83,12 +92,6 @@
       />
     </article>
 
-    <p class="admin-home__foot">
-      统计口径：档案数、待复核、高风险、随访等指标取自 GET /api/dashboard/summary
-      （服务端按当前账号的授权范围汇总，不在前端拉全量）；
-      审计取自 GET /api/audit-logs（无分页，全量返回，因此单独按 60 秒刷新，页面只展示最近
-      {{ AUDIT_LIMIT }} 条）；指标每 {{ Math.round(REFRESH_MS / 1000) }} 秒刷新，也可点右上角手动刷新。
-    </p>
   </div>
 </template>
 
@@ -96,13 +99,19 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { PieChart, Refresh, TrendCharts } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import { CONTROLLED_RESEARCH } from '@/utils/researchResults.js'
 import EChart from '@/components/charts/EChart.vue'
 import AuditStream from '@/components/admin/AuditStream.vue'
 import { getDashboardSummary } from '@/api/dashboard.js'
 import { getResearchMetrics } from '@/api/research.js'
 import { listAuditLogs } from '@/api/audit.js'
+import { listPatientAccountRequests } from '@/api/patientAccountRequests.js'
+import { useRouter } from 'vue-router'
 
 const AUDIT_LIMIT = 8
+const router = useRouter()
+const pendingAccounts = ref(null)
+const requestsFailed = ref(false)
 /** 15 秒：复核/质控刚提交完，回到大屏就能看到计数变化，不用等一分钟。 */
 const REFRESH_MS = 15000
 /** 审计日志没有分页接口、每次全量返回，因此每 4 个 tick（≈60 秒）才拉一次。 */
@@ -150,15 +159,15 @@ const metrics = computed(() => [
   {
     key: 'pendingReview',
     label: '待复核评估',
-    value: summaryError.value ? null : number(summary.value?.pendingReview),
+    value: researchMetrics.value?.pendingReview ?? null,
     hint: summaryError.value || '等待人工复核的风险评估',
     tone: 'is-amber'
   },
   {
-    key: 'highRisk',
-    label: '高风险档案',
-    value: summaryError.value ? null : number(summary.value?.highRisk),
-    hint: summaryError.value || '风险等级为 HIGH 的档案',
+    key: 'failed',
+    label: '评估失败',
+    value: researchMetrics.value?.failed ?? null,
+    hint: '可在系统设置检查评估服务',
     tone: 'is-red'
   },
   {
@@ -257,12 +266,15 @@ const statusOption = computed(() => {
 async function loadSummary() {
   summaryError.value = ''
   try {
-    const [dashboard, research] = await Promise.all([
+    const [dashboard, research, requests] = await Promise.all([
       getDashboardSummary(),
-      getResearchMetrics().catch(() => null)
+      getResearchMetrics(CONTROLLED_RESEARCH).catch(() => null),
+      listPatientAccountRequests().catch(() => null)
     ])
     summary.value = dashboard
     researchMetrics.value = research
+    requestsFailed.value = !Array.isArray(requests)
+    pendingAccounts.value = requestsFailed.value ? null : requests.filter(item => item.status === 'PENDING').length
     return true
   } catch (problem) {
     summary.value = null

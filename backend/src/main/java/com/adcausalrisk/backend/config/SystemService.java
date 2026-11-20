@@ -110,6 +110,11 @@ public class SystemService {
         return researchHostView(settings.researchHost());
     }
 
+    public ResearchTableClient.ModelStatus researchModels(AppUserPrincipal user) {
+        BusinessQueries.admin(user);
+        return researchClient.loadedModels();
+    }
+
     @Transactional
     public Map<String, Object> saveResearchHost(
             String baseUrl,

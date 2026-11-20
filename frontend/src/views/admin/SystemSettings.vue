@@ -2,8 +2,8 @@
   <div class="console-page">
     <PageHeader
       back
-      title="系统控制台"
-      subtitle="运行时健康、评估通道、研究宿主与审计保留策略的统一运维入口。所有保存立即生效并写入审计。"
+      title="系统设置"
+      subtitle="检查服务是否在线，管理评估服务和审计日志保留时间。"
     >
       <template #extra>
         <span class="health-pill" :class="probe.ok ? 'health-pill--ok' : 'health-pill--bad'">
@@ -20,14 +20,13 @@
         <header class="panel__head">
           <div>
             <h2 class="panel__title">系统健康</h2>
-            <p class="panel__hint">Java 安全链、研究宿主与接口契约；旧规则算法服务不再参与新评估。</p>
           </div>
           <el-button text :icon="Refresh" :loading="probing" @click="probeBackend">重新探测</el-button>
         </header>
 
         <div class="health-grid">
           <div class="health-tile">
-            <span class="health-tile__label">Java 后端</span>
+            <span class="health-tile__label">业务服务</span>
             <strong class="health-tile__value" :class="probe.ok ? 'is-ok' : 'is-bad'">
               {{ probing ? '探测中…' : probe.ok ? '在线' : probe.message }}
             </strong>
@@ -35,34 +34,27 @@
               {{ probe.latencyMs === null ? '—' : `${probe.latencyMs} ms` }} ·
               {{ info?.appVersion || '—' }} · Java {{ info?.javaVersion || '—' }}
             </span>
-            <span class="health-tile__meta mono">{{ info?.gitCommit && info.gitCommit !== 'UNKNOWN' ? info.gitCommit : '构建提交未提供' }}</span>
           </div>
 
           <div class="health-tile">
-            <span class="health-tile__label">研究宿主</span>
+            <span class="health-tile__label">评估服务</span>
             <strong class="health-tile__value" :class="hostState.ok ? 'is-ok' : 'is-bad'">
               {{ hostState.label }}
             </strong>
             <span class="health-tile__meta">{{ host?.baseUrl || '尚未配置服务地址' }}</span>
             <span class="health-tile__meta">
               {{ hostHealth?.available
-                ? `响应 ${hostHealth.latencyMs ?? '—'} ms · HTTP ${hostHealth.httpStatus ?? '—'}`
-                : hostHealth?.message || '等待探测' }}
+                ? `响应 ${hostHealth.latencyMs ?? '—'} 毫秒`
+                : '请检查评估服务地址和运行状态' }}
             </span>
-            <span class="health-tile__meta">动态快照 · 读取超时 {{ host?.readTimeoutSeconds ?? 120 }} 秒</span>
           </div>
 
-          <div class="health-tile">
-            <span class="health-tile__label">接口契约</span>
-            <strong class="health-tile__value">{{ contractOps }} 个操作</strong>
-            <span class="health-tile__meta">{{ contractPaths }} 条路径 · {{ contractVersion }}</span>
-            <span class="health-tile__meta mono">前端构建 {{ appVersion }} · {{ buildTime }}</span>
-          </div>
         </div>
       </article>
 
       <!-- 2. 模型仓库与通道 -->
-      <article class="panel panel--wide">
+      <details class="panel panel--wide">
+        <summary>高级设置 · 模型版本库</summary>
         <header class="panel__head">
           <div>
             <h2 class="panel__title">模型仓库</h2>
@@ -79,6 +71,13 @@
           </div>
         </header>
 
+        <p role="status">{{ loadedModelNote }}</p>
+        <ul v-if="loadedModels.length">
+          <li v-for="model in loadedModels" :key="model.specification + '/' + model.family">
+            {{ model.specification }} / {{ model.family }} · {{ shortSha(model.artifactSha256) }}
+          </li>
+        </ul>
+
         <el-skeleton v-if="modelLoading && models.length === 0" :rows="3" animated />
         <el-empty
           v-else-if="!models.length"
@@ -94,13 +93,16 @@
               </span>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="100">
+          <el-table-column label="仓库状态" width="108">
             <template #default="{ row }">
               <el-tag v-if="isEnabled(row)" type="success" effect="light" size="small">
-                启用中
+                已启用
               </el-tag>
               <el-tag v-else type="info" effect="plain" size="small">停用</el-tag>
             </template>
+          </el-table-column>
+          <el-table-column label="研究宿主" min-width="130">
+            <template #default="{ row }">{{ releaseHostState(row) }}</template>
           </el-table-column>
           <el-table-column label="Artifact SHA-256" min-width="190">
             <template #default="{ row }">
@@ -135,33 +137,14 @@
           </el-table-column>
         </el-table>
 
-        <div class="channel-row">
-          <div class="channel-row__text">
-            <strong>旧规则评估通道</strong>
-            <span>
-              {{ policyDraft ? '开启：仅用于兼容历史演示，不再进入新评估主流程' : '关闭：旧规则评分不再进入新评估' }}
-            </span>
-            <span v-if="policy?.updatedAt" class="meta">上次变更 {{ formatTime(policy.updatedAt) }}</span>
-          </div>
-          <div class="channel-row__control">
-            <el-switch
-              v-model="policyDraft"
-              inline-prompt
-              active-text="开"
-              inactive-text="关"
-              :disabled="policySaving"
-            />
-            <el-button type="primary" :loading="policySaving" @click="savePolicy">保存通道</el-button>
-          </div>
-        </div>
-      </article>
+      </details>
 
       <!-- 3. 研究宿主 -->
       <article class="panel">
         <header class="panel__head">
           <div>
-            <h2 class="panel__title">研究宿主</h2>
-            <p class="panel__hint">Java 把冻结快照交给该地址的 Python 研究服务；Token 只写不读。</p>
+            <h2 class="panel__title">评估服务配置</h2>
+            <p class="panel__hint">配置执行评估的服务地址和访问令牌。</p>
           </div>
           <span class="state" :class="host?.configured ? 'state--on' : 'state--off'">
             {{ host?.configured ? '已配置' : '未配置' }}
@@ -198,7 +181,7 @@
           </div>
 
           <div class="form-actions">
-            <el-button type="primary" :loading="hostSaving" @click="saveHost">保存研究宿主</el-button>
+            <el-button type="primary" :loading="hostSaving" @click="saveHost">保存评估服务配置</el-button>
             <el-button :disabled="hostSaving" @click="resetHostForm">还原</el-button>
             <span v-if="host?.updatedAt" class="meta">上次变更 {{ formatTime(host.updatedAt) }}</span>
           </div>
@@ -218,10 +201,10 @@
         </div>
 
         <ul class="role-matrix">
-          <li><span class="role role--admin">ADMIN</span>账号、角色、审计、系统控制</li>
-          <li><span class="role role--research">RESEARCHER</span>档案、导入、质控、研究评估</li>
-          <li><span class="role role--doctor">DOCTOR</span>授权档案、复核、随访、报告</li>
-          <li><span class="role role--patient">PATIENT</span>仅本人摘要与主治医生联系方式</li>
+          <li><span class="role role--admin">管理员</span>发放账号、管理授权、查看日志</li>
+          <li><span class="role role--research">研究员</span>整理资料、发起评估</li>
+          <li><span class="role role--doctor">医生</span>管理授权档案、复核报告、安排随访</li>
+          <li><span class="role role--patient">患者</span>查看本人摘要和随访</li>
         </ul>
 
         <div class="retention-block">
@@ -306,19 +289,18 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { getLoadedResearchModels } from '@/api/system.js'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, RefreshLeft, Upload } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import request from '@/api/request.js'
 import {
-  getAssessmentPolicy,
   getModelRepository,
   getResearchHost,
   getRetentionPolicy,
   getSystemInfo,
   rollbackModel,
-  saveAssessmentPolicy,
   saveResearchHost,
   saveRetentionPolicy,
   updateModelConfig,
@@ -342,11 +324,6 @@ function formatTime(value) {
   return Number.isNaN(date.getTime()) ? '—' : timeFormatter.format(date)
 }
 
-const appVersion = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev'
-const buildTime = typeof __BUILD_TIME__ === 'string' ? formatTime(__BUILD_TIME__) : '—'
-const contractVersion = typeof __CONTRACT_VERSION__ === 'string' ? __CONTRACT_VERSION__ : '—'
-const contractOps = typeof __CONTRACT_OPS__ === 'number' ? __CONTRACT_OPS__ : '—'
-const contractPaths = typeof __CONTRACT_PATHS__ === 'number' ? __CONTRACT_PATHS__ : '—'
 
 const loading = ref(false)
 const probing = ref(false)
@@ -379,11 +356,36 @@ const canUpload = computed(
     !uploading.value
 )
 
-const policy = ref(null)
-const policyDraft = ref(false)
-const policySaving = ref(false)
 
 const host = ref(null)
+const loadedStatus = ref('UNKNOWN')
+const loadedModels = ref([])
+const loadedModelNote = computed(() => ({
+  REPORTED: `研究宿主报告已加载 ${loadedModels.value.length} 个模型。下表按清单和模型文件摘要逐条比对。`,
+  UNSUPPORTED: '当前研究宿主未提供已加载模型清单，请以部署回执为准。',
+  NOT_CONFIGURED: '评估服务未配置或已停用，暂无法核对模型。',
+  INVALID: '评估服务返回的模型清单无效。',
+  UNAVAILABLE: '暂时无法读取评估服务的模型清单。'
+})[loadedStatus.value] || '正在核对评估服务的模型清单…')
+
+function releaseHostState(row) {
+  if (!row.artifactSha256 || !row.manifestSha256) return '无发布物可比对'
+  if (loadedStatus.value !== 'REPORTED') return '待核对'
+  return loadedModels.value.some(model => model.artifactSha256 === row.artifactSha256
+    && model.manifestSha256 === row.manifestSha256) ? '已加载同一发布物' : '宿主未加载'
+}
+
+async function loadResearchModels() {
+  loadedStatus.value = 'UNKNOWN'
+  loadedModels.value = []
+  try {
+    const data = await getLoadedResearchModels()
+    loadedStatus.value = data.status
+    loadedModels.value = data.models
+  } catch {
+    loadedStatus.value = 'UNAVAILABLE'
+  }
+}
 const hostSaving = ref(false)
 const hostHealth = computed(() => info.value?.researchHost || null)
 const hostState = computed(() => {
@@ -500,6 +502,7 @@ async function submitUpload() {
 }
 
 async function loadModels() {
+  void loadResearchModels()
   modelLoading.value = true
   modelError.value = ''
   try {
@@ -521,16 +524,6 @@ async function loadInfo() {
     infoError.value = problem?.message || '系统信息读取失败（需要管理员权限）'
   } finally {
     infoLoading.value = false
-  }
-}
-
-async function loadPolicy() {
-  try {
-    const data = await getAssessmentPolicy()
-    policy.value = data
-    policyDraft.value = Boolean(data?.testRuleEnabled)
-  } catch {
-    // request.js 已提示；保留默认值，避免误保存
   }
 }
 
@@ -572,7 +565,7 @@ function resetHostForm() {
 
 async function saveHost() {
   if (hostForm.enabled && !hostForm.baseUrl.trim()) {
-    ElMessage.warning('启用研究宿主前请填写服务地址')
+    ElMessage.warning('启用评估服务前请填写服务地址')
     return
   }
   hostSaving.value = true
@@ -586,22 +579,10 @@ async function saveHost() {
     host.value = saved
     hostForm.bearerToken = ''
     hostForm.baseUrl = saved?.baseUrl || ''
-    ElMessage.success('研究宿主已保存')
+    ElMessage.success('评估服务配置已保存')
     await loadInfo()
   } finally {
     hostSaving.value = false
-  }
-}
-
-async function savePolicy() {
-  policySaving.value = true
-  try {
-    const saved = await saveAssessmentPolicy(policyDraft.value)
-    policy.value = saved
-    policyDraft.value = Boolean(saved?.testRuleEnabled)
-    ElMessage.success(`旧规则评估通道已${policyDraft.value ? '开启' : '关闭'}`)
-  } finally {
-    policySaving.value = false
   }
 }
 
@@ -684,7 +665,6 @@ async function loadAll() {
       probeBackend(),
       loadInfo(),
       loadModels(),
-      loadPolicy(),
       loadHost(),
       loadRetention(),
       loadAccountTotal()
@@ -833,37 +813,9 @@ onMounted(loadAll)
   color: var(--soft);
 }
 
-.channel-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-top: 14px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #f8fbfd;
-}
 
-.channel-row__text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  font-size: 13px;
-  color: var(--muted);
-}
 
-.channel-row__text strong {
-  color: var(--ink);
-  font-size: 14px;
-}
 
-.channel-row__control {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
 
 .host-form {
   margin-top: 4px;

@@ -1,18 +1,19 @@
 <template>
   <div class="task-page">
-    <PageHeader back title="评估任务" subtitle="按时间倒序展示旧规则评估任务历史；研究模型评估在独立入口提交并回读。">
+    <PageHeader back title="评估任务" :subtitle="showLegacy ? '历史任务记录' : '提交模型评估，查看任务状态与报告。'">
       <template #extra>
-        <el-button :icon="Refresh" :loading="loading" @click="loadPage(page)">刷新</el-button>
-        <el-button :icon="Download" :disabled="items.length === 0" @click="exportCsv">
+        <el-button :icon="Refresh" :loading="showLegacy ? loading : researchLoading"
+          @click="showLegacy ? loadPage(page) : loadResearchTasks()">刷新</el-button>
+        <el-button v-if="showLegacy" :icon="Download" :disabled="items.length === 0" @click="exportCsv">
           导出 CSV
         </el-button>
-        <el-button v-if="canResearch" type="primary" :icon="Promotion" @click="openSubmit">
+        <el-button v-if="canResearch" type="primary" :icon="Promotion" @click="openSubmit()">
           研究模型评估
         </el-button>
       </template>
     </PageHeader>
 
-    <DataCard padding="none">
+    <DataCard v-if="showLegacy" padding="none">
       <div class="filter">
         <el-select
           v-model="statusFilter"
@@ -119,21 +120,20 @@
       </div>
     </DataCard>
 
-    <DataCard v-if="canSeeResearchReports" padding="none" class="research-tasks">
+    <DataCard v-else-if="canSeeResearchReports" padding="none" class="research-tasks">
       <div class="research-tasks__head">
-        <div>
-          <h2>研究验证任务</h2>
-          <p>来自真实研究模型运行，按创建时间倒序。</p>
-        </div>
-        <el-button text type="primary" @click="router.push('/reports?tab=research')">
+        <ResearchScopeSelect :model-value="scope" @update:model-value="setScope" />
+        <el-button text type="primary" @click="router.push({ name: 'ReportList', query: { dataScope: route.query.dataScope } })">
           查看全部报告
         </el-button>
       </div>
       <el-skeleton v-if="researchLoading" :rows="3" animated />
+      <EmptyState v-else-if="researchError" :icon="WarningFilled" title="评估任务加载失败"
+        :description="researchError" action-text="重试" @action="loadResearchTasks()" />
       <EmptyState
         v-else-if="researchTasks.length === 0"
         title="还没有研究验证任务"
-        description="在受试者档案或研究证据页发起研究模型评估后，任务会出现在这里。"
+        description="当前资料范围内的任务将在提交评估后出现。"
         :icon="Cpu"
       />
       <el-table v-else :data="researchTasks" size="small" row-key="taskId" @row-click="openResearchReport">
@@ -162,6 +162,14 @@
         </el-table-column>
       </el-table>
     </DataCard>
+
+    <ControlledAssessmentQueue v-if="!showLegacy && canSeeResearchReports && scope === CONTROLLED_RESEARCH" />
+
+    <ResearchSupplementQueue
+      v-if="!showLegacy && canSeeResearchReports"
+      :data-scope="scope"
+      @assess="openSubmit"
+    />
 
     <!-- 阶段详情：列表行不含 stages，打开时再拉单条 -->
     <el-drawer
@@ -286,23 +294,21 @@
       destroy-on-close
     >
       <el-form label-width="96px" @submit.prevent>
-        <el-form-item label="受试者 ID" required>
-          <el-input
-            v-model="submitSubjectId"
-            placeholder="输入受试者 ID，例如 22（可在档案页地址栏看到）"
-            clearable
-          />
+        <el-form-item label="受试者" required>
+          <el-select v-model="submitSubjectId" filterable clearable :loading="assessmentSubjectsLoading"
+            :no-data-text="assessmentSubjectsError || '此范围暂无可选档案'" placeholder="按档案编号或别名选择">
+            <el-option v-for="subject in assessmentSubjects" :key="subject.id" :value="subject.id"
+              :label="`${subject.subjectCode} · ${subject.alias}`" />
+          </el-select>
         </el-form-item>
       </el-form>
-      <p class="submit-hint">
-        研究评估任务不进入旧规则任务列表；提交与回读都在下方卡片内完成。旧规则评分通道已停用。
-      </p>
       <ResearchAssessmentPanel
         v-if="validSubmitSubjectId"
         :subject-id="submitSubjectId"
-        @completed="onResearchCompleted"
+        :data-scope="scope"
+        @submitted="onResearchSubmitted"
       />
-      <el-empty v-else description="先输入受试者 ID" :image-size="72" />
+      <el-empty v-else description="请先选择受试者档案" :image-size="72" />
       <template #footer>
         <el-button @click="submitOpen = false">关闭</el-button>
       </template>
@@ -319,9 +325,14 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import ResearchScopeSelect from '@/components/assessment/ResearchScopeSelect.vue'
+import { CONTROLLED_RESEARCH, researchScope } from '@/utils/researchResults.js'
 import ResearchAssessmentPanel from '@/components/assessment/ResearchAssessmentPanel.vue'
+import ResearchSupplementQueue from '@/components/assessment/ResearchSupplementQueue.vue'
+import ControlledAssessmentQueue from '@/components/assessment/ControlledAssessmentQueue.vue'
 import { cancelAssessmentTask, getAssessmentTask, getAssessmentTaskInput, listAssessmentTasks } from '@/api/assessments.js'
 import { listResearchReports } from '@/api/research.js'
+import { getSubjectDetail, listSubjects } from '@/api/subjects.js'
 import { downloadCsv } from '@/utils/csv.js'
 import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
 import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
@@ -330,6 +341,8 @@ import { useUserStore } from '@/stores/user.js'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const showLegacy = computed(() => route.query.tab === 'legacy')
+const scope = computed(() => researchScope(route.query.dataScope))
 
 const page = ref(1)
 const pageSize = ref(20)
@@ -361,20 +374,45 @@ const canResearch = computed(() => userStore.hasRole(['ADMIN', 'RESEARCHER']))
 const canSeeResearchReports = computed(() => userStore.hasRole(['RESEARCHER']))
 const researchTasks = ref([])
 const researchLoading = ref(false)
+const researchError = ref('')
+let researchRequest = 0
 const submitOpen = ref(false)
 const submitSubjectId = ref('')
+const assessmentSubjects = ref([])
+const assessmentSubjectsLoading = ref(false)
+const assessmentSubjectsError = ref('')
+let assessmentSubjectsRequest = 0
 const validSubmitSubjectId = computed(() => {
   const value = Number(submitSubjectId.value)
   return Number.isInteger(value) && value > 0
 })
 
-function openSubmit() {
-  submitSubjectId.value = ''
+async function openSubmit(subjectId = 0) {
+  const sequence = ++assessmentSubjectsRequest
+  submitSubjectId.value = subjectId || ''
+  assessmentSubjects.value = []
+  assessmentSubjectsError.value = ''
+  assessmentSubjectsLoading.value = true
   submitOpen.value = true
+  try {
+    const data = await listSubjects({ pageSize: 100, dataScope: scope.value })
+    const subjects = data?.items || []
+    if (subjectId && !subjects.some(subject => subject.id === subjectId)) {
+      const detail = await getSubjectDetail(subjectId)
+      if (detail?.subject) subjects.push(detail.subject)
+    }
+    if (sequence === assessmentSubjectsRequest) assessmentSubjects.value = subjects
+  } catch (problem) {
+    if (sequence === assessmentSubjectsRequest) assessmentSubjectsError.value = problem?.message || '档案读取失败'
+  } finally {
+    if (sequence === assessmentSubjectsRequest) assessmentSubjectsLoading.value = false
+  }
 }
 
-function onResearchCompleted(task) {
-  ElMessage.success(`研究任务 #${task?.taskId ?? ''} 已完成`)
+function onResearchSubmitted(task) {
+  ElMessage.info(`已收到评估任务 #${task.taskId} 的回执`)
+  if (task.dataScope && task.dataScope !== scope.value) setScope(task.dataScope)
+  else loadResearchTasks()
 }
 
 /** 列表请求序号：翻页竞态时只认最新一次响应 */
@@ -574,27 +612,39 @@ function openResearchReport(row) {
   router.push(`/reports/research/${row.taskId}`)
 }
 
+function setScope(value) {
+  router.replace({ query: { dataScope: value === CONTROLLED_RESEARCH ? undefined : value } })
+}
+
 async function loadResearchTasks() {
-  if (!canSeeResearchReports.value) return
+  if (showLegacy.value || !canSeeResearchReports.value) return
+  const sequence = ++researchRequest
   researchLoading.value = true
+  researchError.value = ''
   try {
-    const data = await listResearchReports({ status: 'ALL', page: 1, pageSize: 5 })
-    researchTasks.value = Array.isArray(data?.items) ? data.items : []
-  } catch {
-    researchTasks.value = []
+    const data = await listResearchReports({ pageSize: 20, dataScope: scope.value })
+    if (sequence === researchRequest) researchTasks.value = data?.items || []
+  } catch (problem) {
+    if (sequence === researchRequest) {
+      researchTasks.value = []
+      researchError.value = problem?.message || '请稍后重试'
+    }
   } finally {
-    researchLoading.value = false
+    if (sequence === researchRequest) researchLoading.value = false
   }
 }
 
-onMounted(async () => {
-  await loadPage(1)
+watch(scope, () => {
+  assessmentSubjectsRequest += 1
+  submitOpen.value = false
   loadResearchTasks()
-  // 深链：从批量面板/其他地方带 taskId 过来，直接打开详情
+})
+
+onMounted(() => {
+  if (showLegacy.value) loadPage(1)
+  else loadResearchTasks()
   const fromQuery = Number(route.query.taskId)
-  if (Number.isInteger(fromQuery) && fromQuery > 0) {
-    openTask({ taskId: fromQuery })
-  }
+  if (Number.isSafeInteger(fromQuery) && fromQuery > 0) openTask({ taskId: fromQuery })
 })
 </script>
 

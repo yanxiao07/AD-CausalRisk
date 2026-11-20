@@ -1,5 +1,19 @@
 # Research Dynamic Host Design (T1.1)
 
+## Current deployment contract
+
+The dynamic serving path reports its loaded model catalog at the bearer-protected
+`GET /api/research-table/v1/models`. The verified manifest and artifact digests
+are returned with each specification and family. Java compares these receipts
+against its repository records. Configuration at host startup determines which
+models are loaded.
+
+Java now constructs source mappings and evidence for constructed snapshots and
+the host validates their existing digests. Controlled snapshots use host-owned
+source material. A controlled run requires the separate authorization bound to
+the run, archive and digests. The T1.1 account below is retained as historical
+design context. See the [current research contract](Research_Table_Agent_Contract.md).
+
 ## Decision
 
 Use **plan A: host-owned snapshot bundles and a per-request agent**. The HTTP

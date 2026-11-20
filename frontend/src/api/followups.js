@@ -42,11 +42,13 @@ export function listFollowUpsPaged({
  * POST /api/follow-ups
  * body：{ subjectId, scheduledAt(ISO Instant), purpose }；status 可选，默认 PLANNED。
  */
-export function createFollowUp({ subjectId, scheduledAt, purpose }) {
+export function createFollowUp({ subjectId, scheduledAt, purpose, visitLocation, preparation }) {
   return request.post('/follow-ups', {
     subjectId: Number(subjectId),
     scheduledAt,
-    purpose
+    purpose,
+    visitLocation,
+    preparation
   })
 }
 
@@ -57,4 +59,8 @@ export function createFollowUp({ subjectId, scheduledAt, purpose }) {
  */
 export function updateFollowUp(followUpId, patch) {
   return request.patch(`/follow-ups/${followUpId}`, patch)
+}
+
+export function declineReschedule(followUpId, appointmentRevision) {
+  return request.post(`/follow-ups/${followUpId}/decline-reschedule`, { appointmentRevision })
 }

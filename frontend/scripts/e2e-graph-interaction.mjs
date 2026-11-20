@@ -55,8 +55,10 @@ try {
   await page.click('#submit-btn')
   await page.waitForFunction(() => location.pathname !== '/login')
   await page.goto(base + '/graph?assessmentId=99', { waitUntil: 'domcontentloaded' })
-  await page.waitForSelector('.el-drawer .stage .causal-graph__canvas canvas')
-  // 等抽屉滑入动画与 ECharts 首次 resize 完成，避免按动画中的尺寸测坐标
+  await page.waitForSelector('.sheet .causal-graph__canvas canvas')
+  await page.waitForFunction(() => location.pathname === '/reports/99')
+  await page.$eval('.sheet .causal-graph__canvas', el => el.scrollIntoView({ block: 'center' }))
+  // 等 ECharts 首次 resize 完成，再测坐标。
   await new Promise(resolve => setTimeout(resolve, 800))
 
   await page.evaluate(async () => {
@@ -64,7 +66,7 @@ try {
     const match = source.match(/import \* as echarts from ["']([^"']+)["']/)
     if (!match) throw new Error('Cannot resolve the chart module used by the component')
     const echarts = await import(match[1])
-    const el = document.querySelector('.el-drawer .causal-graph__canvas')
+    const el = document.querySelector('.sheet .causal-graph__canvas')
     window.graphTestChart = echarts.getInstanceByDom(el)
     if (!window.graphTestChart) throw new Error('Chart instance is missing')
   })
@@ -74,7 +76,7 @@ try {
     const model = chart.getModel().getSeriesByIndex(0)
     const nodeData = model.getData()
     const edgeData = model.getEdgeData()
-    const rect = document.querySelector('.el-drawer .causal-graph__canvas').getBoundingClientRect()
+    const rect = document.querySelector('.sheet .causal-graph__canvas').getBoundingClientRect()
     const nodes = []
     nodeData.eachItemGraphicEl((el, index) => {
       const point = el.transformCoordToGlobal(0, 0)
@@ -97,7 +99,7 @@ try {
       nodes, edges, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
       roam: model.get('roam'), draggable: model.get('draggable'),
       zoom: model.get('zoom'),
-      transform: getComputedStyle(document.querySelector('.el-drawer .causal-graph__canvas')).transform
+      transform: getComputedStyle(document.querySelector('.sheet .causal-graph__canvas')).transform
     }
   })
 
@@ -178,14 +180,7 @@ try {
   const reset = await snapshot()
   check('double click resets zoom', Math.abs(reset.zoom - 1) < 0.001, reset.zoom)
   attached('edge labels stay attached after reset', reset)
-  // 图谱现在在右侧抽屉里：关闭抽屉应回到历史图谱页
-  await page.evaluate(() => document.querySelector('.el-drawer__close-btn')?.click())
-  await new Promise(resolve => setTimeout(resolve, 900))
-  const drawerClosed = await page.evaluate(() => {
-    const overlay = document.querySelector('.el-overlay')
-    return !overlay || getComputedStyle(overlay).display === 'none'
-  })
-  check('关闭抽屉后回到历史图谱页', drawerClosed, '')
+  check('历史图谱链接打开原报告', new URL(page.url()).pathname === '/reports/99')
   result.probe = { initial, moved, panned, zoomed, reset }
   await page.screenshot({ path: output + 'graph-fixed.png', fullPage: true })
   check('no browser errors', result.errors.length === 0, result.errors)

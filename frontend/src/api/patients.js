@@ -1,16 +1,6 @@
 import request from './request.js'
 
 /**
- * GET /api/patients/me/summary —— 患者本人的脱敏摘要。
- *
- * 只返回通俗结论、复诊安排与局限声明；不含 riskScore、因果图或解释贡献。
- * 任何非 PATIENT 角色调用都会得到 403。
- */
-export function getPatientSummary() {
-  return request.get('/patients/me/summary')
-}
-
-/**
  * GET /api/patients/me/research-summary —— 研究验证结果的定性、脱敏摘要。
  *
  * 只返回状态与通俗结论；不含 CIF、模型权重、因果图或原始 resultJson。
@@ -33,4 +23,8 @@ export function getMyDoctor() {
  */
 export function getMyFollowUp() {
   return request.get('/patients/me/follow-up')
+}
+
+export function respondToFollowUp(id, appointmentRevision, action, note) {
+  return request.post(`/patients/me/follow-up/${id}/response`, { appointmentRevision, action, note }, { silent: true })
 }

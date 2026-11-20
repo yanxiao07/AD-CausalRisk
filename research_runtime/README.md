@@ -2,6 +2,18 @@
 
 [表格研究通道](../docs/Research_Table_Agent_Contract.md)复用内存评估与语义校验。模型验证展示从受控目录核对清单和参数摘要，加载七变量 LR，再评估固定人工快照。[启动说明](../backend/README.md#本地研究任务联调)同时给出使用公开人工参数的契约回归方式。真实患者输入仍待独立准入。
 
+### 受控资料的指定运行授权
+
+动态宿主的 `--controlled-authorization-file <文件>` 可在启动时读取一个已有的授权记录。未指定时，受控资料进入资料核验。宿主配置管理者应先核实用途和授权，授权记录放在 `--snapshot-dir` 之外且由宿主方管理。HTTP 调用方只能提交原评估请求。
+
+| 授权 JSON 字段 | 来源 |
+| --- | --- |
+| `runId`、`snapshotId`、`subjectId` | 同一份受控冻结快照与其档案 |
+| `requestSha256`、`inputSha256`、`contextSha256` | 该快照已校验的请求、模型输入和独立证据摘要 |
+| `predictionAuthorizationRef`、`explanationAuthorizationRef` | 分别允许预测和解释的独立授权凭据编号 |
+
+宿主仅对全部绑定匹配的受控快照使用该记录。证据不全仍返回 `BLOCKED`，预测和解释调用均为零。证据齐备但缺少匹配授权时返回 `INDEPENDENT_EXECUTION_PERMISSION_REQUIRED`。授权编号留在宿主配置。撤回或替换授权后需重启宿主。同一快照仍走原业务幂等与重试规则。当前候选仅验收 Python HTTP 的人工输入，Java 仍只接收受控核验结果。
+
 [统一表格评估入口](../docs/Table_Assessment_Integration.md)将原许可预测与保存参考SHAP连接成同一输入/模型状态的内存结果，保留来源准入、独立解释权限和失败无部分数值。它是后续真实业务接入的计算步骤，不读取真实数据/参数、不新增HTTP或更换默认服务。
 
 新七/十变量模型的[Python接入候选](../docs/Research_Model_Integration_Candidate.md)区分规则引擎/旧V8 HTTP、离线CLI与现有内存API，提供字段差异和纯标准库人工请求/响应示例。候选不新增服务或共享契约；离线九组合与内存表格六组合的支持边界分别保留。

@@ -6,12 +6,11 @@
         <span class="patient__mark" aria-hidden="true">AD</span>
         <div>
           <strong>我的健康档案</strong>
-          <small>受试者视图</small>
         </div>
       </div>
 
       <el-button class="patient__logout" size="large" text @click="onLogout">
-        退出
+        退出登录
       </el-button>
     </header>
 
@@ -77,6 +76,7 @@ async function onLogout() {
 .patient__brand {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 14px;
 }
 
@@ -85,6 +85,7 @@ async function onLogout() {
   place-items: center;
   width: 48px;
   height: 48px;
+  flex: 0 0 48px;
   border-radius: 14px;
   background: linear-gradient(135deg, var(--brand-600), var(--brand-700));
   color: #fff;
@@ -95,17 +96,13 @@ async function onLogout() {
 
 .patient__brand strong {
   display: block;
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 700;
-}
-
-.patient__brand small {
-  font-size: 15px;
-  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .patient__logout {
-  font-size: 18px;
+  font-size: 1rem;
   color: var(--muted);
 }
 

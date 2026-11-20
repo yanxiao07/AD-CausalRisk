@@ -47,7 +47,7 @@ const routes = [
     path: '/admin',
     name: 'AdminHome',
     component: () => import('../views/admin/AdminHome.vue'),
-    meta: { title: '数据大屏', layout: 'sidebar', roles: ['ADMIN'] }
+    meta: { title: '管理工作台', layout: 'sidebar', roles: ['ADMIN'] }
   },
   {
     path: '/admin/audit',
@@ -101,6 +101,12 @@ const routes = [
   {
     path: '/reports',
     name: 'ReportList',
+    beforeEnter: to => {
+      const id = Number(to.query.assessmentId)
+      if (Number.isSafeInteger(id) && id > 0) return { name: 'ReportDetail', params: { assessmentId: id } }
+      if (useUserStore().primaryRole === 'ADMIN') return { name: 'AdminHome' }
+      if (to.query.tab) return { name: 'ReportList', query: { ...to.query, tab: undefined } }
+    },
     component: () => import('../views/doctor/ReportList.vue'),
     meta: { title: '评估报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER', 'ADMIN'] }
   },
@@ -125,8 +131,12 @@ const routes = [
   {
     path: '/graph',
     name: 'GraphView',
+    beforeEnter: to => {
+      const id = Number(to.query.assessmentId)
+      if (Number.isSafeInteger(id) && id > 0) return { name: 'ReportDetail', params: { assessmentId: id } }
+    },
     component: () => import('../views/doctor/GraphView.vue'),
-    meta: { title: '因果图谱', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER'] }
+    meta: { title: '评估贡献图', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER'] }
   },
   {
     path: '/admin/system',

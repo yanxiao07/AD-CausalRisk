@@ -101,6 +101,14 @@ async function openAs(role, handlers) {
     if (pathOf(url) === '/api/auth/login' || pathOf(url) === '/api/me') {
       return req.respond({ status: 200, contentType: 'application/json', body: envelope(USERS[role]) })
     }
+    if (pathOf(url) === '/api/auth/csrf') {
+      return req.respond({ status: 200, contentType: 'application/json', body: envelope({
+        headerName: 'X-XSRF-TOKEN', token: 'e2e-csrf'
+      }) })
+    }
+    if (pathOf(url).startsWith('/api/')) {
+      return req.respond({ status: 403, contentType: 'application/json', body: envelope(null) })
+    }
     return req.continue()
   })
 
@@ -153,7 +161,7 @@ try {
     }
   ])
 
-  check('doctor: 菜单可点击进入档案', await clickMenu(page, '受试者档案'), 'sidebar item')
+  check('doctor: 菜单可点击进入档案', await clickMenu(page, '患者档案'), 'sidebar item')
   await page.waitForFunction(() => location.pathname === '/subjects', { timeout: 15000 })
   check('doctor: 路由落点', await page.evaluate(() => location.pathname) === '/subjects', '')
   await page.waitForSelector('.patient-list .empty-state', { timeout: 15000 })
@@ -176,11 +184,11 @@ try {
   await page.click('.el-table__row')
   await page.waitForSelector('.el-drawer', { timeout: 10000 })
   await page.waitForFunction(
-    () => (document.querySelector('.el-drawer__title')?.textContent || '').includes('样本 1'),
+    () => (document.querySelector('.patient-drawer .drawer__desc')?.textContent || '').includes('样本 1'),
     { timeout: 10000 }
-  ).catch(() => {})
-  const drawerTitle = await page.evaluate(() => document.querySelector('.el-drawer__title, .el-drawer__header')?.textContent || '')
-  check('doctor: 抽屉打开且带档案信息', drawerTitle.includes('样本 1'), drawerTitle.trim().slice(0, 40))
+  )
+  const drawer = await page.$eval('.patient-drawer', (element) => element.innerText)
+  check('doctor: 抽屉打开且带档案信息', drawer.includes('患者档案') && drawer.includes('样本 1'), '')
   await page.screenshot({ path: join(shotDir, 'p2-subject-drawer.png') })
   await page.close()
 
@@ -240,11 +248,14 @@ try {
     () => [...document.querySelectorAll('.status-tag')].some((n) => n.textContent.includes('已入库')),
     { timeout: 15000 }
   )
-  const committedDisabled = await rPage.evaluate(() => {
-    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('确认入库'))
-    return btn?.disabled ?? false
+  const committedActions = await rPage.evaluate(() => {
+    const buttons = [...document.querySelectorAll('button')]
+    return {
+      canCommit: buttons.some((button) => button.textContent.includes('确认入库') && !button.disabled),
+      canOpenQc: buttons.some((button) => button.textContent.includes('去数据质控') && !button.disabled)
+    }
   })
-  check('researcher: 入库后按钮禁用', committedDisabled === true, `disabled=${committedDisabled}`)
+  check('researcher: 入库后可到质控且不能重复确认', committedActions.canOpenQc && !committedActions.canCommit, '')
   await rPage.screenshot({ path: join(shotDir, 'p2-import-committed.png') })
   await rPage.close()
 } finally {
