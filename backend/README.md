@@ -8,13 +8,13 @@ Java负责会话、对象授权、资料、导入、质量、持久化任务/结
 
 新评估走表格研究任务。旧评估接口保留历史读取与原幂等键回读，JSON 报告资源及当前用户接口仍可用。管理员界面按 `/api/me` 的菜单渲染，纯 ADMIN 使用 audit/system/users，多角色合并对应入口。
 
-已有库先完整备份，再在专用测试库验证 V11–V22。应用升级后 Flyway 执行前向迁移并校验历史脚本。V12 为既有演示研究账号显式保留 ALL，新研究账号默认 ASSIGNED，通过授权接口配置对象范围。目标库验收步骤见 [MySQL 8 验收](../docs/MySQL8_Acceptance.md)。
+已有库先完整备份，再在专用测试库验证迁移。应用升级后 Flyway 执行前向迁移并校验历史脚本。V12 为既有演示研究账号显式保留 ALL，新研究账号默认 ASSIGNED，通过授权接口配置对象范围。目标库验收步骤见 [MySQL 8 验收](../docs/MySQL8_Acceptance.md)。
 
 评估页接入和运行方式见[前端说明](../frontend/README.md#风险评估接入)。
 
 ## 构建与验证
 
-需要 JDK21。Windows 运行 `.\mvnw.cmd -B -ntp verify`，Linux/macOS 运行 `./mvnw -B -ntp verify`。测试使用 H2 MySQL 兼容模式，核对 93 个 API 操作与实际路由。研究适配测试使用隔离环回宿主、公开构造请求与响应。
+需要 JDK21。Windows 运行 `.\mvnw.cmd -B -ntp verify`，Linux/macOS 运行 `./mvnw -B -ntp verify`。测试使用 H2 MySQL 兼容模式，核对 115 个 API 操作与实际路由。研究适配测试使用隔离环回宿主、公开构造请求与响应。
 
 ## 启动
 
@@ -28,9 +28,33 @@ $env:ADCR_DB_PASSWORD='<db-password>'
 .\mvnw.cmd spring-boot:run
 ```
 
-Java 默认端口为 8080。无数据库配置时启动失败。Flyway 在启动时执行 V1–V22，Hibernate 验证表结构。V11 新增输入快照/质量及来源元数据，V12 新增研究数据范围，V13 新增独立研究快照和任务表，V14–V20 增加系统设置、快照上下文、宿主同步、执行批次、复核与任务租约字段；V21 增加模型发布仓库，V22 增加访视追加更正版本与当前版本约束。**MySQL 8 的 V1–V22 fresh 迁移、V12→V22 升级、备份恢复和租约恢复演练已在隔离实例验证；生产部署、在线恢复与真实进程中断演练仍待验收**。已有库按前向迁移流程升级。
+Java 默认端口为 8080。无数据库配置时启动失败。Flyway 在启动时执行 V1–V29，Hibernate 验证表结构。V23–V27 保存受控档案资料版本、患者账号申请、补件、责任医生及评估申请。V28 增加就诊地点、准备事项及按安排版本保存的预约回执。V29 追加医生患者说明的发布和撤回历史。目标库迁移和既有备份恢复记录见 [MySQL 验收](../docs/MySQL8_Acceptance.md)。
 
 合成种子账号为admin、researcher、doctor、patient、research_doctor，仓库种子口令为 `DemoPass!2026`，保存BCrypt哈希。管理员可通过账号管理重置密码；本地既有账号密码不会在升级时重置。
+
+## 患者建档与账号开通
+
+医生建立档案并完成访视资料录入，通过档案中的质控入口检查当前版本。以当前访视的 MMSE、CDR-SB 和质控无阻断作为账号申请条件，可带提示继续。Java 同时核对数据版本及原输入摘要。修改资料后，医生应重新质控并更新待发放申请。管理员核对本人身份、档案和责任医生后发放；Java 在同一事务再次核对申请绑定的质控与医生权限，创建患者账号、档案摘要权限和责任医生关系。历史发放记录无责任医生字段时，患者只会看到唯一符合原授权规则的联系人。当前质量闸门用于业务开通流程，受控研究许可由研究宿主独立核对。
+
+## 研究补件交接
+
+### 医生申请评估
+
+医生在档案概览使用「预测评估」，须拥有该档案的显式管理权限。Java 核对当前质控摘要和最近访视的 MMSE、CDR-SB。测试档案还需保存同一访视日期及分数的七项模型资料，申请后复用原模型、任务租约和幂等机制，报告回到医生待复核。开通患者账号可独立办理。
+
+受控申请保存在 V27 的队列。仅具备显式档案授权的研究员可读，执行时核对当前质控、批准快照、部署方授权、研究宿主地址和摘要。无匹配许可时保留待核验。患者通过原有入口查看经医生确认的本人摘要和随访。
+
+- 受控重试沿用首次发送的档案、质控、冻结内容及指定宿主校验。已失效申请或未获许可的重试在出站之前拒绝。
+- 患者账号通过申请发放。管理员可以为待发放或已发放的申请确认另一名拥有该档案管理权限的医生，原申请人可追溯。
+- `GET/PUT/DELETE /api/research/table-assessment-tasks/{id}/patient-publication` 提供已确认报告的患者说明。复核更新进度，单独发布才会把说明交给患者。撤回追加一条历史记录。患者摘要禁止根据模型输出自动分档。
+- `POST /api/research/table-assessment-tasks/snapshots/batch-csv` 默认只预检，可传 `preview=false` 保存通过的七变量测试快照。使用当前质控访视的两个分数和模板中的五个字段，保存后另行提交评估。已有同版本同内容快照复用原编号。
+- 管理员的 `/api/system/research-models` 返回配置宿主报告的已加载模型摘要。仓库启用状态和部署状态分开管理，宿主不支持查询时返回 `UNSUPPORTED`。
+
+V25 新增补件单。医生从 `BLOCKED` 或已复核为 `NEEDS_DATA` 的原任务创建，同一任务只建一张。具备显式档案 VIEW/MANAGE 的研究员可以领取并回传；医生或当前领取人可退回待领取。回传必须关联领取人为同一档案、同资料范围的新快照生成的已核验任务，接受 `COMPLETED` 或仍需补资料的 `BLOCKED`，保留原报告。患者端仅可继续查看本人的脱敏摘要和随访。
+
+医生录入的测试快照交接也要求研究账号有显式档案 VIEW/MANAGE 授权，可在发放患者账号前办理。真实数据证据准入和执行许可分别验收。
+
+具备测试档案显式 MANAGE 授权的医生，可用 `GET /api/research/table-assessment-tasks/snapshots/doctor-intake?subjectId=...` 分页回看已保存的七项输入与同步状态。响应只读取标记为医生录入的构造快照，省略请求结构、来源内部绑定和运行标识。档案质控继续读取持久化访视与特征。
 
 ## 表格研究评估适配
 
@@ -41,11 +65,24 @@ Java 默认端口为 8080。无数据库配置时启动失败。Flyway 在启动
 | 读取 | `GET /api/research/table-assessment-tasks/{id}` 从 Java 读取持久化任务及已校验的研究结果。 |
 | 受控登记 | `POST /api/research/table-assessment-tasks/snapshots/register`，请求体 `{subjectId, indexDate?, features?}`（也可传完整的 `{subjectId, request, model}`）；仅 ADMIN/RESEARCHER 且具备该档案原始数据权限，写入冻结快照并返回 `{snapshotId}`。 |
 
+报告、复核、工作台摘要和指标接口可用 `dataScope` 过滤 `CONTROLLED_RESEARCH` 或 `CONSTRUCTED_VALIDATION`。报告列表还支持 `subjectId`，按创建时间及任务编号降序排序，先做对象授权与范围筛选再分页。快照和任务回执的 `dataScope` 来自冻结记录，任务没有模型结果时也会返回。人工登记和批量构造仅适用 `DEMO-` 档案。
+
 管理员或研究员须为快照登记的授权用户，同时具备当前档案原始数据权限。患者角色优先排除。快照保存原始 UTF-8 请求、原字节 SHA-256、独立固定的请求/输入/上下文摘要、模型身份、档案及授权用户。业务评估接收已登记的 `CONSTRUCTED_VALIDATION` 样例，模型固定为 `trained-seven-logistic`。人工快照可由隔离启动器或受控登记接口登记。真实来源映射、快照登记和执行资格继续依赖独立证据。字段、单位、索引时钟与 QC 责任见[研究契约](../docs/Research_Table_Agent_Contract.md)。
 
 默认研究宿主未配置，已授权且已登记的首次请求返回 503。联调时设置 `research.table.base-url`、`research.table.bearer-token` 与可选的 `research.table.read-timeout`（默认 120 秒）。Java 按草案同步 POST 到独立研究宿主。宿主接收原始快照字节并独立绑定来源、模型及预测和解释授权。HTTP 限环回地址，远程地址使用 HTTPS。
 
 Java 先持久化任务、快照引用和幂等键，再发一次 POST。超时、断线或无效响应保留 `OUTCOME_UNKNOWN`，原键重放和 GET 只查本地任务，同一快照换键返回 409。合法拒绝保留错误码及 `FAILED`。通过原候选 Schema、独立身份绑定、双原因 CIF 和解释重构检查后才保存结果。阻断保持预测、解释及绑定为 null，计算次数为零。审计保存任务 ID 和状态。现有患者摘要与演示风险数据沿用各自接口。
+
+### 指定受控回顾性结果入库
+
+`research.table.controlled-admission-enabled=true` 启用受控资料核验，默认只保存 `BLOCKED`。接收指定回顾性快照的 `COMPLETED` 时，部署人员需同时配置以下两项，并独立核对执行及入库范围：
+
+| 启动配置 | 取值 |
+| --- | --- |
+| `research.table.controlled-completion-base-url` | 预先核对的研究宿主根地址。必须与实际响应的评估请求地址对应。 |
+| `research.table.controlled-completion-authorization-file` | 部署方持有的独立授权 JSON 记录。使用 `runId`、`snapshotId`、`subjectId`、`requestSha256`、`inputSha256`、`contextSha256`、`predictionAuthorizationRef`、`explanationAuthorizationRef`。由来源和执行许可持有人确认，保存在服务管理的本机路径。 |
+
+两个值在启动时读取。Java 校验配置、档案编号及档案代码、冻结请求与重算模型输入摘要，然后核对响应的模型、独立证据摘要和输出结构。无法证明绑定的成功响应保留 `OUTCOME_UNKNOWN`，结果为 null。撤回配置后须重启 Java，已持久化报告仍走原查询与对象权限。研究报告继续由医生复核，患者本人只能从患者接口查看复核状态、摘要文字与随访。该接入在独立 H2 和人工回顾性资料上验证。
 
 ## 本地研究任务联调
 
