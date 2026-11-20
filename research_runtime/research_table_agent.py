@@ -26,7 +26,7 @@ class ResearchTableAgent:
     There is no run store/replay: Java must persist its own idempotent task.
     """
     def __init__(self, *, model_key, subject_code, assessment, trusted_context,
-                 data_scope):
+                 data_scope, controlled_execution=None):
         try:
             context = _snapshot(trusted_context, 'CONTEXT_FORMAT')
             _context(context)
@@ -42,10 +42,16 @@ class ResearchTableAgent:
         self._model_key, self._subject_code = model_key, subject_code
         self._assessment, self._context = assessment, context
         self._data_scope = data_scope
+        self._controlled_execution = controlled_execution if data_scope == 'CONTROLLED_RESEARCH' else None
+
+    @property
+    def data_scope(self):
+        return self._data_scope
 
     def handle_json(self, raw, *, authorization_granted=False,
                     prediction_authorization_ref=None, explanation_authorization_ref=None,
                     max_coalitions=512):
+        """Check admission before using an independently configured execution grant."""
         if type(raw) is not bytes:
             _fail('REQUEST_JSON_INVALID')
         if len(raw) > POLICY['maximumJSONBytes']:
@@ -61,8 +67,17 @@ class ResearchTableAgent:
         run_id = body['runId']
         if body['contractVersion'] != CONTRACT:
             _fail('RESEARCH_CONTRACT_MISMATCH', run_id)
-        if (authorization_granted is not True or not _token(prediction_authorization_ref)
-                or not _token(explanation_authorization_ref)):
+        request_digest = digest(body)
+        if self._controlled_execution is not None:
+            bound_digest, prediction_ref, explanation_ref = self._controlled_execution
+            if request_digest == bound_digest:
+                authorization_granted = True
+                prediction_authorization_ref = prediction_ref
+                explanation_authorization_ref = explanation_ref
+        execution_permitted = (authorization_granted is True
+                               and _token(prediction_authorization_ref)
+                               and _token(explanation_authorization_ref))
+        if not execution_permitted and self.data_scope == 'CONSTRUCTED_VALIDATION':
             _fail('INDEPENDENT_EXECUTION_PERMISSION_REQUIRED', run_id)
         if body['modelKey'] != self._model_key:
             _fail('MODEL_NOT_BOUND', run_id)
@@ -81,12 +96,14 @@ class ResearchTableAgent:
             admission = validate_snapshot(request, trusted_context=self._context)
         except AdmissionError:
             _fail('INPUT_DECLARATION_INVALID', run_id)
+        if admission['status'] == 'METADATA_CONSISTENT' and not execution_permitted:
+            _fail('INDEPENDENT_EXECUTION_PERMISSION_REQUIRED', run_id)
         try:
             grant = None if admission['status'] != 'METADATA_CONSISTENT' else authorize_once(
                 request, trusted_context=self._context, authorization_granted=True,
                 authorization_ref=prediction_authorization_ref)
             result = self._assessment.run(request, trusted_context=self._context, permit=grant,
-                explanation_authorized=True, explanation_authorization_ref=explanation_authorization_ref,
+                explanation_authorized=execution_permitted, explanation_authorization_ref=explanation_authorization_ref,
                 max_coalitions=max_coalitions)
             if result['status'] not in ('COMPLETED', 'BLOCKED'):
                 _fail('ASSESSMENT_FAILED', run_id)
@@ -100,7 +117,7 @@ class ResearchTableAgent:
                 prediction=None if point is None else dict(adCif24m=point[0]['ad_cif_24m'],
                     otherDementiaCif24m=point[0]['other_dementia_cif_24m']),
                 explanation=result['explanation'], binding=result.get('basis'),
-                requestSha256=digest(body),
+                requestSha256=request_digest,
                 computation=dict(directCifCalls=result['prediction']['predictionCalls'],
                     explanationCifCalls=result['explanationCifCalls']),
                 synchronousExecution=True, persistentRunStore=False,

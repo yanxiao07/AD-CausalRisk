@@ -37,8 +37,11 @@ class ResearchTableContractTests(unittest.TestCase):
         validate(self.spec)
         self.assertEqual(self.spec['x-implementation-state'],'DRAFT_FOR_BACKEND_REVIEW')
         self.assertEqual(self.spec['servers'],[])
-        for path in self.spec['paths'].values():
-            self.assertEqual(path['post']['x-implementation-state'],'CONSTRUCTED_LOOPBACK_VALIDATION')
+        for route, path in self.spec['paths'].items():
+            if route == '/api/research-table/v1/models':
+                self.assertEqual(path['get']['x-implementation-state'], 'HOST_LOADED_CATALOG')
+            else:
+                self.assertEqual(path['post']['x-implementation-state'],'CONSTRUCTED_LOOPBACK_VALIDATION')
 
     def test_new_path_does_not_replace_either_existing_contract(self):
         for name in ['python-agent.openapi.json','research-runtime.openapi.json']:

@@ -23,6 +23,7 @@ from research_runtime.research_table_protocol import digest
 
 ROUTE = "/api/research-table/v1/assessments"
 SNAPSHOT_ROUTE = "/api/research-table/v1/snapshots"
+MODEL_STATUS_ROUTE = "/api/research-table/v1/models"
 
 
 def cases(trained_manifest=None, trusted_sha256=None):
@@ -87,7 +88,7 @@ def static_resolver(agents):
     return resolve
 
 
-def handler(resolve, token, register=None):
+def handler(resolve, token, register=None, models=None):
     class ResearchHandler(BaseHTTPRequestHandler):
         def setup(self):
             super().setup()
@@ -100,6 +101,15 @@ def handler(resolve, token, register=None):
             supplied = self.headers.get_all("Authorization", [])
             return (len(supplied) == 1
                     and compare_digest(supplied[0].encode(), token))
+
+        def do_GET(self):
+            if self.path != MODEL_STATUS_ROUTE or models is None:
+                self.send_error(404)
+                return
+            if not self.authorized():
+                self.respond(401, dict(errorCode="AUTH_REQUIRED"))
+                return
+            self.respond(200, dict(models=models()))
 
         def do_POST(self):
             if self.path == ROUTE:
@@ -151,7 +161,7 @@ def handler(resolve, token, register=None):
                 result = register(body)
             except DynamicSnapshotError as error:
                 code = str(error).split(": ")[-1]
-                status = 409 if "RUN_ID_CONFLICT" in code else 400
+                status = {"RUN_ID_CONFLICT": 409, "SNAPSHOT_DIRECTORY_UNAVAILABLE": 503}.get(code, 400)
                 self.respond(status, dict(errorCode=code,
                                           message="Snapshot bundle rejected"))
                 return
@@ -181,9 +191,12 @@ def handler(resolve, token, register=None):
             if not isinstance(run, str) or not RUN_ID_RE.fullmatch(run):
                 raise ResearchAgentError("RUN_ID_INVALID")
             agent = resolve(run, body)
-            result = agent.handle_json(raw, authorization_granted=True,
-                prediction_authorization_ref="CONSTRUCTED-HTTP-PREDICT",
-                explanation_authorization_ref="CONSTRUCTED-HTTP-EXPLAIN")
+            if agent.data_scope == "CONSTRUCTED_VALIDATION":
+                result = agent.handle_json(raw, authorization_granted=True,
+                    prediction_authorization_ref="CONSTRUCTED-HTTP-PREDICT",
+                    explanation_authorization_ref="CONSTRUCTED-HTTP-EXPLAIN")
+            else:
+                return agent.handle_json(raw)
             print(json.dumps(dict(runId=run, status=result["status"], **result["computation"])), flush=True)
             return result
 
@@ -224,15 +237,17 @@ def main():
                                        args.snapshot_dir)
             resolve = host.resolve
             register = host.register
+            models = host.model_status
             manifest = dict(mode="dynamic", cases={}, snapshots=host.describe())
         else:
             agents, manifest = cases(args.trained_manifest, args.trusted_manifest_sha256)
             resolve = static_resolver(agents)
             register = None
+            models = None
             manifest = dict(mode="trained" if args.trained_manifest else "contract-test", cases=manifest)
     except (ValueError, OSError, KeyError, TypeError):
         parser.exit(1, "Research model or assessment configuration unavailable.\n")
-    with HTTPServer(("127.0.0.1", args.port), handler(resolve, ("Bearer " + token).encode(), register)) as server:
+    with HTTPServer(("127.0.0.1", args.port), handler(resolve, ("Bearer " + token).encode(), register, models)) as server:
         with args.manifest.open("x", encoding="utf-8") as stream:
             json.dump(dict(port=server.server_port, **manifest), stream, ensure_ascii=False)
         server.serve_forever()

@@ -7,10 +7,12 @@ path, a context, feature values or a model identity from the request itself.
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from python_service.deepagent_contract import RUN_ID_RE
-from .input_admission import (AdmissionError, CONTEXT_SCHEMA, SCHEMA, SPECS,
+from .input_admission import (AdmissionError, CONTEXT_SCHEMA, SCHEMA,
     _context, _snapshot, _token, validate_snapshot)
 from .research_table_protocol import CONTRACT, REQUEST_FIELDS, digest
 
@@ -94,9 +96,7 @@ def verify_bundle(bundle, *, path=None):
         for key in ("dataVersion", "indexDate", "availabilityPolicy"):
             if request[key] != context[key]:
                 _fail("BUNDLE_REQUEST_CONTEXT_MISMATCH")
-        if model["specification"] not in SPECS or model["specification"] != "seven":
-            _fail("BUNDLE_SPECIFICATION")
-        if model["family"] != "logistic" or list(model["features"]) != list(SPECS["seven"]):
+        if model["family"] not in ("logistic", "random_forest", "xgboost"):
             _fail("BUNDLE_MODEL")
         core = admission_core(request, model)
         try:
@@ -172,9 +172,13 @@ def bundle_from_parts(*, run_id, request, model, context, snapshot_id=None,
 
 def load_bundle(path):
     path = Path(path)
-    if path.stat().st_size > MAXIMUM_BUNDLE_BYTES:
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(MAXIMUM_BUNDLE_BYTES + 1)
+    except OSError:
+        _fail("SNAPSHOT_DIRECTORY_UNAVAILABLE")
+    if len(raw) > MAXIMUM_BUNDLE_BYTES:
         raise DynamicSnapshotError(f"{path.name}: BUNDLE_TOO_LARGE")
-    raw = path.read_bytes()
     try:
         value = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_pairs,
                            parse_constant=_reject_constant)
@@ -186,18 +190,26 @@ def load_bundle(path):
 
 
 def write_bundle(path, bundle, *, replace=False):
-    """Write a verified bundle without ever writing an unverified file."""
+    """Publish a verified bundle atomically, preserving existing bindings by default."""
     verify_bundle(bundle)
+    raw = (json.dumps(bundle, ensure_ascii=False, allow_nan=False, sort_keys=True,
+                      separators=(",", ":")) + "\n").encode("utf-8")
+    if len(raw) > MAXIMUM_BUNDLE_BYTES:
+        _fail("BUNDLE_TOO_LARGE")
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists() and not replace:
-        raise FileExistsError(path)
-    temporary = path.with_name(path.name + ".tmp")
-    with temporary.open("w", encoding="utf-8", newline="\n") as stream:
-        json.dump(bundle, stream, ensure_ascii=False, allow_nan=False,
-                  sort_keys=True, indent=2)
-        stream.write("\n")
-    temporary.replace(path)
+    temporary = None
+    try:
+        with NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(raw)
+        if replace:
+            temporary.replace(path)
+        else:
+            os.link(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 class SnapshotDirectory:

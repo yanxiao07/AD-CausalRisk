@@ -104,8 +104,23 @@ def verify_sessions(root, ready, bindings, trained):
         require(call(owner, base + endpoint, data=legacy, headers={"Idempotency-Key": "retired"},
                      status=503)["errorCode"] == "RESEARCH_UNAVAILABLE", "Rule scoring was not retired")
     snapshots_url = base + TASKS + "/snapshots?subjectId=" + str(ready["subjectId"])
-    expected_snapshots = [{"snapshotId": ready["snapshots"]["seven"], "taskId": None}] if trained else []
-    require(call(owner, snapshots_url)["data"] == expected_snapshots, "Unexpected snapshot list")
+    expected_tasks = {snapshot_id: None for snapshot_id in ready["snapshots"].values()}
+
+    def verify_snapshot_options():
+        options = call(owner, snapshots_url)["data"]
+        by_id = {option["snapshotId"]: option for option in options}
+        require(len(options) == len(expected_tasks) and by_id.keys() == expected_tasks.keys(),
+                "Unexpected snapshot list")
+        for label, snapshot_id in ready["snapshots"].items():
+            option = by_id[snapshot_id]
+            request = bindings["cases"][label]["request"]
+            require(option["taskId"] == expected_tasks[snapshot_id]
+                    and option["dataScope"] == "CONSTRUCTED_VALIDATION"
+                    and option["hostSyncStatus"] == "SYNCED"
+                    and option["modelKey"] == request["modelKey"],
+                    "Snapshot option is not bound to the expected input or task")
+
+    verify_snapshot_options()
     require(call(outsider, snapshots_url)["data"] == [], "Non-owner snapshot list disclosed a snapshot")
     call(patient, snapshots_url, status=403)
     results = {}
@@ -125,8 +140,6 @@ def verify_sessions(root, ready, bindings, trained):
                     and result["computation"]["directCifCalls"] == 1
                     and result["computation"]["explanationCifCalls"] >= 2,
                     "Expected a bound trained-model prediction and explanation")
-            expected_snapshots[0]["taskId"] = task["taskId"]
-            require(call(owner, snapshots_url)["data"] == expected_snapshots, "Saved task not listed")
         else:
             fixture = root / "docs/contracts/examples/research-table-agent" / f"response-{label}.json"
             expected = json.loads(fixture.read_text(encoding="utf-8"))
@@ -142,6 +155,8 @@ def verify_sessions(root, ready, bindings, trained):
         call(owner, base + TASKS, data=snapshot, headers={"Idempotency-Key": f"other-{label}"}, status=409)
         call(outsider, detail, status=403)
         call(patient, detail, status=403)
+        expected_tasks[snapshot["snapshotId"]] = task["taskId"]
+        verify_snapshot_options()
         results[label] = {"taskId": task["taskId"], "status": status}
     require(call(patient, summary_url)["data"] == before, "Research result changed the patient summary")
     return results
