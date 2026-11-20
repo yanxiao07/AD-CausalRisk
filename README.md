@@ -47,17 +47,18 @@ Set-Location AD-CausalRisk
 
 ### 启动 Java 与 Vue
 
-在终端一从仓库根目录启动 Java。以下使用专用演练文件库，Flyway 初始化 V1–V29。
+在终端一从仓库根目录启动 Java。以下使用专用演练文件库，Flyway 初始化 V1–V29。H2 驱动由 Maven 测试依赖提供，所以演练命令显式加载该类路径。
 
 ```powershell
 Set-Location backend
-.\mvnw.cmd -B -ntp -DskipTests package
+.\mvnw.cmd -B -ntp compile dependency:build-classpath '-DincludeScope=test' '-Dmdep.outputFile=target/h2-demo-classpath.txt'
 New-Item -ItemType Directory -Force runtime | Out-Null
 $env:SPRING_DATASOURCE_URL = 'jdbc:h2:file:./runtime/adcr-demo;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE'
 $env:SPRING_DATASOURCE_USERNAME = 'sa'
 $env:SPRING_DATASOURCE_PASSWORD = ''
 $env:SPRING_DATASOURCE_DRIVER_CLASS_NAME = 'org.h2.Driver'
-java -jar target/backend-0.1.0-SNAPSHOT.jar --server.address=127.0.0.1
+$demoDependencies = (Get-Content target/h2-demo-classpath.txt -Raw).Trim()
+java -cp "target/classes;$demoDependencies" com.adcausalrisk.backend.BackendApplication --server.address=127.0.0.1
 ```
 
 在终端二从仓库根目录启动 Vue，访问 [本机登录页](http://127.0.0.1:5173/login)。默认 Vue、Java 和研究宿主端口分别为 `5173`、`8080`、`16301`。
