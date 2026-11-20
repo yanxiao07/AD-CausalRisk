@@ -5,7 +5,9 @@
     </template>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-else-if="loading" role="status">正在读取评估申请…</p>
-    <p v-else-if="!items.length">没有您有权处理的评估申请。</p>
+    <p v-else-if="!items.length">
+      暂无可处理的评估申请。医生在患者档案的「预测评估」提交后，拥有档案权限的研究员可在这里查看受控评估申请。
+    </p>
     <article v-for="item in items" :key="item.id" class="assessment-item">
       <strong>{{ item.alias || item.subjectCode }}</strong>
       <p>{{ message(item) }}</p>

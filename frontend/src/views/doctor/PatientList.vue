@@ -3,6 +3,7 @@
     <PageHeader back
       :title="doctorView ? '患者档案' : '受试者档案'"
       subtitle="点击档案查看资料与评估记录。"
+      :terms="doctorView ? ['quality', 'coreScales', 'archiveBinding'] : ['controlled', 'constructed', 'dataVersion', 'source']"
     >
       <template #extra>
         <ResearchScopeSelect v-if="!doctorView" :model-value="scope" @update:model-value="setScope" />
@@ -152,15 +153,20 @@
         </el-descriptions>
 
             <section v-if="userStore.hasRole('DOCTOR') && canEditSubject" class="drawer__section onboarding">
-              <h3>访视量表</h3>
+              <h3>档案资料</h3>
               <p v-if="!timelineLoading">已保存 {{ visits.length }} 条访视。质控读取档案里的访视和特征。</p>
               <el-button type="primary" size="small" @click="openVisitRecord()">录入访视量表</el-button>
               <el-button size="small" @click="drawerTab = 'records'">查看已保存访视</el-button>
+              <el-button size="small" @click="openFeatureRecord()">补录检验和影像结果</el-button>
             </section>
 
             <DoctorAssessmentRequest v-if="doctorView && canEditSubject" :key="selected.id"
-              :subject-id="selected.id" :revision="assessmentRequestRevision"
+              :subject-id="selected.id" :revision="assessmentRequestRevision" :can-check-quality="canQualityCheck"
               @visit="openVisitRecord()" @quality="qualityCheckOpen = true" @snapshot="intakeOpen = true" />
+            <section v-else-if="doctorView && subjectCapabilities" class="drawer__section">
+              <h3>预测评估</h3>
+              <p>提交评估申请和补录资料需要该档案的管理权限。</p>
+            </section>
 
             <section v-if="userStore.hasRole('DOCTOR') && canEditSubject" class="drawer__section onboarding">
               <h3>患者账号开通</h3>
@@ -539,16 +545,15 @@
 
           <!-- Tab 4：就诊与随访记录 -->
           <el-tab-pane label="就诊与随访记录" name="records">
-            <!-- 补录写 visit/subject_feature 表，后端要求 ADMIN/RESEARCHER 且对该档案有管理权 -->
             <div v-if="canEditSubject" class="drawer__section drawer__actions">
               <el-button size="small" :icon="FirstAidKit" @click="openVisitRecord()">
                 录入访视量表
               </el-button>
-              <el-button size="small" :icon="DataAnalysis" @click="featureDialogOpen = true">
-                补录特征
+              <el-button size="small" :icon="DataAnalysis" @click="openFeatureRecord()">
+                补录检验和影像结果
               </el-button>
               <el-button size="small" :icon="DocumentAdd" @click="observationDialogOpen = true">
-                补录观测
+                补录观测（含来源）
               </el-button>
             </div>
 
@@ -560,6 +565,24 @@
                 @correct="openCorrection"
               />
             </div>
+
+            <section v-if="doctorView && canQualityCheck" class="drawer__section">
+              <h3>已保存的检验和影像结果</h3>
+              <p v-if="timelineLoading" role="status">正在读取结果…</p>
+              <p v-else-if="archiveFeatures === null" role="alert">暂时无法读取结果。</p>
+              <p v-else-if="!archiveFeatures.length">尚未保存检验或影像结果。</p>
+              <el-table v-else :data="archiveFeatures" size="small" max-height="220">
+                <el-table-column label="指标" min-width="150">
+                  <template #default="{ row }">{{ featureFields[row.featureName]?.label || row.featureName }}</template>
+                </el-table-column>
+                <el-table-column label="结果" min-width="130">
+                  <template #default="{ row }">
+                    {{ row.featureValue == null ? '未记录' : `${row.featureValue} ${{ count: '个', normalized: '（归一化）' }[row.unit] || row.unit || ''}` }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="recordedAt" label="日期" min-width="112" />
+              </el-table>
+            </section>
 
             <div class="drawer__section">
               <section class="followup">
@@ -673,6 +696,8 @@
       :subject="selected"
       @saved="onSubjectSaved"
     />
+    <DoctorArchiveIntake v-if="doctorView && archiveIntakeOpen" v-model="archiveIntakeOpen"
+      @saved="load()" @view="openDrawer" />
 
     <!-- 补录访视 / 特征 / 观测 -->
     <VisitRecordDialog
@@ -686,6 +711,7 @@
       v-if="selected"
       v-model="featureDialogOpen"
       :subject-id="selected.id"
+      :initial-feature="featureInitial"
       @saved="onRecordSaved"
     />
     <ObservationRecordDialog
@@ -721,7 +747,9 @@
       :subject-id="selected.id"
       :subject-label="selected.alias || selected.subjectCode || ''"
       :can-record-visit="canEditSubject"
+      :can-record-feature="canEditSubject"
       @record-visit="openVisitRecord()"
+      @record-feature="openFeatureRecord"
       @checked="onArchiveQualityChecked"
     />
   </div>
@@ -756,8 +784,10 @@ import VisitCorrectionDialog from '@/components/doctor/VisitCorrectionDialog.vue
 import CausalGraph from '@/components/charts/CausalGraph.vue'
 import FollowUpDialog from '@/components/followup/FollowUpDialog.vue'
 import SubjectFormDialog from '@/components/subject/SubjectFormDialog.vue'
+import DoctorArchiveIntake from '@/components/subject/DoctorArchiveIntake.vue'
 import VisitRecordDialog from '@/components/subject/VisitRecordDialog.vue'
 import FeatureRecordDialog from '@/components/subject/FeatureRecordDialog.vue'
+import { featureFields } from '@/components/subject/featureFields.js'
 import ObservationRecordDialog from '@/components/subject/ObservationRecordDialog.vue'
 import DataProvenancePanel from '@/components/subject/DataProvenancePanel.vue'
 import GraphDiffDialog from '@/components/subject/GraphDiffDialog.vue'
@@ -802,16 +832,19 @@ const drawerOpen = ref(false)
 const selected = ref(null)
 const reportScope = computed(() => subjectResearchScope(selected.value))
 const visits = ref([])
+const archiveFeatures = ref(null)
 const followUps = ref([])
 const followUpLoading = ref(false)
 const followUpDialogOpen = ref(false)
 
 // ---- 档案维护：新建 / 编辑 / 补录 / 图谱对比 ----
 const subjectFormOpen = ref(false)
+const archiveIntakeOpen = ref(false)
 const subjectFormMode = ref('create')
 const visitDialogOpen = ref(false)
 const visitInitial = ref(null)
 const featureDialogOpen = ref(false)
+const featureInitial = ref('')
 const observationDialogOpen = ref(false)
 const graphDiffOpen = ref(false)
 const qualityCheckOpen = ref(false)
@@ -910,6 +943,10 @@ async function loadSubjectCapabilities(subjectId) {
 }
 
 function openCreateSubject() {
+  if (doctorView.value) {
+    archiveIntakeOpen.value = true
+    return
+  }
   subjectFormMode.value = 'create'
   subjectFormOpen.value = true
 }
@@ -933,6 +970,12 @@ function openVisitRecord(initial = null) {
   visitInitial.value = initial
   drawerTab.value = 'records'
   visitDialogOpen.value = true
+}
+
+function openFeatureRecord(code = '') {
+  featureInitial.value = code
+  drawerTab.value = 'records'
+  featureDialogOpen.value = true
 }
 
 function prepareVisitFromSnapshot(snapshot) {
@@ -1101,6 +1144,7 @@ async function load() {  const seq = (requestSeq += 1)
 function openDrawer(row) {
   if (selected.value?.id !== row?.id) {
     visits.value = []
+    archiveFeatures.value = null
     timeline.value = []
     followUps.value = []
     reportLibrary.value = []
@@ -1175,6 +1219,7 @@ useEscapeToClose(
     followUpDialogOpen.value ||
     previewOpen.value ||
     subjectFormOpen.value ||
+    archiveIntakeOpen.value ||
     visitDialogOpen.value ||
     featureDialogOpen.value ||
     observationDialogOpen.value ||
@@ -1251,6 +1296,7 @@ async function loadTimeline() {
 
     const detail = detailRes.status === 'fulfilled' ? detailRes.value : null
     visits.value = Array.isArray(detail?.visits) ? detail.visits : []
+    archiveFeatures.value = Array.isArray(detail?.features) ? detail.features : null
     const followList =
       followRes.status === 'fulfilled' && Array.isArray(followRes.value) ? followRes.value : []
     followUps.value = followList
@@ -1390,6 +1436,7 @@ async function loadTimeline() {
     if (sequence === timelineRequest) {
       timeline.value = []
       visits.value = []
+      archiveFeatures.value = null
       followUps.value = []
     }
   } finally {

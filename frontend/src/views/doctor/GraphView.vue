@@ -1,6 +1,7 @@
 <template>
   <div class="graph-page">
-    <PageHeader back title="评估贡献图" subtitle="按档案查看最近一次评估的模型贡献。">
+    <PageHeader back title="评估贡献图" subtitle="按档案查看最近一次评估的模型贡献。"
+      :terms="['attribution', 'window']">
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" :disabled="!subjectId" @click="load">刷新</el-button>
       </template>

@@ -1,6 +1,6 @@
 <template>
   <el-dialog v-model="open" title="测试模型快照" width="min(640px, 94vw)" @open="openHistory">
-    <p>这里保存测试模型输入。档案质控读取已保存的访视和特征。</p>
+    <p>仅用于演练。测试快照保存模型使用的七项输入，档案质控仍读取已保存的访视和检验影像记录。</p>
     <template v-if="!editing">
       <p v-if="loading" role="status">正在读取已保存的测试快照…</p>
       <div v-else-if="loadError">
@@ -22,6 +22,7 @@
             {{ selected.features[field.key] ?? '未记录' }}
           </el-descriptions-item>
         </el-descriptions>
+        <p>可将评估日期、MMSE 和 CDR-SB 填入一张新访视表单。访视编号和 MoCA 仍需按实际记录填写。同日期已有访视时会转到现有记录。</p>
         <el-pagination v-if="total > pageSize" v-model:current-page="page" :page-size="pageSize"
           :total="total" layout="prev, pager, next" @current-change="load" />
       </template>
@@ -47,7 +48,7 @@
       </template>
       <template v-else>
         <el-button @click="startNew">新增测试快照</el-button>
-        <el-button v-if="selected" type="primary" @click="useForVisit">带入访视表单</el-button>
+        <el-button v-if="selected" @click="useForVisit">预填测试访视</el-button>
       </template>
     </template>
   </el-dialog>

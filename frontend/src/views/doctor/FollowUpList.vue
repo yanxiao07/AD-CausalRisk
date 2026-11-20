@@ -1,6 +1,6 @@
 <template>
   <div class="followup-page">
-    <PageHeader back title="随访计划" subtitle="按受试者查看随访，或汇总所有待办复诊。">
+    <PageHeader back title="随访计划" subtitle="按受试者查看随访，或汇总所有待办复诊。" :terms="['followup', 'reschedule']">
       <template #extra>
         <el-radio-group v-model="view" size="small" @change="onViewChange">
           <el-radio-button value="BY_SUBJECT">按受试者</el-radio-button>

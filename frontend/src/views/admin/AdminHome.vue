@@ -3,6 +3,7 @@
     <PageHeader
       title="管理工作台"
       subtitle="处理患者账号申请，查看评估服务和操作记录。"
+      :terms="['archiveBinding', 'doctorAssignment', 'audit']"
     >
       <template #extra>
         <span class="admin-updated">数据截至 {{ lastUpdatedText }}</span>

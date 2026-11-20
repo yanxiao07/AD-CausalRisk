@@ -13,6 +13,7 @@
       <div class="page-header__text">
         <h1 class="page-header__title">{{ title }}</h1>
         <p v-if="subtitle" class="page-header__subtitle">{{ subtitle }}</p>
+        <PageTerms v-if="terms.length" :names="terms" />
       </div>
     </div>
 
@@ -26,6 +27,7 @@
 import { useRouter } from 'vue-router'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user.js'
+import PageTerms from './PageTerms.vue'
 
 defineProps({
   /** 主标题 */
@@ -33,7 +35,8 @@ defineProps({
   /** 副标题，一句话说明这个页面能做什么 */
   subtitle: { type: String, default: '' },
   /** 是否显示返回按钮 */
-  back: { type: Boolean, default: false }
+  back: { type: Boolean, default: false },
+  terms: { type: Array, default: () => [] }
 })
 
 const router = useRouter()

@@ -1,6 +1,7 @@
 <template>
   <div class="task-page">
-    <PageHeader back title="评估任务" :subtitle="showLegacy ? '历史任务记录' : '提交模型评估，查看任务状态与报告。'">
+    <PageHeader back title="评估任务" :subtitle="showLegacy ? '历史任务记录' : '提交模型评估，查看任务状态与报告。'"
+      :terms="['controlled', 'constructed', 'frozen', 'unknown']">
       <template #extra>
         <el-button :icon="Refresh" :loading="showLegacy ? loading : researchLoading"
           @click="showLegacy ? loadPage(page) : loadResearchTasks()">刷新</el-button>
@@ -220,7 +221,7 @@
 
         <section class="snapshot">
           <div class="snapshot__head">
-            <h3 class="snapshot__title">输入快照</h3>
+            <h3 class="snapshot__title"><TermHelp name="frozen" label="输入快照" /></h3>
             <el-button
               v-if="inputSnapshot?.available"
               text
@@ -322,6 +323,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Cpu, Download, Promotion, Refresh, Search, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import TermHelp from '@/components/common/TermHelp.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'

@@ -4,6 +4,7 @@
       back
       title="系统设置"
       subtitle="检查服务是否在线，管理评估服务和审计日志保留时间。"
+      :terms="['host', 'manifest', 'artifact', 'checksum']"
     >
       <template #extra>
         <span class="health-pill" :class="probe.ok ? 'health-pill--ok' : 'health-pill--bad'">
@@ -59,8 +60,8 @@
           <div>
             <h2 class="panel__title">模型仓库</h2>
             <p class="panel__hint">
-              上传 Manifest 与 Artifact 并校验 SHA-256；启用/停用/回滚均写入审计。
-              这里记录发布意图，研究宿主仍需加载同一 Artifact 才会实际改变打分。
+              上传模型清单和模型文件，核对 <TermHelp name="checksum" label="SHA-256" />。启用、停用及回滚均记录在审计日志里。
+              登记后，还需由评估服务加载对应的模型文件。
             </p>
           </div>
           <div class="panel__actions">
@@ -294,6 +295,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, RefreshLeft, Upload } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import TermHelp from '@/components/common/TermHelp.vue'
 import request from '@/api/request.js'
 import {
   getModelRepository,

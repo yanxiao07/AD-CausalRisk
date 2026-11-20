@@ -3,6 +3,7 @@
     <PageHeader
       title="研究员工作台"
       subtitle="数据导入、质控与模型评估的日常入口。"
+      :terms="['quality', 'controlled', 'frozen']"
     >
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
@@ -29,7 +30,7 @@
     </div>
 
     <div class="grid">
-      <DataCard title="质控异常待办" subtitle="WARN 需关注、BLOCKED 阻断评估；处理后再生成快照。" padding="none">
+      <DataCard title="质控异常待办" subtitle="核对提醒。被阻断的资料修正后，请重新质控。" padding="none">
         <template #header-extra>
           <el-button text type="primary" @click="router.push('/quality')">全部质控</el-button>
         </template>
@@ -38,7 +39,7 @@
         <EmptyState
           v-else-if="qcItems.length === 0"
           title="没有待处理质控"
-          description="当前没有 WARN 或 BLOCKED 的质控记录。"
+          description="当前没有需关注或被阻断的质控记录。"
           :icon="Checked"
         />
         <div v-else class="qc-list">

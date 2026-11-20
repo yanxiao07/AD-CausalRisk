@@ -56,8 +56,16 @@
           去录入访视量表
         </el-button>
         <p v-if="optionalMissing.length" class="qc-hint">
-          未录入的其他特征：{{ optionalMissing.join('、') }}。它们的缺失只作为本次档案质控提示。
+          可补录的检验和影像结果。没有报告时可暂留空，这些缺项不会阻断本次档案质控。
         </p>
+        <ul v-if="optionalMissing.length" class="qc-issues__list">
+          <li v-for="code in optionalMissing" :key="code">
+            <el-button v-if="canRecordFeature" link type="primary" @click="recordFeature(code)">
+              补录{{ featureFields[code].label }}
+            </el-button>
+            <span v-else>{{ featureFields[code].label }}</span>
+          </li>
+        </ul>
       </div>
 
       <el-collapse class="qc-json">
@@ -86,14 +94,16 @@ import { FirstAidKit, WarningFilled } from '@element-plus/icons-vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { runQualityCheck } from '@/api/subjects.js'
+import { featureFields } from './featureFields.js'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   subjectId: { type: [Number, String], default: null },
   subjectLabel: { type: String, default: '' },
-  canRecordVisit: { type: Boolean, default: false }
+  canRecordVisit: { type: Boolean, default: false },
+  canRecordFeature: { type: Boolean, default: false }
 })
-const emit = defineEmits(['update:modelValue', 'checked', 'record-visit'])
+const emit = defineEmits(['update:modelValue', 'checked', 'record-visit', 'record-feature'])
 
 const running = ref(false)
 const result = ref(null)
@@ -110,18 +120,18 @@ const issues = computed(() => {
     return [raw]
   }
 })
-const optionalMissingNames = {
-  'APOE_E4_COUNT 缺失': 'APOE ε4',
-  'MRI_HIPPOCAMPUS_L 缺失': '左侧海马影像指标',
-  'MRI_HIPPOCAMPUS_R 缺失': '右侧海马影像指标'
-}
-const primaryIssues = computed(() => issues.value.filter(issue => !optionalMissingNames[issue]))
-const optionalMissing = computed(() => issues.value.map(issue => optionalMissingNames[issue]).filter(Boolean))
+const optionalMissing = computed(() => Object.keys(featureFields).filter(code => issues.value.includes(`${code} 缺失`)))
+const primaryIssues = computed(() => issues.value.filter(issue => !optionalMissing.value.some(code => issue === `${code} 缺失`)))
 const missingVisit = computed(() => issues.value.some(issue => issue.startsWith('最近访视没有可用的核心认知观测')))
 
 function recordVisit() {
   emit('update:modelValue', false)
   emit('record-visit')
+}
+
+function recordFeature(code) {
+  emit('update:modelValue', false)
+  emit('record-feature', code)
 }
 
 const pretty = computed(() => {
