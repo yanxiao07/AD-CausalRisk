@@ -59,6 +59,44 @@ const envelope = (data) =>
 const results = []
 let failed = 0
 
+async function checkIntakeLayout(page) {
+  await page.evaluate(() => {
+    const entry = [...document.querySelectorAll('.shell__menu .el-menu-item')]
+      .find(item => item.textContent.trim() === '患者档案')
+    entry.click()
+  })
+  await page.waitForFunction(() => location.pathname === '/subjects')
+  const create = await page.waitForSelector('::-p-text(新建测试档案)', { visible: true })
+  await create.click()
+  await page.waitForSelector('#doctor-archive-form', { visible: true })
+
+  const layouts = []
+  for (const { width, height } of [{ width: 1440, height: 900 }, { width: 950, height: 620 }, { width: 390, height: 844 }]) {
+    await page.setViewport({ width, height })
+    const layout = await page.$eval('#doctor-archive-form', async form => {
+      const dialog = form.closest('.doctor-archive-intake')
+      if (dialog.getAnimations().length) {
+        await Promise.allSettled(dialog.getAnimations().map(animation => animation.finished))
+      }
+      const available = form.parentElement.clientWidth
+      const formWidth = Math.round(form.getBoundingClientRect().width)
+      const buttons = [...dialog.querySelectorAll('.el-dialog__footer button')]
+      return {
+        viewport: innerWidth,
+        available,
+        formWidth,
+        fullWidth: formWidth >= available - 12,
+        actionsVisible: buttons.every(button => {
+          const bounds = button.getBoundingClientRect()
+          return bounds.height >= 44 && bounds.right <= innerWidth + 1 && bounds.bottom <= innerHeight + 1
+        })
+      }
+    })
+    layouts.push(layout)
+  }
+  return layouts
+}
+
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: 'new',
@@ -135,7 +173,9 @@ try {
 
     // 守卫：DOCTOR 直接访问 /admin 必须被挡到 401
     let guardPath = ''
+    let intakeLayouts = []
     if (role === 'doctor') {
+      intakeLayouts = await checkIntakeLayout(page)
       await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' })
       await page.waitForFunction(() => location.pathname !== '/admin', { timeout: 15000 })
       guardPath = await page.evaluate(() => location.pathname)
@@ -177,6 +217,8 @@ try {
     }
     check('no page errors', consoleErrors.length === 0, consoleErrors[0] || 'none')
     if (role === 'doctor') {
+      check('login navigation keeps intake form full width', intakeLayouts.every(item => item.fullWidth && item.actionsVisible),
+        JSON.stringify(intakeLayouts))
       check('guard blocks cross-role route', guardPath === '/401', guardPath)
     }
 
