@@ -41,8 +41,8 @@ export function getSubjectDetail(subjectId) {
  * body：{ subjectCode, alias, status? }
  * subjectCode 必须匹配 ^DEMO-[A-Za-z0-9-]{1,45}$
  */
-export function createSubject({ subjectCode, alias, status }) {
-  return request.post('/subjects', { subjectCode, alias, status })
+export function createSubject({ subjectCode, alias, status, archiveType }) {
+  return request.post('/subjects', { subjectCode, alias, status, archiveType })
 }
 
 /**

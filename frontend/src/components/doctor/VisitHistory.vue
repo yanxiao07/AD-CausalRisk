@@ -26,10 +26,24 @@
       <el-table-column label="CDR-SB" width="100">
         <template #default="{ row }">{{ formatScore(row.cdrSb) }}</template>
       </el-table-column>
-      <el-table-column v-if="canCorrect" label="操作" width="80" fixed="right">
+      <el-table-column v-if="showModelInputs" label="补充资料" min-width="100">
+        <template #default="{ row }">
+          <el-popover trigger="click" placement="bottom" :width="260">
+            <template #reference>
+              <el-button link type="primary">{{ visitModelFields.filter(field => row.modelInputs?.[field.key] != null).length }}/5 项</el-button>
+            </template>
+            <dl class="visit-supplement">
+              <div v-for="field in visitModelFields" :key="field.key">
+                <dt>{{ field.label }}</dt><dd>{{ formatScore(row.modelInputs?.[field.key]) }}</dd>
+              </div>
+            </dl>
+          </el-popover>
+        </template>
+      </el-table-column>
+      <el-table-column v-if="canCorrect" label="操作" :width="showModelInputs ? 112 : 80" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" size="small" @click="emit('correct', row)">
-            更正
+            {{ showModelInputs ? '补录或更正' : '更正' }}
           </el-button>
         </template>
       </el-table-column>
@@ -43,12 +57,14 @@
 <script setup>
 import { Calendar } from '@element-plus/icons-vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import { visitModelFields } from '@/components/subject/visitModelInputs.js'
 
 defineProps({
   /** VisitResult[]：{ id, subjectId, visitCode, visitDate, mmse, moca, cdrSb } */
   visits: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
-  canCorrect: { type: Boolean, default: false }
+  canCorrect: { type: Boolean, default: false },
+  showModelInputs: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['correct'])
@@ -87,6 +103,10 @@ function formatScore(value) {
 .visits__table {
   width: 100%;
 }
+
+.visit-supplement { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 12px; margin: 0; padding: 12px; }
+.visit-supplement dt { color: var(--muted); }
+.visit-supplement dd { margin: 4px 0 0; font-weight: 600; }
 
 .visits__note {
   margin: 10px 0 0;

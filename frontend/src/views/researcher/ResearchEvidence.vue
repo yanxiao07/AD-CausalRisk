@@ -7,12 +7,23 @@
       :terms="['controlled', 'frozen', 'admission', 'source']"
     >
       <template #extra>
-        <el-button v-if="canRegister" :icon="Plus" @click="openRegister">手动登记快照</el-button>
+        <el-button v-if="canRegister && activeTab !== 'validation'" :icon="Plus" @click="openRegister">手动登记快照</el-button>
         <el-button :icon="Refresh" :loading="loading || refreshingBatch" @click="refreshAll">刷新全部</el-button>
       </template>
     </PageHeader>
 
     <el-tabs v-model="activeTab" class="tabs">
+      <el-tab-pane label="模型验证与更新" name="validation">
+        <DataCard title="与医院合作的验证任务" padding="lg">
+          <ol class="validation-list">
+            <li><strong>准备独立验证资料</strong><p>确认目标患者范围、测量方式、结局和随访时长。使用获授权且与训练人群独立的资料。</p></li>
+            <li><strong>验证 24 个月风险</strong><p>核对预测概率是否贴合实际结局，记录整体和预先定义人群的表现及适用范围。</p></li>
+            <li><strong>评估随访策略</strong><p>与医院明确现行流程、比较的新策略和评价指标，记录实际邀约、复诊及结局后评估收益。</p></li>
+            <li><strong>审查候选模型版本</strong><p>证据支持更新时，使用获授权的固定批次在独立环境训练候选版本。与现用模型对照，通过复评后再发布。</p></li>
+          </ol>
+          <p>当前待医院合作资料和随访结果。医生档案按业务用途保存，研究分析使用另行登记的资料。</p>
+        </DataCard>
+      </el-tab-pane>
       <el-tab-pane label="证据目录" name="catalog">
         <EmptyState
           v-if="error"
@@ -235,7 +246,7 @@ const activeReport = ref(null)
 
 // ---- 研究表格评估 ----
 const route = useRoute()
-const activeTab = ref('catalog')
+const activeTab = ref(route.query.tab === 'validation' ? 'validation' : 'catalog')
 const tableSubjectId = ref(null)
 const subjectOptions = ref([])
 const subjectLoading = ref(false)
@@ -443,6 +454,9 @@ onMounted(() => {
 .tabs :deep(.el-tabs__header) {
   margin-bottom: 16px;
 }
+
+.validation-list { display: grid; gap: 12px; padding-left: 1.5em; }
+.validation-list p { margin: 4px 0 0; line-height: 1.6; }
 
 .stack {
   display: flex;

@@ -1,8 +1,8 @@
 <template>
-  <el-dialog v-model="open" class="doctor-archive-intake" title="新建测试档案"
+  <el-dialog v-model="open" class="doctor-archive-intake" title="新建患者档案"
     width="min(920px, 96vw)" append-to-body :close-on-click-modal="false" :close-on-press-escape="!busy"
     :show-close="!busy" :before-close="confirmClose">
-    <p class="intro">可先保存基本资料，也可一次录入本次访视及已有报告。测试档案请使用演练资料。</p>
+    <p class="intro">可先保存基本资料，也可一次录入本次访视及已有报告。</p>
 
     <form id="doctor-archive-form" ref="form" novalidate @submit.prevent="save(false)">
       <fieldset class="card">
@@ -10,18 +10,15 @@
         <div class="fields two">
           <label>
             档案编号
-            <span class="code-input">
-              <span aria-hidden="true">DEMO-</span>
-              <input v-model.trim="draft.code" autocomplete="off" maxlength="50" placeholder="例如 2026-001"
-                aria-label="档案编号（固定前缀 DEMO-）" required :disabled="busy || !!archive"
-                :aria-invalid="!!errors.code" :aria-describedby="errors.code ? 'intake-code-error' : undefined"
-                @input="clearError('code')" @blur="draft.code = codeSuffix" />
-            </span>
+            <input v-model.trim="draft.code" autocomplete="off" maxlength="50" placeholder="例如 2026-001"
+              required :disabled="busy || !!archive"
+              :aria-invalid="!!errors.code" :aria-describedby="errors.code ? 'intake-code-error' : undefined"
+              @input="clearError('code')" />
             <span v-if="errors.code" id="intake-code-error" class="field-error">{{ errors.code }}</span>
           </label>
           <label>
             档案称呼
-            <input v-model.trim="draft.alias" maxlength="60" autocomplete="off" placeholder="例如 测试档案 001"
+            <input v-model.trim="draft.alias" maxlength="60" autocomplete="off"
               required :disabled="busy || !!archive" :aria-invalid="!!errors.alias"
               :aria-describedby="errors.alias ? 'intake-alias-error' : undefined" @input="clearError('alias')" />
             <span v-if="errors.alias" id="intake-alias-error" class="field-error">{{ errors.alias }}</span>
@@ -62,6 +59,7 @@
               <span v-if="errors[scale.key]" :id="`intake-${scale.key}-error`" class="field-error">{{ errors[scale.key] }}</span>
             </label>
           </div>
+          <VisitModelInputFields v-model="modelInputs" :errors="errors" @clear="clearError" />
           <label v-if="hasInput(visit) && scales.some(scale => visit[scale.key] === '')">
             未填量表的原因
             <input v-model.trim="visit.missingReason" maxlength="500" placeholder="例如 本次未做 MoCA"
@@ -151,9 +149,11 @@ import { ElMessageBox } from 'element-plus'
 import StatusTag from '@/components/common/StatusTag.vue'
 import TermHelp from '@/components/common/TermHelp.vue'
 import {
-  createSubject, createSubjectObservation, getFeatureSources, getVisitSources, runQualityCheck
+  createSubject, createSubjectObservation, getFeatureSources, getSubjectDetail, getVisitSources, runQualityCheck
 } from '@/api/subjects.js'
 import { featureFields, isValidFeatureValue } from './featureFields.js'
+import VisitModelInputFields from './VisitModelInputFields.vue'
+import { newVisitModelDraft, visitModelErrors, visitModelPayload } from './visitModelInputs.js'
 
 const open = defineModel({ type: Boolean, default: false })
 const emit = defineEmits(['saved', 'view'])
@@ -168,6 +168,7 @@ const quality = ref(null)
 const reportsOpen = ref(false)
 const draft = reactive({ code: '', alias: '' })
 const visit = reactive({ date: '', source: '', mmse: '', moca: '', cdrSb: '', missingReason: '' })
+const modelInputs = ref(newVisitModelDraft())
 const codes = Object.keys(featureFields)
 const reports = reactive(Object.fromEntries(codes.map(code => [code, { value: '', date: '', source: '' }])))
 const errors = ref({})
@@ -181,7 +182,7 @@ const scales = [
 ]
 
 const hasInput = record => Object.values(record).some(value => value !== '')
-const codeSuffix = computed(() => draft.code.replace(/^DEMO-/i, ''))
+  || (record === visit && Object.values(modelInputs.value).some(value => value !== ''))
 const pending = (key, record) => !saved[key] && !uncertain[key] && hasInput(record)
 const hasPending = computed(() => pending('visit', visit) || codes.some(code => pending(code, reports[code])))
 const hasUncertain = computed(() => Object.values(uncertain).some(Boolean))
@@ -204,7 +205,7 @@ function clearError(key) {
 }
 
 function visitPayload() {
-  const details = {}
+  const details = visitModelErrors(modelInputs.value)
   const missing = scales.filter(({ key }) => visit[key] === '')
   if (!visit.date) details.visitDate = '请选择访视日期'
   if (!visit.source) details.visitSource = '请填写量表来源'
@@ -222,6 +223,7 @@ function visitPayload() {
   return {
     kind: 'visit', visitCode: `V-${visit.date}`, visitDate: visit.date, source: visit.source,
     missingReason: missing.length ? visit.missingReason : null,
+    modelInputs: visitModelPayload(modelInputs.value),
     ...Object.fromEntries(scales.map(({ key }) => [key, visit[key] === '' ? null : Number(visit[key])]))
   }
 }
@@ -254,12 +256,16 @@ async function confirmObservation(payload) {
         && row.featureValue === payload.featureValue && row.unit === payload.unit && row.source === payload.source)
     }
     const rows = await getVisitSources(subjectId)
-    return rows.some(row => row.visitCode === payload.visitCode && row.visitDate === payload.visitDate
+    const matched = rows.find(row => row.visitCode === payload.visitCode && row.visitDate === payload.visitDate
       && row.source === payload.source && (row.missingReason || null) === payload.missingReason
       && scales.every(({ key }) => {
         const raw = row[`raw${key[0].toUpperCase()}${key.slice(1)}`]
         return (raw == null ? null : Number(raw)) === payload[key]
       }))
+    if (!matched) return false
+    const detail = await getSubjectDetail(subjectId)
+    const actual = detail.visits?.find(row => row.id === matched.id)?.modelInputs
+    return Object.entries(payload.modelInputs).every(([key, expected]) => (actual?.[key] ?? null) === expected)
   } catch {
     return false
   }
@@ -302,7 +308,9 @@ async function save(checkQuality) {
   noticeError.value = false
   quality.value = null
   if (!archive.value) {
-    if (!/^[A-Za-z0-9-]{1,45}$/.test(codeSuffix.value)) errors.value.code = '请输入编号后缀，仅用字母、数字或短横线'
+    if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,49}$/.test(draft.code) || /^(DEMO-|ADNI-REVIEW-)/i.test(draft.code)) {
+      errors.value.code = '请输入普通档案编号，以字母或数字开头，可使用短横线'
+    }
     if (!draft.alias) errors.value.alias = '请填写档案称呼'
     if (Object.keys(errors.value).length) {
       await showFeedback()
@@ -320,7 +328,7 @@ async function save(checkQuality) {
   try {
     if (!archive.value) {
       try {
-        archive.value = await createSubject({ subjectCode: `DEMO-${codeSuffix.value}`, alias: draft.alias, status: 'ACTIVE' })
+        archive.value = await createSubject({ subjectCode: draft.code, alias: draft.alias, status: 'ACTIVE', archiveType: 'CARE' })
         emit('saved', archive.value)
       } catch (error) {
         noticeError.value = true
@@ -391,8 +399,6 @@ fieldset fieldset, details fieldset { padding: 0; border: 0; margin: 0; min-inli
 label { display: grid; gap: 4px; font-weight: 500; color: var(--el-text-color-primary); }
 input, select { box-sizing: border-box; min-width: 0; width: 100%; min-height: 44px; padding: 7px 10px; border: 1px solid var(--el-border-color); border-radius: 8px; color: var(--el-text-color-primary); background: var(--el-bg-color); font: inherit; }
 input:disabled, select:disabled { color: var(--el-text-color-regular); background: var(--el-fill-color-light); }
-.code-input { display: flex; align-items: center; gap: 8px; }
-.code-input span { color: var(--el-text-color-regular); }
 [aria-invalid="true"] { border-color: var(--el-color-danger); }
 :is(input, select, summary, .feedback):focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
 .field-error { color: var(--el-color-danger-dark-2); font-weight: 500; }

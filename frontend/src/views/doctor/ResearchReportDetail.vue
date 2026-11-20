@@ -335,7 +335,8 @@ function goSubject() {
   if (subjectId) {
     router.push({ path: '/subjects', query: {
       subjectId: String(subjectId),
-      dataScope: task.value.dataScope || result.value.dataScope
+      section: isDoctor ? 'research' : undefined,
+      dataScope: isDoctor ? undefined : task.value.dataScope || result.value.dataScope
     } })
   }
 }

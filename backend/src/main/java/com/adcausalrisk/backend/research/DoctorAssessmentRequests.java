@@ -4,6 +4,7 @@ import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
 import com.adcausalrisk.backend.qualitycheck.CurrentArchiveQuality;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
+import com.adcausalrisk.backend.subject.InputVersions;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -21,6 +22,7 @@ class DoctorAssessmentRequests {
     private static final int PAGE_SIZE = 20;
     private static final String CONTROLLED = "CONTROLLED_RESEARCH";
     private static final String CONSTRUCTED = "CONSTRUCTED_VALIDATION";
+    private static final String CARE = "CARE_WORKFLOW";
     private static final String REQUESTS = """
             FROM controlled_assessment_request a JOIN subject s ON s.id=a.subject_id
             LEFT JOIN research_table_task t ON t.snapshot_id=a.snapshot_id
@@ -38,7 +40,8 @@ class DoctorAssessmentRequests {
     record QueueItem(long id, long subjectId, String subjectCode, String alias, String state,
                      Long taskId, boolean canExecute) {}
     record Queue(List<QueueItem> items, long total, int page, int pageSize) {}
-    private record Archive(boolean active, boolean controlled) {}
+    private record Archive(boolean active, boolean controlled, boolean care, String code, String version) {}
+    private record CareRequest(long id, long qualityId) {}
     private record Requested(long id, long subjectId, long qualityId, Long snapshotId, String subjectCode,
                              String alias, Long taskId, String status, String reviewStatus) {}
     private record Candidate(long id, String wire, String sync, Long taskId,
@@ -51,17 +54,20 @@ class DoctorAssessmentRequests {
     private final ControlledResearchCompletion permission;
     private final ResearchTableClient client;
     private final ResearchTableProtocol protocol;
+    private final SyntheticCareIdentity syntheticCare;
     private final TransactionTemplate transaction;
 
     DoctorAssessmentRequests(JdbcTemplate jdbc, CurrentArchiveQuality quality,
             ResearchTableAssessmentService assessments, ControlledResearchCompletion permission,
-            ResearchTableProtocol protocol, ResearchTableClient client, PlatformTransactionManager manager) {
+            ResearchTableProtocol protocol, ResearchTableClient client, SyntheticCareIdentity syntheticCare,
+            PlatformTransactionManager manager) {
         this.jdbc = jdbc;
         this.quality = quality;
         this.assessments = assessments;
         this.permission = permission;
         this.protocol = protocol;
         this.client = client;
+        this.syntheticCare = syntheticCare;
         this.transaction = new TransactionTemplate(manager);
     }
 
@@ -73,6 +79,27 @@ class DoctorAssessmentRequests {
     private Status view(long subjectId, AppUserPrincipal actor, Archive archive) {
         var gate = quality.forSubject(subjectId);
         String qualityStatus = archive.active() ? gate.status() : "ARCHIVED";
+        if (archive.care()) {
+            var row = latestCareRequest(subjectId);
+            if (!archive.active() || !gate.ready()) {
+                return new Status(CARE, qualityStatus, "NEEDS_QUALITY", row == null ? null : row.id(), null);
+            }
+            if (syntheticCare.enabled()) {
+                if (!gate.visit().modelInputs().complete()) {
+                    return new Status(CARE, qualityStatus, "NEEDS_PREDICTION_INPUTS", null, null);
+                }
+                var candidate = fixture(subjectId, gate, actor.userId(), archive);
+                String state = candidate == null || "SYNCED".equals(candidate.sync()) ? "CARE_PREDICTION_READY" : "NEEDS_SYNC";
+                if (candidate != null && candidate.taskId() != null) state = taskState(candidate.status(), candidate.reviewStatus());
+                Long requestId = row != null && Objects.equals(gate.id(), row.qualityId()) ? row.id() : null;
+                return new Status(CARE, qualityStatus, state, requestId,
+                        candidate == null ? null : candidate.taskId());
+            }
+            if (row != null && Objects.equals(gate.id(), row.qualityId())) {
+                return new Status(CARE, qualityStatus, "WAITING_FOR_VALIDATED_MODEL", row.id(), null);
+            }
+            return new Status(CARE, qualityStatus, "READY", null, null);
+        }
         if (archive.controlled()) {
             var row = latestRequest(subjectId);
             if (row != null) {
@@ -90,7 +117,7 @@ class DoctorAssessmentRequests {
         if (!archive.active() || !gate.ready()) {
             return new Status(CONSTRUCTED, qualityStatus, "NEEDS_QUALITY", null, null);
         }
-        Candidate snapshot = fixture(subjectId, gate, actor.userId());
+        Candidate snapshot = fixture(subjectId, gate, actor.userId(), archive);
         if (snapshot == null) return new Status(CONSTRUCTED, qualityStatus, "NEEDS_SNAPSHOT", null, null);
         String state = snapshot.taskId() != null ? taskState(snapshot.status(), snapshot.reviewStatus())
                 : "SYNCED".equals(snapshot.sync()) ? "READY" : "NEEDS_SYNC";
@@ -100,7 +127,33 @@ class DoctorAssessmentRequests {
     Status request(long subjectId, AppUserPrincipal actor) {
         requireDoctor(subjectId, actor);
         Archive archive = archive(subjectId);
-        if (archive.controlled()) {
+        if (archive.care()) {
+            var pending = transaction.execute(ignored -> {
+                lockArchive(subjectId);
+                requireDoctor(subjectId, actor);
+                var gate = quality.forSubject(subjectId);
+                var current = archive(subjectId);
+                if (!current.active() || !gate.ready()) throw needsQuality();
+                boolean auto = syntheticCare.enabled();
+                if (auto && !gate.visit().modelInputs().complete()) throw conflict("请补齐最近访视的五项补充资料");
+                var prior = latestCareRequest(subjectId);
+                if (prior == null || !Objects.equals(prior.qualityId(), gate.id())) {
+                    jdbc.update("""
+                            INSERT INTO care_assessment_request(subject_id,requested_by,quality_check_id,requested_at)
+                            VALUES(?,?,?,CURRENT_TIMESTAMP)
+                            """, subjectId, actor.userId(), gate.id());
+                }
+                if (!auto) return null;
+                var snapshot = fixture(subjectId, gate, actor.userId(), current);
+                if (snapshot != null) return snapshot.taskId() == null ? snapshot : null;
+                long id = assessments.registerCareFixture(subjectId, gate.visit(), actor);
+                return new Candidate(id, null, "PENDING", null, null, null);
+            });
+            if (pending != null && ("SYNCED".equals(pending.sync())
+                    || "SYNCED".equals(assessments.syncCareFixture(pending.id(), actor)))) {
+                assessments.submitDoctorFixture(pending.id(), subjectId, actor);
+            }
+        } else if (archive.controlled()) {
             transaction.executeWithoutResult(ignored -> {
                 lockArchive(subjectId);
                 requireDoctor(subjectId, actor);
@@ -116,7 +169,7 @@ class DoctorAssessmentRequests {
         } else {
             var gate = quality.forSubject(subjectId);
             if (!archive.active() || !gate.ready()) throw needsQuality();
-            var snapshot = fixture(subjectId, gate, actor.userId());
+            var snapshot = fixture(subjectId, gate, actor.userId(), archive);
             if (snapshot == null) throw conflict("请先为当前访视保存测试模型资料");
             if (snapshot.taskId() == null) assessments.submitDoctorFixture(snapshot.id(), subjectId, actor);
         }
@@ -189,20 +242,26 @@ class DoctorAssessmentRequests {
                 approved.inputSha256(), approved.contextSha256()).stream().filter(Objects::nonNull).findFirst().orElse(null);
     }
 
-    private Candidate fixture(long subjectId, CurrentArchiveQuality.Gate gate, long actor) {
+    private Candidate fixture(long subjectId, CurrentArchiveQuality.Gate gate, long actor, Archive archive) {
         // Only the latest registered usable inputs are eligible. A stale newer snapshot is never silently skipped.
         var candidate = jdbc.query("""
                 SELECT s.id,s.request_json,s.host_sync_status,t.id,t.status,t.review_status
                 FROM research_table_snapshot s LEFT JOIN research_table_task t ON t.snapshot_id=s.id
                 WHERE s.subject_id=? AND s.doctor_handoff=TRUE AND s.data_scope='CONSTRUCTED_VALIDATION'
-                  AND (s.authorized_user_id=? OR t.id IS NOT NULL)
+                  AND (? OR s.authorized_user_id=? OR t.id IS NOT NULL)
                 ORDER BY s.id DESC LIMIT 1
                 """, (row, index) -> new Candidate(row.getLong(1), row.getString(2), row.getString(3),
-                row.getObject(4, Long.class), row.getString(5), row.getString(6)), subjectId, actor)
+                row.getObject(4, Long.class), row.getString(5), row.getString(6)), subjectId, archive.care(), actor)
                 .stream().findFirst().orElse(null);
         if (candidate == null) return null;
         try {
-            return gate.matchesVisit(protocol.parse(candidate.wire().getBytes(StandardCharsets.UTF_8))) ? candidate : null;
+            var input = protocol.parse(candidate.wire().getBytes(StandardCharsets.UTF_8));
+            if (archive.care()) {
+                var wire = syntheticCare.resolve(subjectId, archive.code(), archive.version(), true);
+                if (wire == null || !wire.subjectCode().equals(input.path("subjectCode").asText())
+                        || !wire.dataVersion().equals(input.path("dataVersion").asText())) return null;
+            }
+            return gate.matchesVisit(input) ? candidate : null;
         } catch (IOException | IllegalArgumentException invalid) {
             return null;
         }
@@ -212,10 +271,20 @@ class DoctorAssessmentRequests {
         return jdbc.query("""
                 SELECT s.subject_code,s.status,CASE WHEN EXISTS (SELECT 1 FROM research_table_snapshot a
                     WHERE a.subject_id=s.id AND a.data_scope='CONTROLLED_RESEARCH') THEN 1 ELSE 0 END
+                    ,s.data_version
                 FROM subject s WHERE s.id=?
                 """, (row, i) -> new Archive("ACTIVE".equals(row.getString(2)),
-                !row.getString(1).startsWith("DEMO-") || row.getInt(3) == 1), subjectId)
+                !row.getString(1).startsWith("DEMO-") || row.getInt(3) == 1,
+                row.getString(4).startsWith(InputVersions.CARE_PREFIX), row.getString(1), row.getString(4)), subjectId)
                 .stream().findFirst().orElseThrow(DoctorAssessmentRequests::denied);
+    }
+
+    private CareRequest latestCareRequest(long subjectId) {
+        return jdbc.query("""
+                SELECT id,quality_check_id FROM care_assessment_request
+                WHERE subject_id=? ORDER BY id DESC LIMIT 1
+                """, (row, index) -> new CareRequest(row.getLong(1), row.getLong(2)), subjectId)
+                .stream().findFirst().orElse(null);
     }
 
     private Requested latestRequest(long subjectId) {

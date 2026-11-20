@@ -107,6 +107,9 @@ public class SubjectAccessPolicy {
      * translating that into an {@code ACCESS_DENIED} (403) response.
      */
     public boolean canView(AppUserPrincipal principal, Long subjectId) {
+        if (isCareArchive(subjectId) && !principal.roleCodes().contains("PATIENT")) {
+            return principal.roleCodes().contains("ADMIN") || canReadCareArchive(principal, subjectId);
+        }
         if (hasFullVisibility(principal)) {
             return true;
         }
@@ -125,6 +128,11 @@ public class SubjectAccessPolicy {
     public boolean canManage(AppUserPrincipal principal, Long subjectId) {
         if (principal.roleCodes().contains("PATIENT")) {
             return false;
+        }
+        if (isCareArchive(subjectId)) {
+            return principal.roleCodes().contains("ADMIN") || (principal.roleCodes().contains("DOCTOR")
+                    && permissionRepository.findPermissionTypes(subjectId, principal.userId())
+                    .contains(PermissionType.MANAGE));
         }
         if (hasFullVisibility(principal)) {
             return true;
@@ -167,6 +175,9 @@ public class SubjectAccessPolicy {
         if (principal.roleCodes().contains("PATIENT")) {
             return false;
         }
+        if (isCareArchive(subjectId)) {
+            return canReadCareArchive(principal, subjectId);
+        }
         if (hasFullRawScoreVisibility(principal)) {
             return true;
         }
@@ -176,6 +187,17 @@ public class SubjectAccessPolicy {
         }
         return permissionRepository.findPermissionTypes(subjectId, principal.userId()).stream()
                 .anyMatch(RAW_SCORE_PERMISSION_TYPES::contains);
+    }
+
+    private boolean isCareArchive(Long subjectId) {
+        String version = permissionRepository.findSubjectVersion(subjectId);
+        return version != null && version.startsWith(InputVersions.CARE_PREFIX);
+    }
+
+    private boolean canReadCareArchive(AppUserPrincipal principal, Long subjectId) {
+        return principal.roleCodes().contains("DOCTOR")
+                && permissionRepository.findPermissionTypes(subjectId, principal.userId()).stream()
+                    .anyMatch(RAW_SCORE_PERMISSION_TYPES::contains);
     }
 
     /**

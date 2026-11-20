@@ -2,10 +2,13 @@
   <div class="research-home">
     <PageHeader
       title="研究员工作台"
-      subtitle="数据导入、质控与模型评估的日常入口。"
+      subtitle="核验获授权的研究资料、验证模型表现并维护版本证据。"
       :terms="['quality', 'controlled', 'frozen']"
     >
       <template #extra>
+        <RouterLink :to="{ name: 'ResearchEvidence', query: { tab: 'validation' } }">
+          模型验证与更新
+        </RouterLink>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>
     </PageHeader>

@@ -62,11 +62,11 @@ let failed = 0
 async function checkIntakeLayout(page) {
   await page.evaluate(() => {
     const entry = [...document.querySelectorAll('.shell__menu .el-menu-item')]
-      .find(item => item.textContent.trim() === '患者档案')
+      .find(item => item.textContent.trim() === '我的患者')
     entry.click()
   })
   await page.waitForFunction(() => location.pathname === '/subjects')
-  const create = await page.waitForSelector('::-p-text(新建测试档案)', { visible: true })
+  const create = await page.waitForSelector('::-p-text(新建患者档案)', { visible: true })
   await create.click()
   await page.waitForSelector('#doctor-archive-form', { visible: true })
 
@@ -217,6 +217,8 @@ try {
     }
     check('no page errors', consoleErrors.length === 0, consoleErrors[0] || 'none')
     if (role === 'doctor') {
+      check('doctor menu includes review, report and graph',
+        ['报告复核', '评估报告', '评估贡献图'].every(label => state.menuLabels.includes(label)), state.menuLabels.join(','))
       check('login navigation keeps intake form full width', intakeLayouts.every(item => item.fullWidth && item.actionsVisible),
         JSON.stringify(intakeLayouts))
       check('guard blocks cross-role route', guardPath === '/401', guardPath)

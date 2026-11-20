@@ -38,8 +38,8 @@
     <article class="panel research-metrics">
       <header class="panel__head">
         <div>
-          <h2>受控研究评估服务</h2>
-          <p>查看评估任务是否正常完成。</p>
+          <h2>评估服务</h2>
+          <p>查看服务配置及研究任务运行统计。</p>
         </div>
         <el-button link type="primary" @click="router.push('/admin/system')">系统设置</el-button>
       </header>

@@ -1,7 +1,7 @@
 <template>
   <div class="patient-list">
     <PageHeader back
-      :title="doctorView ? '患者档案' : '受试者档案'"
+      :title="doctorView ? (showLegacy ? '全部授权档案' : '我的患者') : '受试者档案'"
       subtitle="点击档案查看资料与评估记录。"
       :terms="doctorView ? ['quality', 'coreScales', 'archiveBinding'] : ['controlled', 'constructed', 'dataVersion', 'source']"
     >
@@ -28,7 +28,10 @@
           @clear="search"
         />
         <el-button v-if="canCreateArchive && (doctorView || scope === CONSTRUCTED_VALIDATION)" type="primary" :icon="DocumentAdd" @click="openCreateSubject">
-          新建测试档案
+          {{ doctorView ? '新建患者档案' : '新建测试档案' }}
+        </el-button>
+        <el-button v-if="doctorView" @click="router.push({ query: showLegacy ? {} : { tab: 'legacy' } })">
+          {{ showLegacy ? '返回我的患者' : '查看全部档案' }}
         </el-button>
         <el-button :icon="Refresh" @click="load">刷新</el-button>
       </template>
@@ -61,7 +64,7 @@
         v-else-if="items.length === 0"
         :icon="User"
         title="授权范围内还没有档案"
-        :description="doctorView ? '您有权查看的档案会出现在这里。' : scope === CONTROLLED_RESEARCH ? '已登记且授权的受控档案会出现在这里。' : '可新建测试档案，或查阅已有测试样例。'"
+        :description="doctorView ? (showLegacy ? '可更改搜索条件或返回我的患者。' : '您负责的普通患者档案会出现在这里。') : scope === CONTROLLED_RESEARCH ? '已登记且授权的受控档案会出现在这里。' : '可新建测试档案，或查阅已有测试样例。'"
       />
 
       <template v-else>
@@ -76,7 +79,7 @@
           >
             <el-table-column prop="subjectCode" label="档案编号" min-width="160" show-overflow-tooltip />
             <el-table-column prop="alias" label="别名" min-width="140" show-overflow-tooltip />
-            <el-table-column v-if="doctorView" label="资料来源" width="120">
+            <el-table-column v-if="doctorView && showLegacy" label="资料来源" width="120">
               <template #default="{ row }">{{ subjectResearchScope(row) === CONSTRUCTED_VALIDATION ? '本机测试' : '研究资料' }}</template>
             </el-table-column>
             <el-table-column label="状态" width="120">
@@ -162,8 +165,9 @@
 
             <DoctorAssessmentRequest v-if="doctorView && canEditSubject" :key="selected.id"
               :subject-id="selected.id" :revision="assessmentRequestRevision" :can-check-quality="canQualityCheck"
-              @visit="openVisitRecord()" @quality="qualityCheckOpen = true" @snapshot="intakeOpen = true" />
-            <section v-else-if="doctorView && subjectCapabilities" class="drawer__section">
+              @visit="openVisitRecord()" @quality="qualityCheckOpen = true" @snapshot="openTestIntake"
+              @scope="assessmentScope = $event" @results="drawerTab = 'research'" @saved-visit="drawerTab = 'records'" />
+            <section v-else-if="doctorView && isCareArchive && subjectCapabilities" class="drawer__section">
               <h3>预测评估</h3>
               <p>提交评估申请和补录资料需要该档案的管理权限。</p>
             </section>
@@ -245,8 +249,8 @@
           </el-tab-pane>
 
           <el-tab-pane :label="doctorView ? '评估结果' : '模型验证结果'" name="research">
-            <div v-if="doctorView && canEditSubject && selected.subjectCode.startsWith('DEMO-')" class="drawer__section">
-              <el-button size="small" @click="intakeOpen = true">查看测试模型快照</el-button>
+            <div v-if="canOpenTestIntake" class="drawer__section">
+              <el-button size="small" @click="openTestIntake('history')">查看测试输入记录</el-button>
             </div>
             <div class="research-head">
               <div>
@@ -254,7 +258,7 @@
                 <p>评估完成后，可在这里查看报告和结果解读。</p>
               </div>
               <div class="research-head__actions">
-                <el-button size="small" @click="openLatestGraph">因果图谱</el-button>
+                <el-button size="small" @click="openLatestGraph">查看评估贡献图</el-button>
                 <el-button size="small" :icon="Refresh" :loading="researchLoading" @click="loadResearchArchive">刷新</el-button>
               </div>
             </div>
@@ -281,10 +285,10 @@
                   <StatusTag :type="row.status" />
                 </template>
               </el-table-column>
-              <el-table-column label="阿尔茨海默病" min-width="125">
+              <el-table-column label="阿尔茨海默病 24 个月估计" min-width="165">
                 <template #default="{ row }">{{ researchCif(row.result?.prediction?.adCif24m) }}</template>
               </el-table-column>
-              <el-table-column label="其他痴呆 24 个月" width="120">
+              <el-table-column label="其他痴呆 24 个月估计" min-width="150">
                 <template #default="{ row }">
                   {{ researchCif(row.result?.prediction?.otherDementiaCif24m) }}
                 </template>
@@ -559,6 +563,7 @@
 
             <div class="drawer__section">
               <VisitHistory
+                :show-model-inputs="doctorView && isCareArchive"
                 :visits="visits"
                 :loading="timelineLoading"
                 :can-correct="canEditSubject"
@@ -705,6 +710,7 @@
       v-model="visitDialogOpen"
       :subject-id="selected.id"
       :initial="visitInitial"
+      :model-inputs-enabled="doctorView && isCareArchive"
       @saved="onRecordSaved"
     />
     <FeatureRecordDialog
@@ -727,6 +733,7 @@
       v-model="correctionOpen"
       :subject-id="selected.id"
       :visit="correctionVisit"
+      :model-inputs-enabled="doctorView && isCareArchive"
       @saved="onCorrectionSaved"
     />
 
@@ -737,8 +744,9 @@
       :subject-id="selected.id"
       :assessments="reportLibrary"
     />
-    <DoctorIntakeDialog v-if="selected && doctorView && selected.subjectCode.startsWith('DEMO-')"
-      :key="selected.id" v-model="intakeOpen" :subject-id="selected.id" @use-for-visit="prepareVisitFromSnapshot" />
+    <DoctorIntakeDialog v-if="canOpenTestIntake"
+      :key="selected.id" v-model="intakeOpen" :subject-id="selected.id" :initial-view="intakeView"
+      @updated="assessmentRequestRevision++" @use-for-visit="prepareVisitFromSnapshot" />
 
     <!-- 发起质控检查（自动输入质量检查，与人工复核单是两套记录） -->
     <QualityCheckDialog
@@ -798,7 +806,7 @@ import { getSubjectCapabilities, getSubjectDetail, listSubjects } from '@/api/su
 import { listFollowUps } from '@/api/followups.js'
 import { listResearchReports } from '@/api/research.js'
 import ResearchScopeSelect from '@/components/assessment/ResearchScopeSelect.vue'
-import { CONSTRUCTED_VALIDATION, CONTROLLED_RESEARCH, researchScope, subjectResearchScope } from '@/utils/researchResults.js'
+import { CARE_WORKFLOW, CONSTRUCTED_VALIDATION, CONTROLLED_RESEARCH, researchScope, subjectResearchScope } from '@/utils/researchResults.js'
 import { getPatientOnboardingStatus, onboardingQualityLabel, requestPatientAccount } from '@/api/patientAccountRequests.js'
 import {
   getAssessment,
@@ -830,6 +838,7 @@ const statusFilter = ref('')
 
 const drawerOpen = ref(false)
 const selected = ref(null)
+const isCareArchive = computed(() => selected.value?.dataVersion?.startsWith('care-'))
 const reportScope = computed(() => subjectResearchScope(selected.value))
 const visits = ref([])
 const archiveFeatures = ref(null)
@@ -861,6 +870,11 @@ let timelineRequest = 0
 const canManageSubject = computed(() => userStore.hasRole(['ADMIN', 'RESEARCHER']))
 const canCreateArchive = computed(() => userStore.hasRole(['ADMIN', 'RESEARCHER', 'DOCTOR']))
 const intakeOpen = ref(false)
+const intakeView = ref('history')
+const assessmentScope = ref(null)
+const canOpenTestIntake = computed(() => doctorView.value && canEditSubject.value && selected.value
+  && assessmentScope.value?.subjectId === selected.value.id
+  && assessmentScope.value.dataScope === CONSTRUCTED_VALIDATION)
 const assessmentRequestRevision = ref(0)
 const accountRequestLoading = ref(false)
 const accountStatusLoading = ref(false)
@@ -976,6 +990,11 @@ function openFeatureRecord(code = '') {
   featureInitial.value = code
   drawerTab.value = 'records'
   featureDialogOpen.value = true
+}
+
+function openTestIntake(view) {
+  intakeView.value = view
+  intakeOpen.value = true
 }
 
 function prepareVisitFromSnapshot(snapshot) {
@@ -1113,7 +1132,7 @@ function setScope(value) {
   })
 }
 
-watch(scope, search)
+watch([scope, showLegacy], search)
 
 async function load() {  const seq = (requestSeq += 1)
   loading.value = true
@@ -1125,7 +1144,7 @@ async function load() {  const seq = (requestSeq += 1)
       pageSize: pageSize.value,
       keyword: keyword.value.trim(),
       status: statusFilter.value,
-      dataScope: doctorView.value ? undefined : scope.value
+      dataScope: doctorView.value && !showLegacy.value ? CARE_WORKFLOW : doctorView.value ? undefined : scope.value
     })
     if (seq !== requestSeq) return // 已有更新的请求，丢弃这次结果
     items.value = dedupe(Array.isArray(data?.items) ? data.items : [])
@@ -1143,6 +1162,7 @@ async function load() {  const seq = (requestSeq += 1)
 
 function openDrawer(row) {
   if (selected.value?.id !== row?.id) {
+    intakeOpen.value = false
     visits.value = []
     archiveFeatures.value = null
     timeline.value = []
@@ -1168,7 +1188,9 @@ async function loadResearchArchive() {
   researchLoading.value = true
   researchError.value = ''
   try {
-    const page = await listResearchReports({ subjectId: id, dataScope: reportScope.value, pageSize: 50 })
+    const page = await listResearchReports({
+      subjectId: id, dataScope: doctorView.value ? undefined : reportScope.value, pageSize: 50
+    })
     if (sequence === researchSeq) researchArchive.value = page?.items || []
   } catch (problem) {
     if (sequence === researchSeq) researchError.value = problem?.message || '评估报告加载失败，请稍后重试'
@@ -1178,7 +1200,9 @@ async function loadResearchArchive() {
 }
 
 function openLatestGraph() {
-  router.push({ name: 'GraphView', query: { dataScope: reportScope.value, subjectId: selected.value.id } })
+  router.push({ name: 'GraphView', query: {
+    dataScope: doctorView.value ? undefined : reportScope.value, subjectId: selected.value.id
+  } })
 }
 
 function researchCif(value) {
@@ -1204,6 +1228,7 @@ watch(drawerOpen, (open) => {
   if (open || !route.query.subjectId) return
   const query = { ...route.query }
   delete query.subjectId
+  delete query.section
   router.replace({ query })
 })
 
@@ -1559,6 +1584,7 @@ onMounted(async () => {
   // 深链恢复：从报告/图谱返回时带 ?subjectId=，直接打开对应档案抽屉
   const subjectId = Number(route.query.subjectId)
   if (!Number.isInteger(subjectId) || subjectId <= 0) return
+  if (route.query.section === 'research') drawerTab.value = 'research'
   const row = items.value.find((item) => item.id === subjectId)
   if (row) {
     openDrawer(row)

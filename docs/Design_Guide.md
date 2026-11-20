@@ -33,12 +33,13 @@ AgentClient：Python调用、超时/重试、契约与返回值校验
 | --- | --- | --- |
 | sys_user | id, username, password_hash, status, created_at | username唯一，密码哈希保存 |
 | sys_role / user_role | id, role_code / user_id, role_id | 四种角色，明确多角色处理规则 |
-| subject | id, subject_code, alias, status, data_version, created_at | subject_code唯一，DEMO编号映射数字主键 |
+| subject | id, subject_code, alias, status, data_version, created_at | 档案编号唯一。服务端分配资料版本，区分普通档案与既有研究记录 |
 | subject_permission | subject_id, user_id, permission_type | 档案与访问范围授权 |
 | visit | id, subject_id, visit_code, visit_date, mmse, moca, cdr_sb | 同档案visit_code唯一，保留日期与缺失 |
 | subject_feature | id, subject_id, feature_name, feature_value, recorded_at, unit | 保留来源时间、单位和版本，识别重复/冲突 |
 | data_import_job | id, created_by, status, data_version, total_rows, valid_rows, invalid_rows | 预览、确认入库与失败分开 |
 | quality_check | id, subject_id, quality_status, issues, checked_at, rule_version | 保存检查，不只临时计算页面值 |
+| care_assessment_request | subject_id, quality_check_id, requested_by, requested_at | 同档案同一次质控最多一份普通评估申请，复开页面可追溯 |
 | assessment_task | id, subject_id, status, run_id, request_digest, created_at, updated_at | 任务持久化及错误恢复 |
 | idempotency_record | user_id, operation, idempotency_key, request_digest, result_id | 用户+操作+键唯一，防止重复创建 |
 | risk_assessment | id, subject_id, task_id, agent_result_json, review_status, created_at | 保存返回版本、图、解释和限制 |
@@ -59,6 +60,14 @@ AgentClient：Python调用、超时/重试、契约与返回值校验
 七变量测试模板补充当前访视的五项模型输入。从档案读取已经保存的 MMSE、CDR-SB，并验证访视日期、权限和当前质控。确认后登记冻结快照，显式提交才发起预测。
 
 ### 评估
+
+普通档案按医生显式授权列入「我的患者」。当前资料通过质控后可提交 `CARE_WORKFLOW` 申请，当前状态为 `WAITING_FOR_VALIDATED_MODEL`。继续录入访视或更正资料后，重新质控才能为新资料提交。管理员办理账号核对，患者读取本人复诊。普通档案不会进入研究员的档案名单或研究执行队列。
+
+隔离人工验收中，`CARE_WORKFLOW` 自动从通过质控的同一次访视绑定 MMSE、CDR-SB 和五项补充资料。医生现有提交按钮复用任务持久化、执行租约与报告复核。人工数据的存储和计算运行在各自独立的本机服务内，研究员无逐单审批事项。
+
+新模型发布前，研究员与合作医院分别核验两年风险的院外表现和评分所触发行动的收益。更新须使用已获授权的数据离线进行，并保留验证记录及可回退版本。随访由医生确认，患者端显示具体安排。
+
+已有研究评估沿用相应的权限与快照流程。
 
 检查权限与档案 → 执行/读取质量检查 → 幂等创建PENDING任务 → RUNNING调用Python → 校验版本、runId和结果 → 保存COMPLETED/BLOCKED/FAILED及审计。
 

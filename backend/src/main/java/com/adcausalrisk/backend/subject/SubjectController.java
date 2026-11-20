@@ -60,8 +60,8 @@ public class SubjectController {
     }
 
     /**
-     * {@code POST /api/subjects} - create a new subject. Only {@code ADMIN} and {@code RESEARCHER}
-     * may call this endpoint; the service layer enforces that and returns 403 for others.
+     * {@code POST /api/subjects} - create a new subject. The service authorizes the requested
+     * archive type and applies the corresponding identifier rules.
      * {@code @Valid} triggers the DTO's constraint annotations (subjectCode pattern, notBlank)
      * before the request body reaches the service.
      */

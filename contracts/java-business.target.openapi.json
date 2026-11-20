@@ -906,7 +906,8 @@
       "post": {
         "operationId":"requestDoctorAssessment",
         "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
-        "summary":"固定当前资料并申请评估。测试资料可自动运行，受控资料进入待办",
+        "summary":"按当前质控提交评估申请",
+        "description":"默认将普通档案申请登记为 WAITING_FOR_VALIDATED_MODEL。隔离人工验收读取当前质控访视的七项资料，直接派发到研究模型。既有测试及受控档案沿用原有执行通道。",
         "responses": {
           "200":{"description":"申请状态","content":{"application/json":{"schema":{"$ref":"#/components/schemas/DoctorAssessmentRequestEnvelope"}}}},
           "403":{"description":"缺少医生角色或档案管理权限"},
@@ -1664,12 +1665,13 @@
             "name": "dataScope",
             "in": "query",
             "required": false,
-            "description": "按档案资料版本筛选。受控研究使用 adni-，测试样例使用 demo-。省略时兼容原调用的全部资料范围。",
+            "description": "按档案用途筛选。CARE_WORKFLOW 返回医生具有管理权限的普通档案。受控研究使用 adni-，测试样例使用 demo-。",
             "schema": {
               "type": "string",
               "enum": [
                 "CONTROLLED_RESEARCH",
-                "CONSTRUCTED_VALIDATION"
+                "CONSTRUCTED_VALIDATION",
+                "CARE_WORKFLOW"
               ]
             }
           },
@@ -3850,6 +3852,12 @@
             },
             "description": "Only PLANNED plans; business dates use Asia/Shanghai",
             "required": false
+          },
+          {
+            "in": "query",
+            "name": "dataScope",
+            "schema": { "type": "string", "enum": ["CARE_WORKFLOW"] },
+            "description": "医生工作台仅查询当前承担管理权限的普通患者随访。"
           }
         ]
       }
@@ -5475,6 +5483,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "modelInputs": { "$ref": "#/components/schemas/VisitModelInputs" },
                   "kind": {
                     "enum": [
                       "visit",
@@ -11599,14 +11608,14 @@
         "allOf":[
           {"$ref":"#/components/schemas/Envelope"},
           {"type":"object","properties":{"data":{"type":"object","required":["dataScope","qualityStatus","state","requestId","taskId"],"properties":{
-            "dataScope":{"enum":["CONSTRUCTED_VALIDATION","CONTROLLED_RESEARCH"]},"qualityStatus":{"type":"string"},
+            "dataScope":{"enum":["CONSTRUCTED_VALIDATION","CONTROLLED_RESEARCH","CARE_WORKFLOW"]},"qualityStatus":{"type":"string"},
             "state":{"$ref":"#/components/schemas/DoctorAssessmentRequestState"},
             "requestId":{"type":["integer","null"]},"taskId":{"type":["integer","null"]}
           }}}}
         ]
       },
       "DoctorAssessmentRequestState": {
-        "enum":["NEEDS_QUALITY","NEEDS_SNAPSHOT","NEEDS_SYNC","READY","RESEARCH_REVIEW","RUNNING","REVIEW_PENDING","REVIEWED","BLOCKED","FAILED","OUTCOME_UNKNOWN"]
+        "enum":["NEEDS_QUALITY","NEEDS_PREDICTION_INPUTS","NEEDS_SNAPSHOT","NEEDS_SYNC","READY","CARE_PREDICTION_READY","RESEARCH_REVIEW","WAITING_FOR_VALIDATED_MODEL","RUNNING","REVIEW_PENDING","REVIEWED","BLOCKED","FAILED","OUTCOME_UNKNOWN"]
       },
       "ControlledAssessmentRequest": {
         "type":"object","required":["id","subjectId","subjectCode","alias","state","taskId","canExecute"],
@@ -12042,13 +12051,17 @@
         "properties": {
           "subjectCode": {
             "type": "string",
-            "pattern": "^DEMO-[A-Za-z0-9-]{1,45}$"
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,49}$"
           },
           "alias": {
             "type": "string"
           },
           "status": {
             "type": "string"
+          },
+          "archiveType": {
+            "enum": ["CARE"],
+            "description": "医生新建普通档案时传 CARE。省略用于兼容测试建档及编辑已有档案。用途在创建后固定。"
           }
         },
         "required": [
@@ -12057,9 +12070,22 @@
         ],
         "additionalProperties": false
       },
+      "VisitModelInputs": {
+        "type": "object",
+        "description": "同一次访视的选填资料。缺失保留为空。",
+        "properties": {
+          "ageYears": { "type": ["number", "null"], "minimum": 0, "maximum": 120 },
+          "educationYears": { "type": ["number", "null"], "minimum": 0, "maximum": 40 },
+          "cdrGlobal": { "type": ["number", "null"], "minimum": 0, "maximum": 3 },
+          "adasCog13": { "type": ["number", "null"], "minimum": 0, "maximum": 85 },
+          "faqTotal": { "type": ["number", "null"], "minimum": 0, "maximum": 30 }
+        },
+        "additionalProperties": false
+      },
       "Visit": {
         "type": "object",
         "properties": {
+          "modelInputs": { "$ref": "#/components/schemas/VisitModelInputs" },
           "visitCode": {
             "type": "string",
             "minLength": 1,
@@ -12618,7 +12644,7 @@
           },
           "subjectCode": {
             "type": "string",
-            "pattern": "^DEMO-[A-Za-z0-9-]{1,45}$"
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,49}$"
           },
           "alias": {
             "type": "string"
@@ -12631,7 +12657,7 @@
           },
           "dataVersion": {
             "type": "string",
-            "pattern": "^demo-",
+            "pattern": "^(demo|adni|care)-",
             "maxLength": 100
           },
           "createdAt": {
@@ -13208,6 +13234,7 @@
       "VisitResult": {
         "type": "object",
         "properties": {
+          "modelInputs": { "$ref": "#/components/schemas/VisitModelInputs" },
           "id": {
             "type": "integer",
             "minimum": 1
@@ -13262,6 +13289,7 @@
       "VisitCorrection": {
         "type": "object",
         "properties": {
+          "modelInputs": { "$ref": "#/components/schemas/VisitModelInputs" },
           "visitDate": {
             "type": "string",
             "format": "date",
@@ -13306,6 +13334,7 @@
       "VisitVersion": {
         "type": "object",
         "properties": {
+          "modelInputs": { "$ref": "#/components/schemas/VisitModelInputs" },
           "id": {
             "type": "integer",
             "minimum": 1

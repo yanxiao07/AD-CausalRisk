@@ -404,7 +404,7 @@ async function loadAll(target = 1) {
       page: target,
       pageSize: todoPageSize.value,
       status: 'PLANNED',
-      due: due.value
+      due: due.value,
     })
     if (seq !== allSeq) return
     allItems.value = Array.isArray(data?.items) ? data.items : []

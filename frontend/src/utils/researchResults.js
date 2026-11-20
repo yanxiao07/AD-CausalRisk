@@ -1,5 +1,6 @@
 export const CONTROLLED_RESEARCH = 'CONTROLLED_RESEARCH'
 export const CONSTRUCTED_VALIDATION = 'CONSTRUCTED_VALIDATION'
+export const CARE_WORKFLOW = 'CARE_WORKFLOW'
 export const completedSampleReports = {
   name: 'ReportList',
   query: { dataScope: CONSTRUCTED_VALIDATION, status: 'COMPLETED' }
