@@ -13,7 +13,7 @@
           v-model="form.subjectCode"
           :disabled="isEdit"
           maxlength="50"
-          placeholder="DEMO-2026-001（必须以 DEMO- 开头）"
+          :placeholder="isEdit ? '' : 'DEMO-2026-001（必须以 DEMO- 开头）'"
         />
         <p class="form-hint">
           {{ isEdit ? '档案编号创建后不可修改。' : '格式：DEMO- 加字母、数字或短横线，最长 50 位。' }}
@@ -63,7 +63,7 @@ const rules = {
   subjectCode: [
     { required: true, message: '请填写档案编号', trigger: 'blur' },
     {
-      pattern: /^DEMO-[A-Za-z0-9-]{1,45}$/,
+      validator: (_rule, value) => isEdit.value || /^DEMO-[A-Za-z0-9-]{1,45}$/.test(value),
       message: '必须以 DEMO- 开头，后面只能是字母、数字或短横线',
       trigger: 'blur'
     }

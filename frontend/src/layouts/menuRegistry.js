@@ -47,9 +47,7 @@ export const MENU_REGISTRY = {
  */
 export function buildMenuItems(menus = [], role) {
   if (role === 'DOCTOR') {
-    const priorities = ['subjects', 'reviews', 'reports', 'graph', 'followups']
-    menus = [...priorities.filter(key => menus.includes(key)),
-      ...menus.filter(key => !priorities.includes(key))]
+    menus = ['subjects', 'reviews', 'reports', 'graph', 'followups'].filter(key => menus.includes(key))
   } else if (role === 'ADMIN') {
     const priorities = ['users', 'system', 'audit']
     menus = [...priorities.filter(key => menus.includes(key)), ...menus.filter(key => !priorities.includes(key))]
@@ -60,7 +58,7 @@ export function buildMenuItems(menus = [], role) {
       return { key, label: key, path: null, icon: Document, ready: false, unknown: true }
     }
     const label = role === 'DOCTOR'
-      ? ({ subjects: '患者档案', reviews: '结果复核' })[key] || entry.label
+      ? ({ subjects: '我的患者', reviews: '报告复核' })[key] || entry.label
       : entry.label
     return { key, ...entry, label }
   })

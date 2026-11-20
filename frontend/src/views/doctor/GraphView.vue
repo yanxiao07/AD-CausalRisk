@@ -3,13 +3,14 @@
     <PageHeader back title="评估贡献图" subtitle="按档案查看最近一次评估的模型贡献。"
       :terms="['attribution', 'window']">
       <template #extra>
+        <el-button v-if="doctorView && task" @click="openArchive">打开患者档案</el-button>
         <el-button :icon="Refresh" :loading="loading" :disabled="!subjectId" @click="load">刷新</el-button>
       </template>
     </PageHeader>
 
     <DataCard padding="lg">
       <div class="graph-filters">
-        <ResearchScopeSelect :model-value="scope" @update:model-value="setScope" />
+        <ResearchScopeSelect v-if="!doctorView" :model-value="scope" @update:model-value="setScope" />
         <el-select v-model="subjectId" class="subject-select" filterable remote clearable
           :remote-method="searchSubjects" :loading="subjectsLoading" aria-label="筛选档案"
           placeholder="选择档案 · 可按编号搜索" @visible-change="onSubjectPickerOpen">
@@ -20,7 +21,9 @@
     </DataCard>
 
     <DataCard v-if="!subjectId" padding="lg">
-      <EmptyState :icon="Share" title="请先选择档案" description="选择档案后可查看最近一次评估的图谱。" />
+      <EmptyState :icon="Share" title="请先选择档案"
+        description="可按档案编号搜索，查看该档案最近一次评估的贡献图。"
+        :action-text="doctorView ? '打开患者档案' : ''" @action="openArchive" />
     </DataCard>
     <el-skeleton v-else-if="loading" :rows="5" animated />
     <DataCard v-else-if="error" padding="lg">
@@ -60,12 +63,16 @@ import DataCard from '@/components/common/DataCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
+import { useUserStore } from '@/stores/user.js'
 import { formatDateTime } from '@/utils/datetime.js'
-import { CONTROLLED_RESEARCH, modelContributions, researchScope, researchScopeLabel } from '@/utils/researchResults.js'
+import { CONSTRUCTED_VALIDATION, CONTROLLED_RESEARCH, modelContributions, researchScope, researchScopeLabel } from '@/utils/researchResults.js'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
+const doctorView = computed(() => userStore.primaryRole === 'DOCTOR')
 const scope = computed(() => researchScope(route.query.dataScope))
+const reportScope = computed(() => doctorView.value ? undefined : scope.value)
 const subjectId = computed({
   get: () => {
     const id = Number(route.query.subjectId)
@@ -90,11 +97,18 @@ function onSubjectPickerOpen(open) {
   if (open && !subjects.value.length) searchSubjects('')
 }
 
+function openArchive() {
+  router.push({
+    name: 'PatientList',
+    query: subjectId.value ? { subjectId: subjectId.value, section: 'research' } : {}
+  })
+}
+
 async function searchSubjects(keyword) {
   const sequence = ++searchId
   subjectsLoading.value = true
   try {
-    const result = await listSubjects({ keyword: keyword.trim(), pageSize: 30, dataScope: scope.value })
+    const result = await listSubjects({ keyword: keyword.trim(), pageSize: 30, dataScope: reportScope.value })
     if (sequence !== searchId) return
     const selected = subjects.value.find(subject => subject.id === subjectId.value)
     subjects.value = result.items || []
@@ -114,10 +128,11 @@ async function load() {
   loading.value = Boolean(id)
   if (!id) return
   try {
-    const result = await listResearchReports({ pageSize: 1, dataScope: scope.value, subjectId: id })
+    const result = await listResearchReports({ pageSize: 1, dataScope: reportScope.value, subjectId: id })
     if (sequence !== requestId) return
     const latest = result?.items?.[0] || null
-    if (latest && (latest.dataScope !== scope.value || latest.subjectId !== id)) {
+    if (latest && (latest.subjectId !== id || ![CONTROLLED_RESEARCH, CONSTRUCTED_VALIDATION].includes(latest.dataScope)
+      || (reportScope.value && latest.dataScope !== reportScope.value))) {
       throw new Error('评估资料与所选档案不一致，请刷新重试。')
     }
     task.value = latest
@@ -137,7 +152,7 @@ watch(scope, () => {
   subjects.value = []
   subjectsLoading.value = false
 })
-watch([scope, subjectId], load, { immediate: true })
+watch([reportScope, subjectId], load, { immediate: true })
 </script>
 
 <style scoped>

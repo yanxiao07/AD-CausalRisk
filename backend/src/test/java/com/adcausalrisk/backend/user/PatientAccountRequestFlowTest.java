@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,6 +31,122 @@ class PatientAccountRequestFlowTest {
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper json;
+
+    @Test
+    void supplementalVisitInputsRoundTripAndRemainBoundToTheirVisitVersion() throws Exception {
+        var doctor = actor("doctor", "DOCTOR");
+        long subject = data(postAs("/api/subjects", doctor,
+                """
+                {"subjectCode":"OP-VISIT-INPUTS","alias":"人工资料","archiveType":"CARE"}
+                """)).path("id").asLong();
+        String archive = "/api/subjects/" + subject;
+        String initial = """
+                {"kind":"visit","visitCode":"BASE","visitDate":"2025-10-20","source":"人工量表",
+                "mmse":27,"moca":25,"cdrSb":1.5,
+                "modelInputs":{"ageYears":74.25,"educationYears":16,"cdrGlobal":0.5,"adasCog13":19,"faqTotal":0}}
+                """;
+        postAs(archive + "/observations", doctor, initial.replace("74.25", "121"))
+                .andExpect(status().isBadRequest());
+        var saved = json.readTree(postAs(archive + "/observations", doctor, initial).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray());
+        assertThat(ContractSchemas.validateResponse(saved, "/api/subjects/{subjectId}/observations", "post", 200))
+                .isEmpty();
+        long visit = saved.at("/data/id").asLong();
+        assertThat(saved.at("/data/modelInputs/ageYears").decimalValue()).isEqualByComparingTo("74.25");
+        assertThat(saved.at("/data/modelInputs/faqTotal").isNumber()).isTrue();
+        var detail = data(mvc.perform(get(archive).with(authentication(doctor))));
+        assertThat(detail.at("/visits/0/modelInputs")).isEqualTo(saved.at("/data/modelInputs"));
+        data(postAs(archive + "/quality-checks", doctor, "{}"));
+        String path = archive + "/visits/" + visit;
+        String correction = """
+                {"visitDate":"2025-10-20","mmse":27,"moca":25,"cdrSb":1.5,"reason":"人工数据核对",
+                "modelInputs":{"ageYears":74.25,"educationYears":16,"cdrGlobal":0.5,"adasCog13":19,"faqTotal":4}}
+                """;
+        var corrected = data(mvc.perform(patch(path).with(authentication(doctor))
+                .contentType(MediaType.APPLICATION_JSON).content(correction)));
+        assertThat(corrected.at("/modelInputs/faqTotal").asInt()).isEqualTo(4);
+        var versions = data(mvc.perform(get(path + "/history").with(authentication(doctor))));
+        assertThat(versions.size()).isEqualTo(2);
+        assertThat(versions.at("/0/modelInputs/faqTotal").asInt()).isZero();
+        assertThat(versions.at("/1/modelInputs/faqTotal").asInt()).isEqualTo(4);
+        assertThat(data(mvc.perform(get(archive + "/assessment-request").with(authentication(doctor))))
+                .path("qualityStatus").asText()).isEqualTo("STALE");
+    }
+
+    @Test
+    void ordinaryCareArchiveRunsOperationsAndKeepsResearchExecutionSeparate() throws Exception {
+        var doctor = actor("doctor", "DOCTOR");
+        var admin = actor("admin", "ADMIN");
+        var researcher = actor("researcher", "RESEARCHER");
+        String creation = """
+                {"subjectCode":"OP-20261120-001","alias":"流程核验资料","archiveType":"CARE"}
+                """;
+        postAs("/api/subjects", researcher, creation).andExpect(status().isForbidden());
+        postAs("/api/subjects", doctor, creation.replace("OP-20261120-001", "DEMO-CARE"))
+                .andExpect(status().isBadRequest());
+        var created = json.readTree(postAs("/api/subjects", doctor, creation).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray());
+        assertThat(ContractSchemas.validateResponse(created, "/api/subjects", "post", 200)).isEmpty();
+        long subject = created.at("/data/id").asLong();
+        String archive = "/api/subjects/" + subject;
+        String assessment = archive + "/assessment-request";
+        String page = "/api/subjects?dataScope=CARE_WORKFLOW&keyword=OP-20261120-001";
+        assertThat(data(mvc.perform(get(page).with(authentication(doctor)))).path("total").asInt()).isOne();
+        assertThat(data(mvc.perform(get("/api/subjects?keyword=OP-20261120-001")
+                .with(authentication(researcher)))).path("total").asInt()).isZero();
+        mvc.perform(get(archive).with(authentication(researcher))).andExpect(status().isForbidden());
+        mvc.perform(get(page).with(authentication(researcher))).andExpect(status().isForbidden());
+        postAs(assessment, doctor, "{}").andExpect(status().isConflict());
+
+        visit(subject, doctor, "BASE", "2025-05-12", true);
+        assertThat(jdbc.queryForObject("SELECT data_version FROM subject WHERE id=?", String.class, subject))
+                .startsWith("care-").isNotEqualTo(created.at("/data/dataVersion").asText());
+        data(postAs(archive + "/quality-checks", doctor, "{}"));
+        assertThat(data(mvc.perform(get(assessment).with(authentication(doctor)))).path("state").asText())
+                .isEqualTo("READY");
+        var request = json.readTree(postAs(assessment, doctor, "{}").andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray());
+        assertThat(ContractSchemas.validateResponse(request, "/api/subjects/{subjectId}/assessment-request", "post", 200))
+                .isEmpty();
+        assertThat(request.at("/data/dataScope").asText()).isEqualTo("CARE_WORKFLOW");
+        assertThat(request.at("/data/state").asText()).isEqualTo("WAITING_FOR_VALIDATED_MODEL");
+        assertThat(request.at("/data/taskId").isNull()).isTrue();
+        assertThat(data(postAs(assessment, doctor, "{}")).path("requestId")).isEqualTo(request.at("/data/requestId"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM research_table_task t"
+                + " JOIN research_table_snapshot s ON s.id=t.snapshot_id WHERE s.subject_id=?", Long.class, subject))
+                .isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM controlled_assessment_request WHERE subject_id=?", Long.class, subject))
+                .isZero();
+
+        String patientRequest = json.createObjectNode().put("subjectId", subject).toString();
+        assertThat(data(postAs(PATH, doctor, patientRequest)).path("status").asText()).isEqualTo("PENDING");
+        long account = jdbc.queryForObject("SELECT id FROM patient_account_request WHERE subject_id=?", Long.class, subject);
+        data(postAs(PATH + "/" + account + "/issue", admin, """
+                {"username":"care-flow-fixture-patient","password":"DemoPass!2026","identityVerified":true}
+                """));
+        data(postAs("/api/follow-ups", doctor, json.createObjectNode().put("subjectId", subject)
+                .put("scheduledAt", java.time.Instant.now().plusSeconds(172800).toString())
+                .put("purpose", "流程核验随访").toString()));
+        assertThat(data(mvc.perform(get("/api/follow-ups?dataScope=CARE_WORKFLOW&subjectId=" + subject)
+                .with(authentication(doctor)))).path("total").asInt()).isOne();
+        assertThat(data(mvc.perform(get("/api/patients/me/follow-up")
+                .with(authentication(actor("care-flow-fixture-patient", "PATIENT")))))
+                .at("/next/purpose").asText()).isEqualTo("流程核验随访");
+
+        visit(subject, doctor, "UPDATED", "2025-06-12", true);
+        assertThat(data(mvc.perform(get(assessment).with(authentication(doctor)))).path("qualityStatus").asText())
+                .isEqualTo("STALE");
+        postAs(assessment, doctor, "{}").andExpect(status().isConflict());
+
+        data(mvc.perform(post(archive + "/visits").with(authentication(doctor)).header("X-Allow-OOR", true)
+                .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"visitCode":"NEEDS_CORRECTION","visitDate":"2025-07-12","mmse":31,"cdrSb":1.5}
+                        """)));
+        assertThat(data(postAs(archive + "/quality-checks", doctor, "{}")).path("qualityStatus").asText())
+                .isEqualTo("BLOCKED");
+        assertThat(data(mvc.perform(get("/api/qc/list?subjectCode=OP-20261120-001")
+                .with(authentication(researcher)))).path("total").asInt()).isZero();
+    }
 
     @Test
     void doctorQualityGateAndAdminVerifiedBindingUseCurrentDataAndExplicitDoctor() throws Exception {

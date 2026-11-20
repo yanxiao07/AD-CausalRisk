@@ -13,13 +13,14 @@ import jakarta.validation.constraints.Pattern;
 public record SubjectCreateRequest(
 
         @NotBlank(message = "subjectCode 不能为空")
-        @Pattern(regexp = "^DEMO-[A-Za-z0-9-]{1,45}$",
-                message = "subjectCode 格式无效，须匹配 DEMO-[A-Za-z0-9-]{1,45}")
+        @Pattern(regexp = "^[A-Za-z0-9][A-Za-z0-9-]{0,49}$",
+                message = "档案编号最长 50 位，只能包含字母、数字或短横线，且须以字母或数字开始")
         String subjectCode,
 
         @NotBlank(message = "alias 不能为空")
         String alias,
 
-        String status
+        String status,
+        @Pattern(regexp = "^CARE$", message = "无效的档案用途") String archiveType
 ) {
 }

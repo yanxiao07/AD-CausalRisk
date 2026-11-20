@@ -1,8 +1,9 @@
 <template>
   <el-dialog
+    class="visit-model-dialog"
     :model-value="modelValue"
     title="录入访视量表"
-    width="480px"
+    width="min(620px, 94vw)"
     :close-on-click-modal="false"
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
@@ -31,6 +32,8 @@
       <el-form-item label="CDR-SB">
         <el-input-number v-model="form.cdrSb" :min="0" :max="18" :precision="1" :step="0.5" style="width: 100%" />
       </el-form-item>
+      <VisitModelInputFields v-if="modelInputsEnabled" v-model="modelInputs" :errors="modelErrors"
+        @clear="delete modelErrors[$event]" />
     </el-form>
 
     <template #footer>
@@ -44,16 +47,21 @@
 import { reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createSubjectVisit } from '@/api/subjects.js'
+import VisitModelInputFields from './VisitModelInputFields.vue'
+import { newVisitModelDraft, visitModelErrors, visitModelPayload } from './visitModelInputs.js'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   subjectId: { type: [Number, String], required: true },
-  initial: { type: Object, default: null }
+  initial: { type: Object, default: null },
+  modelInputsEnabled: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:modelValue', 'saved'])
 
 const formRef = ref(null)
 const submitting = ref(false)
+const modelInputs = ref(newVisitModelDraft())
+const modelErrors = ref({})
 const form = reactive({
   visitCode: '',
   visitDate: '',
@@ -76,13 +84,16 @@ watch(
     form.mmse = props.initial?.mmse ?? null
     form.moca = null
     form.cdrSb = props.initial?.cdrSb ?? null
+    modelInputs.value = newVisitModelDraft()
+    modelErrors.value = {}
     formRef.value?.clearValidate()
   }
 )
 
 async function submit() {
   const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
+  modelErrors.value = visitModelErrors(modelInputs.value)
+  if (!valid || Object.keys(modelErrors.value).length) return
 
   submitting.value = true
   try {
@@ -91,7 +102,8 @@ async function submit() {
       visitDate: form.visitDate,
       mmse: form.mmse,
       moca: form.moca,
-      cdrSb: form.cdrSb
+      cdrSb: form.cdrSb,
+      ...(props.modelInputsEnabled ? { modelInputs: visitModelPayload(modelInputs.value) } : {})
     })
     ElMessage.success('访视已补录')
     emit('saved', saved)

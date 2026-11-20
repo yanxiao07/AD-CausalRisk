@@ -1,5 +1,7 @@
 package com.adcausalrisk.backend.subject.dto;
 
+import com.adcausalrisk.backend.visit.entity.VisitModelInputs;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -25,6 +27,7 @@ public record VisitResultView(
         LocalDate visitDate,
         BigDecimal mmse,
         BigDecimal moca,
-        BigDecimal cdrSb
+        BigDecimal cdrSb,
+        @JsonInclude(JsonInclude.Include.NON_NULL) VisitModelInputs modelInputs
 ) {
 }

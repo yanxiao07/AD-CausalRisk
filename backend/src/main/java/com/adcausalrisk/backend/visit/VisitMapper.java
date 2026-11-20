@@ -43,7 +43,8 @@ public final class VisitMapper {
                 visitDate,
                 request.mmse(),
                 request.moca(),
-                request.cdrSb());
+                request.cdrSb(),
+                request.modelInputs());
     }
 
     /**
@@ -74,7 +75,8 @@ public final class VisitMapper {
                 visit.getVisitDate(),
                 maskOutOfRange(exactScore(visit.getRawMmse(), visit.getMmse()), MMSE_CEIL),
                 maskOutOfRange(exactScore(visit.getRawMoca(), visit.getMoca()), MOCA_CEIL),
-                maskOutOfRange(exactScore(visit.getRawCdrSb(), visit.getCdrSb()), CDR_SB_CEIL));
+                maskOutOfRange(exactScore(visit.getRawCdrSb(), visit.getCdrSb()), CDR_SB_CEIL),
+                visit.getModelInputs());
     }
 
     /**

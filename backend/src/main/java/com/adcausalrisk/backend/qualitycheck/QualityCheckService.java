@@ -61,10 +61,18 @@ public class QualityCheckService {
     }
 
     private List<Map<String, Object>> loadVisits(long subjectId) {
-        return jdbc.queryForList(
-                "SELECT id,visit_date,mmse,moca,cdr_sb,raw_mmse,raw_moca,raw_cdr_sb FROM"
+        var visits = jdbc.queryForList(
+                "SELECT id,visit_date,mmse,moca,cdr_sb,raw_mmse,raw_moca,raw_cdr_sb,"
+                        + " age_years,education_years,cdr_global,adas_cog13,faq_total FROM"
                         + " visit WHERE subject_id=? AND is_current=TRUE ORDER BY visit_date,id",
                 subjectId);
+        // Retain the old digest for visits whose optional measurements are all absent.
+        for (var visit : visits) {
+            for (String key : List.of("age_years", "education_years", "cdr_global", "adas_cog13", "faq_total")) {
+                if (visit.get(key) == null) visit.remove(key);
+            }
+        }
+        return visits;
     }
 
     private List<Map<String, Object>> loadFeatures(long subjectId) {

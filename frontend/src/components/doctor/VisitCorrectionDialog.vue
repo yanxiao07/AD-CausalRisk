@@ -1,8 +1,9 @@
 <template>
   <el-dialog
+    class="visit-model-dialog"
     v-model="visible"
-    title="追加访视更正"
-    width="640px"
+    title="补录或更正访视"
+    width="min(720px, 94vw)"
     :close-on-click-modal="false"
     @closed="reset"
   >
@@ -58,6 +59,8 @@
           />
         </el-form-item>
       </div>
+      <VisitModelInputFields v-if="modelInputsEnabled" v-model="modelInputs" :errors="modelErrors"
+        @clear="delete modelErrors[$event]" />
       <el-form-item label="更正原因" prop="reason">
         <el-input
           v-model="form.reason"
@@ -95,6 +98,9 @@
         <el-table-column label="CDR-SB" width="80">
           <template #default="{ row }">{{ score(row.cdrSb) }}</template>
         </el-table-column>
+        <el-table-column v-if="modelInputsEnabled" label="补充资料" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ modelSummary(row.modelInputs) }}</template>
+        </el-table-column>
         <el-table-column prop="reason" label="更正原因" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">{{ row.reason || '原始记录' }}</template>
         </el-table-column>
@@ -112,11 +118,14 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { correctSubjectVisit, getVisitHistory } from '@/api/subjects.js'
+import VisitModelInputFields from '@/components/subject/VisitModelInputFields.vue'
+import { newVisitModelDraft, visitModelErrors, visitModelFields, visitModelPayload } from '@/components/subject/visitModelInputs.js'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   subjectId: { type: [Number, String], default: null },
-  visit: { type: Object, default: null }
+  visit: { type: Object, default: null },
+  modelInputsEnabled: { type: Boolean, default: false }
 })
 const emit = defineEmits(['update:modelValue', 'saved'])
 
@@ -129,6 +138,8 @@ const formRef = ref(null)
 const saving = ref(false)
 const historyLoading = ref(false)
 const history = ref([])
+const modelInputs = ref(newVisitModelDraft())
+const modelErrors = ref({})
 const form = reactive({ visitDate: '', mmse: null, moca: null, cdrSb: null, reason: '' })
 const rules = {
   visitDate: [{ required: true, message: '请选择访视日期', trigger: 'change' }],
@@ -154,6 +165,8 @@ function resetForm() {
   form.moca = props.visit?.moca ?? null
   form.cdrSb = props.visit?.cdrSb ?? null
   form.reason = ''
+  modelInputs.value = newVisitModelDraft(props.visit?.modelInputs)
+  modelErrors.value = {}
   formRef.value?.clearValidate()
 }
 
@@ -164,6 +177,11 @@ function reset() {
 
 function score(value) {
   return typeof value === 'number' ? String(value) : '—'
+}
+
+function modelSummary(inputs) {
+  return visitModelFields.filter(({ key }) => inputs?.[key] != null)
+    .map(({ key, label }) => `${label} ${inputs[key]}`).join(' · ') || '—'
 }
 
 async function loadHistory() {
@@ -182,7 +200,8 @@ async function loadHistory() {
 async function submit() {
   if (!formRef.value) return
   const valid = await formRef.value.validate().catch(() => false)
-  if (!valid || !props.subjectId || !props.visit?.id) return
+  modelErrors.value = visitModelErrors(modelInputs.value)
+  if (!valid || Object.keys(modelErrors.value).length || !props.subjectId || !props.visit?.id) return
   saving.value = true
   try {
     await correctSubjectVisit(props.subjectId, props.visit.id, {
@@ -190,7 +209,8 @@ async function submit() {
       mmse: form.mmse,
       moca: form.moca,
       cdrSb: form.cdrSb,
-      reason: form.reason.trim()
+      reason: form.reason.trim(),
+      ...(props.modelInputsEnabled ? { modelInputs: visitModelPayload(modelInputs.value) } : {})
     })
     ElMessage.success('已追加新版本，原记录保留在版本历史中')
     emit('saved')

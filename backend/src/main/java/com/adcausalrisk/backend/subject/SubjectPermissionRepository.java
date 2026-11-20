@@ -23,6 +23,9 @@ public interface SubjectPermissionRepository extends JpaRepository<SubjectPermis
     @Query(value = "SELECT data_scope FROM sys_user WHERE id=:userId", nativeQuery = true)
     String findDataScope(@Param("userId") Long userId);
 
+    @Query(value = "SELECT data_version FROM subject WHERE id=:subjectId", nativeQuery = true)
+    String findSubjectVersion(@Param("subjectId") Long subjectId);
+
     /**
      * Returns every subject the given user has any permission on, with duplicates collapsed. One
      * row in {@code subject_permission} (any permission_type) is enough for the subject to count as

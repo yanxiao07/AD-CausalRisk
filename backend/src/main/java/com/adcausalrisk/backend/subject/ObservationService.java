@@ -5,6 +5,7 @@ import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.dto.*;
 import com.adcausalrisk.backend.visit.*;
 import com.adcausalrisk.backend.visit.dto.VisitCreateRequest;
+import com.adcausalrisk.backend.visit.entity.VisitModelInputs;
 
 import jakarta.validation.*;
 
@@ -41,7 +42,8 @@ public class ObservationService {
             String recordedAt,
             String unit,
             String source,
-            String missingReason) {}
+            String missingReason,
+            VisitModelInputs modelInputs) {}
 
     private void validate(Object input) {
         var errors =
@@ -76,7 +78,8 @@ public class ObservationService {
                             input.visitDate(),
                             input.mmse(),
                             input.moca(),
-                            input.cdrSb());
+                            input.cdrSb(),
+                            input.modelInputs());
             validate(dto);
             var result = visits.createVisit(subjectId, dto, actor);
             saved = result;

@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -87,6 +88,9 @@ public class Visit {
     @Column(name = "raw_cdr_sb", length = 64)
     private String rawCdrSb;
 
+    @Embedded
+    private VisitModelInputs modelInputs;
+
     /** 1 for the original observation; +1 for every appended correction. */
     @Column(name = "version_no", nullable = false)
     private int versionNo = 1;
@@ -114,8 +118,13 @@ public class Visit {
 
     public Visit(Long subjectId, String visitCode, LocalDate visitDate,
                  BigDecimal mmse, BigDecimal moca, BigDecimal cdrSb) {
+        this(subjectId, visitCode, visitDate, mmse, moca, cdrSb, null);
+    }
+
+    public Visit(Long subjectId, String visitCode, LocalDate visitDate,
+                 BigDecimal mmse, BigDecimal moca, BigDecimal cdrSb, VisitModelInputs modelInputs) {
         this(subjectId, visitCode, visitDate, mmse, moca, cdrSb,
-                1, null, null, null, null, true);
+                1, null, null, null, null, true, modelInputs);
     }
 
     /**
@@ -125,7 +134,7 @@ public class Visit {
     public Visit(Long subjectId, String visitCode, LocalDate visitDate,
                  BigDecimal mmse, BigDecimal moca, BigDecimal cdrSb,
                  int versionNo, Long replacesId, String correctionReason,
-                 Long correctedBy, LocalDateTime correctedAt, boolean current) {
+                 Long correctedBy, LocalDateTime correctedAt, boolean current, VisitModelInputs modelInputs) {
         this.subjectId = subjectId;
         this.visitCode = visitCode;
         this.visitDate = visitDate;
@@ -137,6 +146,7 @@ public class Visit {
         this.mmse = storageScale(mmse);
         this.moca = storageScale(moca);
         this.cdrSb = storageScale(cdrSb);
+        this.modelInputs = modelInputs;
         this.versionNo = versionNo;
         this.replacesId = replacesId;
         this.correctionReason = correctionReason;
@@ -198,6 +208,10 @@ public class Visit {
 
     public String getRawCdrSb() {
         return rawCdrSb;
+    }
+
+    public VisitModelInputs getModelInputs() {
+        return modelInputs;
     }
 
     public int getVersionNo() {

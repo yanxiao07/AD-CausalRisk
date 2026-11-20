@@ -1,6 +1,6 @@
 <template>
   <div class="doctor-home">
-    <PageHeader title="医生工作台" subtitle="查看待复核结果、患者档案和今日随访。" :terms="['review', 'followup']">
+    <PageHeader title="医生工作台" subtitle="查看负责的患者、评估报告和今日随访。" :terms="['review', 'followup']">
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>
@@ -39,29 +39,15 @@
         <section class="panel">
           <header class="panel__head">
             <div>
-              <h2>待复核报告</h2>
-              <p>受控研究 · 待医生复核</p>
+              <h2>患者评估</h2>
+              <p>从患者档案查看资料是否齐备、提交评估申请或查看结果。</p>
             </div>
-            <el-button text type="primary" @click="goResearchReviews">查看全部待复核</el-button>
+            <el-button text type="primary" @click="router.push('/subjects')">打开我的患者</el-button>
           </header>
-
-          <div v-if="researchPending.length" class="pending-list">
-            <div v-for="item in researchPending" :key="item.taskId" class="pending-row">
-              <div class="pending-row__main">
-                <strong>{{ item.subjectCode || `#${item.subjectId}` }}</strong>
-                <span>{{ item.subjectAlias || '—' }} · {{ researchScopeLabel(item.dataScope) }} · {{ formatTime(item.createdAt) }}</span>
-              </div>
-
-              <el-button size="small" type="primary" plain @click="router.push(`/reports/research/${item.taskId}`)">看报告</el-button>
-            </div>
+          <div class="assessment-links">
+            <el-button @click="router.push('/reviews')">报告复核</el-button>
+            <el-button @click="router.push('/reports')">评估报告</el-button>
           </div>
-          <EmptyState
-            v-else-if="!loading"
-            title="没有待复核报告"
-            description="评估完成后，待复核报告会出现在这里。"
-            :icon="Checked"
-          />
-          <el-skeleton v-else :rows="2" animated />
         </section>
 
         <section class="panel">
@@ -109,12 +95,11 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, Checked, Refresh, Timer, User } from '@element-plus/icons-vue'
+import { ArrowRight, Refresh, Timer, User } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
-import { researchScopeLabel } from '@/utils/researchResults.js'
+import { CARE_WORKFLOW } from '@/utils/researchResults.js'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { listFollowUpsPaged } from '@/api/followups.js'
-import { listResearchReviews } from '@/api/research.js'
 import { listSubjects } from '@/api/subjects.js'
 import { formatDateTime } from '@/utils/datetime.js'
 
@@ -125,18 +110,16 @@ const followups = ref([])
 const todayTotal = ref(0)
 const overdueTotal = ref(0)
 const subjectTotal = ref(null)
-const researchPending = ref([])
-const researchPendingTotal = ref(0)
 
 const metrics = computed(() => [
   {
-    key: 'pending',
-    label: '待复核',
-    value: researchPendingTotal.value,
-    hint: researchPendingTotal.value ? `${researchPendingTotal.value} 条等待确认` : '当前没有待办',
-    icon: Checked,
+    key: 'subjects',
+    label: '我的患者',
+    value: subjectTotal.value,
+    hint: '目前负责的档案',
+    icon: User,
     primary: true,
-    action: goResearchReviews
+    action: () => router.push('/subjects')
   },
   {
     key: 'followups',
@@ -145,14 +128,6 @@ const metrics = computed(() => [
     hint: overdueTotal.value ? `另有 ${overdueTotal.value} 条逾期` : '今日到期',
     icon: Timer,
     action: goFollowUps
-  },
-  {
-    key: 'subjects',
-    label: '在管患者',
-    value: subjectTotal.value,
-    hint: '授权范围内的档案',
-    icon: User,
-    action: () => router.push('/subjects')
   }
 ])
 
@@ -183,17 +158,16 @@ function formatTime(value) {
 async function load() {
   loading.value = true
   loadError.value = ''
-  const [subjects, today, overdue, research] = await Promise.allSettled([
-    listSubjects({ page: 1, pageSize: 1 }),
+  const [subjects, today, overdue] = await Promise.allSettled([
+    listSubjects({ page: 1, pageSize: 1, dataScope: CARE_WORKFLOW }),
     listFollowUpsPaged({ page: 1, pageSize: 6, due: 'today' }),
-    listFollowUpsPaged({ page: 1, pageSize: 1, due: 'overdue' }),
-    listResearchReviews({ status: 'PENDING', page: 1, pageSize: 5 })
+    listFollowUpsPaged({ page: 1, pageSize: 1, due: 'overdue' })
   ])
 
-  const failed = [subjects, today, overdue, research].filter(
+  const failed = [subjects, today, overdue].filter(
     (item) => item.status === 'rejected'
   )
-  if (failed.length === 4) {
+  if (failed.length === 3) {
     loadError.value = '工作台数据读取失败，请稍后刷新重试。'
   } else if (failed.length > 0) {
     loadError.value = '部分数据读取失败，已展示可用的内容。'
@@ -205,15 +179,7 @@ async function load() {
     todayTotal.value = Number(today.value?.total ?? followups.value.length)
   }
   if (overdue.status === 'fulfilled') overdueTotal.value = Number(overdue.value?.total ?? 0)
-  if (research.status === 'fulfilled') {
-    researchPending.value = Array.isArray(research.value?.items) ? research.value.items : []
-    researchPendingTotal.value = Number(research.value?.total ?? researchPending.value.length)
-  }
   loading.value = false
-}
-
-function goResearchReviews() {
-  router.push('/reviews')
 }
 
 function goFollowUps() {
@@ -229,6 +195,9 @@ onMounted(load)
   flex-direction: column;
   gap: 20px;
 }
+
+.assessment-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.assessment-links .el-button { margin: 0; min-height: 44px; }
 
 .load-alert {
   border-radius: var(--r-lg);
@@ -338,48 +307,6 @@ onMounted(load)
   margin: 4px 0 0;
   font-size: 12px;
   color: var(--muted);
-}
-
-.risk-card__meta,
-.pending-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.pending-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 84px auto;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 2px;
-  border-top: 1px solid var(--line);
-}
-
-.pending-row:first-child {
-  border-top: 0;
-}
-
-.pending-row__main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.pending-row__main strong {
-  font-size: 13px;
-  color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pending-row__main span {
-  font-size: 11px;
-  color: var(--soft);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .followup-warning {

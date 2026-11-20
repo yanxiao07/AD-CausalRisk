@@ -1,8 +1,12 @@
 <template>
   <div class="review-page">
-    <PageHeader back title="结果复核" subtitle="查看评估报告，记录确认、补充资料或驳回意见。"
+    <PageHeader back :title="view === 'legacy' ? '历史规则复核' : '报告复核'" subtitle="查看评估报告，记录确认、补充资料或驳回意见。"
       :terms="['review', 'supplement', 'publication']">
       <template #extra>
+        <RouterLink v-if="view === 'legacy' || isDoctor" class="el-button"
+          :to="{ name: 'ReviewBoard', query: view === 'legacy' ? {} : { tab: 'legacy' } }">
+          {{ view === 'legacy' ? '返回报告复核' : '历史规则复核' }}
+        </RouterLink>
         <template v-if="view === 'legacy'">
           <el-radio-group v-model="filter" size="small" @change="loadPage(1)">
             <el-radio-button value="ALL">全部</el-radio-button>
@@ -141,7 +145,7 @@
             :closable="false"
             show-icon
             title="评估结果仅供研究参考"
-            description="医生确认后，已绑定患者可查看简要说明。"
+            description="医生确认后，可单独向已绑定的患者发布简要说明。"
           />
 
           <el-skeleton v-if="researchLoading" :rows="4" animated />
@@ -379,7 +383,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document, Refresh, WarningFilled } from '@element-plus/icons-vue'
@@ -683,8 +687,8 @@ async function submitResearchReview(decision) {
   }
 }
 
-onMounted(async () => {
-  if (view.value === 'research') {
+watch(view, async (section) => {
+  if (section === 'research') {
     if (!isDoctor.value) {
       router.replace({ name: 'ReportList' })
       return
@@ -715,7 +719,7 @@ onMounted(async () => {
     // 深链和列表入口必须走同一段加载逻辑：详情、档案权限、URL 回写、窗口加载。
     openReview(row ?? { assessmentId: fromQuery })
   }
-})
+}, { immediate: true })
 </script>
 
 <style scoped>

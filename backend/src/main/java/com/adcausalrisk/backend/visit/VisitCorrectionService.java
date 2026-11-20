@@ -90,7 +90,8 @@ public class VisitCorrectionService {
                 request.reason().trim(),
                 correctedBy,
                 LocalDateTime.now(clock),
-                true);
+                true,
+                request.modelInputs() == null ? current.getModelInputs() : request.modelInputs());
         Visit saved = visitRepository.saveAndFlush(next);
         entityManager.refresh(saved);
 
@@ -143,7 +144,8 @@ public class VisitCorrectionService {
                 exact(visit.getRawCdrSb(), visit.getCdrSb()),
                 visit.getCorrectionReason(),
                 visit.getCorrectedBy(),
-                visit.getCorrectedAt());
+                visit.getCorrectedAt(),
+                visit.getModelInputs());
     }
 
     private static BigDecimal exact(String raw, BigDecimal derived) {

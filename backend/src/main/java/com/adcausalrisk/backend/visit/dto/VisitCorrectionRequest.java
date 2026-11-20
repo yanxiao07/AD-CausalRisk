@@ -2,6 +2,8 @@ package com.adcausalrisk.backend.visit.dto;
 
 import java.math.BigDecimal;
 
+import com.adcausalrisk.backend.visit.entity.VisitModelInputs;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -31,5 +33,6 @@ public record VisitCorrectionRequest(
         @Digits(integer = 2, fraction = 61) BigDecimal moca,
         @DecimalMin("0") @DecimalMax("18")
         @Digits(integer = 2, fraction = 61) BigDecimal cdrSb,
-        @NotBlank @Size(max = 500) String reason) {
+        @NotBlank @Size(max = 500) String reason,
+        @Valid VisitModelInputs modelInputs) {
 }

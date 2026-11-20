@@ -45,6 +45,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -111,6 +112,7 @@ class ResearchTableAssessmentService {
     private final IdempotencyRecordRepository idempotency;
     private final SubjectAccessPolicy access;
     private final ResearchTableClient client;
+    private final SyntheticCareIdentity syntheticCare;
     private final ResearchTableProtocol protocol;
     private final ControlledResearchCompletion controlledCompletion;
     private final ResearchModelIdentity modelIdentity;
@@ -126,7 +128,8 @@ class ResearchTableAssessmentService {
 
     ResearchTableAssessmentService(JdbcTemplate jdbc, PlatformTransactionManager manager,
             IdempotencyRecordRepository idempotency, SubjectAccessPolicy access,
-            ResearchTableClient client, ResearchTableProtocol protocol, ResearchModelIdentity modelIdentity,
+            ResearchTableClient client, SyntheticCareIdentity syntheticCare,
+            ResearchTableProtocol protocol, ResearchModelIdentity modelIdentity,
             ResearchTaskLease lease, QualityCheckService qualityChecks, AuditService audit, Clock clock,
             ControlledResearchCompletion controlledCompletion,
             CurrentArchiveQuality archiveQuality) {
@@ -135,6 +138,7 @@ class ResearchTableAssessmentService {
         this.idempotency = idempotency;
         this.access = access;
         this.client = client;
+        this.syntheticCare = syntheticCare;
         this.protocol = protocol;
         this.controlledCompletion = controlledCompletion;
         this.modelIdentity = modelIdentity;
@@ -223,16 +227,15 @@ class ResearchTableAssessmentService {
         if (!access.canReadRawScores(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
-        String subjectCode = jdbc.query("SELECT subject_code FROM subject WHERE id=?", (row, index) -> row.getString(1),
-                subjectId).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
-        if (!subjectCode.startsWith("DEMO-")) {
+        var wire = fixtureIdentity(subjectId, handoff);
+        if (wire == null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "研究档案须使用独立来源冻结的快照");
         }
         ObjectNode model = modelIdentity.identity(request.path("modelKey").asText(), protocol);
         if (model == null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "研究模型未配置");
         }
-        ObjectNode normalized = normalizedRequest(request, subjectCode);
+        ObjectNode normalized = normalizedRequest(request, wire.subjectCode());
         try {
             protocol.validateRequest(normalized, model);
         } catch (IllegalArgumentException invalid) {
@@ -267,6 +270,38 @@ class ResearchTableAssessmentService {
         audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_REGISTERED",
                 "snapshotId=" + id + " subjectId=" + subjectId);
         return id;
+    }
+
+    long registerCareFixture(long subjectId, CurrentArchiveQuality.Visit visit, AppUserPrincipal actor) {
+        var wire = fixtureIdentity(subjectId, true);
+        if (!syntheticCare.enabled() || wire == null || !wire.subjectCode().startsWith("DEMO-CARE-")
+                || !hasExplicitManageGrant(actor.userId(), subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        var extra = visit.modelInputs();
+        var features = JsonNodeFactory.instance.objectNode();
+        // Use the same JSON number representation as the research CSV path. SQL decimal scale
+        // is a storage detail and must not change the digest verified by the Python host.
+        features.put("mmse", visit.mmse().doubleValue());
+        features.put("cdr_sb", visit.cdrSb().doubleValue());
+        features.put("age_years", extra.ageYears().doubleValue());
+        features.put("education_years", extra.educationYears().doubleValue());
+        features.put("cdr_global", extra.cdrGlobal().doubleValue());
+        features.put("adas__total13", extra.adasCog13().doubleValue());
+        features.put("faq__faqtotal", extra.faqTotal().doubleValue());
+        var request = manualRequest(wire.subjectCode(), features, visit.date(), wire.dataVersion(),
+                "run-care-" + UUID.randomUUID());
+        return register(subjectId, request, actor, true);
+    }
+
+    String syncCareFixture(long snapshotId, AppUserPrincipal actor) {
+        return syncToHost(snapshotId, actor, true);
+    }
+
+    private SyntheticCareIdentity.Wire fixtureIdentity(long subjectId, boolean handoff) {
+        return jdbc.query("SELECT subject_code,data_version FROM subject WHERE id=?",
+                (row, index) -> syntheticCare.resolve(subjectId, row.getString(1), row.getString(2), handoff), subjectId)
+                .stream().filter(Objects::nonNull).findFirst().orElse(null);
     }
 
     Registration recordDoctorIntake(long subjectId, JsonNode features, String date, AppUserPrincipal principal) {
@@ -1017,8 +1052,9 @@ class ResearchTableAssessmentService {
             throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE,
                     "该快照尚未同步到研究宿主，请等待登记完成或联系管理员");
         }
-        if (!jdbc.queryForList("SELECT id FROM research_table_task WHERE snapshot_id=?", Long.class,
-                snapshotId).isEmpty()) {
+        var tasks = jdbc.queryForList("SELECT id FROM research_table_task WHERE snapshot_id=?", Long.class, snapshotId);
+        if (!tasks.isEmpty()) {
+            if (doctorFixture && isCareFixture(snapshot.request())) return new Submission(tasks.get(0), null, null);
             throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "该冻结快照已有关联任务");
         }
         jdbc.update("UPDATE research_table_snapshot SET authorized_user_id=? WHERE id=? AND doctor_handoff=TRUE",
@@ -1053,14 +1089,16 @@ class ResearchTableAssessmentService {
     }
 
     private boolean isCurrentDoctorFixture(long subjectId, Snapshot snapshot) {
-        String code = jdbc.query("""
-                SELECT s.subject_code FROM subject s WHERE s.id=? AND s.data_version=?
-                AND NOT EXISTS (SELECT 1 FROM research_table_snapshot other WHERE other.subject_id=s.id
-                            AND other.data_scope='CONTROLLED_RESEARCH')
-                """, (row, index) -> row.getString(1), subjectId, snapshot.request().path("dataVersion").textValue())
-                .stream().findFirst().orElse(null);
-        return code != null && code.startsWith("DEMO-") && code.equals(snapshot.request().path("subjectCode").textValue())
-                && archiveQuality.forSubject(subjectId).matchesVisit(snapshot.request());
+        var wire = fixtureIdentity(subjectId, true);
+        return wire != null && wire.subjectCode().equals(snapshot.request().path("subjectCode").textValue())
+                && wire.dataVersion().equals(snapshot.request().path("dataVersion").textValue())
+                && archiveQuality.forSubject(subjectId).matchesVisit(snapshot.request())
+                && jdbc.queryForObject("SELECT COUNT(*) FROM research_table_snapshot"
+                        + " WHERE subject_id=? AND data_scope='CONTROLLED_RESEARCH'", Long.class, subjectId) == 0;
+    }
+
+    private boolean isCareFixture(JsonNode request) {
+        return syntheticCare.enabled() && request.path("runId").asText().startsWith("run-care-");
     }
 
     private void reserveControlledDispatch(ControlledDispatch dispatch, Snapshot snapshot, AppUserPrincipal principal) {
@@ -1102,8 +1140,11 @@ class ResearchTableAssessmentService {
     private Snapshot readSnapshot(ResultSet row, AppUserPrincipal principal) throws SQLException {
         long subject = row.getLong("subject_id");
         long owner = row.getLong("authorized_user_id");
+        boolean careHandoff = syntheticCare.enabled() && row.getBoolean("doctor_handoff")
+                && principal.roleCodes().contains("DOCTOR") && hasExplicitManageGrant(principal.userId(), subject)
+                && jdbc.queryForObject("SELECT COUNT(*) FROM subject WHERE id=? AND data_version LIKE 'care-%'", Long.class, subject) == 1;
         if (!access.canReadRawScores(principal, subject)
-                || (owner != principal.userId() && !canReceiveDoctorIntake(row.getLong("id"), principal))) {
+                || (owner != principal.userId() && !careHandoff && !canReceiveDoctorIntake(row.getLong("id"), principal))) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
         String dataScope = row.getString("data_scope");

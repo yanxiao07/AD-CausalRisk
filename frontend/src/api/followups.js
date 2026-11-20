@@ -24,7 +24,8 @@ export function listFollowUpsPaged({
   keyword = '',
   from = '',
   to = '',
-  sort = ''
+  sort = '',
+  dataScope
 } = {}) {
   const params = { page, pageSize }
   if (due) params.due = due
@@ -35,6 +36,7 @@ export function listFollowUpsPaged({
   if (from) params.from = from
   if (to) params.to = to
   if (sort) params.sort = sort
+  if (dataScope) params.dataScope = dataScope
   return request.get('/follow-ups', { params })
 }
 

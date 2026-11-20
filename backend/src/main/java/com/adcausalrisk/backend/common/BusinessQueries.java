@@ -22,8 +22,18 @@ public class BusinessQueries {
     }
 
     public String scope(String subjectColumn, AppUserPrincipal user, boolean raw) {
+        String careBoundary = "";
+        if (!user.roleCodes().contains("PATIENT") && (raw || !user.roleCodes().contains("ADMIN"))) {
+            String nonCare = "NOT EXISTS (SELECT 1 FROM subject care WHERE care.id=" + subjectColumn
+                    + " AND care.data_version LIKE 'care-%')";
+            careBoundary = user.roleCodes().contains("DOCTOR")
+                    ? " AND (" + nonCare + " OR EXISTS (SELECT 1 FROM subject_permission care_grant WHERE care_grant.subject_id="
+                        + subjectColumn + " AND care_grant.user_id=" + user.userId()
+                        + " AND care_grant.permission_type IN ('VIEW','MANAGE')))"
+                    : " AND " + nonCare;
+        }
         if (raw && policy.hasFullRawScoreVisibility(user) || !raw && policy.hasFullVisibility(user))
-            return "1=1";
+            return "1=1" + careBoundary;
         Set<Long> ids =
                 raw ? policy.rawScoreVisibleSubjectIds(user) : policy.grantedSubjectIds(user);
         if (ids.isEmpty()) return "1=0";
@@ -33,7 +43,7 @@ public class BusinessQueries {
                         .sorted()
                         .map(String::valueOf)
                         .collect(java.util.stream.Collectors.joining(","))
-                + ")";
+                + ")" + careBoundary;
     }
 
     public static void admin(AppUserPrincipal user) {
@@ -158,6 +168,7 @@ public class BusinessQueries {
                     case "" -> "";
                     case "CONTROLLED_RESEARCH" -> " AND s.data_version LIKE 'adni-%'";
                     case "CONSTRUCTED_VALIDATION" -> " AND s.data_version LIKE 'demo-%'";
+                    case "CARE_WORKFLOW" -> managedCareScope(user, args);
                     default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "无效的档案资料范围");
                 };
                 order = "s.id DESC";
@@ -200,6 +211,9 @@ public class BusinessQueries {
                 date = "f.scheduled_at";
                 where = scope(id, user, true);
                 order = "f.scheduled_at,f.id";
+                if ("CARE_WORKFLOW".equals(text(filter, "dataScope"))) {
+                    where += managedCareScope(user, args);
+                }
             }
             case "quality" -> {
                 from = "quality_check q JOIN subject s ON s.id=q.subject_id";
@@ -377,6 +391,15 @@ public class BusinessQueries {
                 policy.canWriteClinical(user, id),
                 "requestAssessment",
                 policy.canRequestAssessment(user, id));
+    }
+
+    private static String managedCareScope(AppUserPrincipal user, List<Object> args) {
+        if (!user.roleCodes().contains("DOCTOR") || user.roleCodes().contains("PATIENT")) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "仅医生可查询负责的患者档案");
+        }
+        args.add(user.userId());
+        return " AND s.data_version LIKE 'care-%' AND EXISTS (SELECT 1 FROM subject_permission p"
+                + " WHERE p.subject_id=s.id AND p.user_id=? AND p.permission_type='MANAGE')";
     }
 
     public Map<String, Object> dashboard(AppUserPrincipal user) {
