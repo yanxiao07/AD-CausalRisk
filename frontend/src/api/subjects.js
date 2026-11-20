@@ -3,7 +3,7 @@ import request from './request.js'
 /**
  * GET /api/subjects
  *
- * 契约参数：page / pageSize / keyword / from / to / sort / status。
+ * 契约参数：page / pageSize / keyword / from / to / sort / status / dataScope。
  * keyword 由服务端按档案编号匹配；status ∈ ACTIVE / ARCHIVED。
  * 返回 PageSubject：{ items, page, pageSize, total }
  */
@@ -14,7 +14,8 @@ export function listSubjects({
   status = '',
   from = '',
   to = '',
-  sort = ''
+  sort = '',
+  dataScope
 } = {}) {
   const params = { page, pageSize }
   if (keyword) params.keyword = keyword
@@ -22,6 +23,7 @@ export function listSubjects({
   if (from) params.from = from
   if (to) params.to = to
   if (sort) params.sort = sort
+  if (dataScope) params.dataScope = dataScope
   return request.get('/subjects', { params })
 }
 

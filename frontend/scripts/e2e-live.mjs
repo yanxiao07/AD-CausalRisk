@@ -192,16 +192,16 @@ try {
     await page.screenshot({ path: join(shotDir, 'live2-doctor-report.png'), fullPage: true })
 
     await page.goto(`${BASE}/graph?assessmentId=${assessmentId ?? ''}`, { waitUntil: 'domcontentloaded' })
-    await page.waitForSelector('.el-drawer .causal-graph', { timeout: 25000 })
+    await page.waitForSelector('.sheet .causal-graph', { timeout: 25000 })
     await page.waitForFunction(
-      () => document.querySelectorAll('.el-drawer .causal-graph canvas').length === 1,
+      () => document.querySelectorAll('.sheet .causal-graph canvas').length === 1,
       { timeout: 20000 }
     )
     const graphState = await page.evaluate(() => ({
-      meta: document.querySelector('.el-drawer')?.textContent?.replace(/\s+/g, ' ').trim() || '',
-      canvas: document.querySelectorAll('.el-drawer .causal-graph canvas').length
+      meta: document.querySelector('.sheet')?.textContent?.replace(/\s+/g, ' ').trim() || '',
+      canvas: document.querySelectorAll('.sheet .causal-graph canvas').length
     }))
-    record('医生-因果图谱抽屉', graphState.canvas === 1, `canvas=${graphState.canvas} meta="${graphState.meta.slice(0, 50)}"`)
+    record('医生-原图谱链接', graphState.canvas === 1, `canvas=${graphState.canvas} meta="${graphState.meta.slice(0, 50)}"`)
     await page.screenshot({ path: join(shotDir, 'live2-doctor-graph.png') })
   })
   await phase('医生-随访', async () => {
@@ -330,7 +330,9 @@ try {
       sider: Boolean(document.querySelector('aside.shell__aside')),
       cards: document.querySelectorAll('.hcard').length,
       status: document.querySelector('.hcard__status')?.textContent?.trim() || '',
-      note: document.querySelector('.hcard__note')?.textContent?.replace(/\s+/g, ' ').trim() || '',
+      note: document.querySelector('.hcard--research .hcard__note')?.textContent?.replace(/\s+/g, ' ').trim() || '',
+      contactLink: Boolean(document.querySelector('a[href^="tel:"]')),
+      contactText: document.querySelector('[aria-labelledby=doctor-title]')?.textContent || '',
       fontSize: getComputedStyle(document.querySelector('.patient') || document.body)
         .getPropertyValue('--el-font-size-base')
         .trim()
@@ -345,12 +347,11 @@ try {
       /已绑定档案/.test(state.note) && /DEMO-001/.test(state.note),
       state.note.slice(0, 80)
     )
-    await clickByText(page, 'button', '联系医生')
-    await sleep(900)
-    const dialog = await page.evaluate(
-      () => document.querySelector('.el-message-box')?.textContent?.replace(/\s+/g, ' ') || ''
+    record(
+      '患者-联系方式',
+      state.contactLink || state.contactText.includes('这里暂未提供联系电话'),
+      state.contactLink ? '拨号链接可用' : '提示通过医院通知或原就诊科室联系'
     )
-    record('患者-一键联系医生', dialog.length > 0, dialog.slice(0, 70))
     await page.screenshot({ path: join(shotDir, 'live2-patient.png'), fullPage: true })
     await page.close()
   })

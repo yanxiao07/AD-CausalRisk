@@ -3,9 +3,9 @@
     <div class="ra-head">
       <div>
         <h3 class="ra-title">研究模型评估</h3>
-        <p class="ra-subtitle">冻结快照 · 已训练的七变量逻辑回归 · 24 个月 · 人工样例</p>
+        <p class="ra-subtitle">冻结快照 · 已训练的表格模型 · 24 个月</p>
       </div>
-      <el-button text :loading="snapshotLoading" :disabled="submitting" @click="loadSnapshots(true)">
+      <el-button text :loading="snapshotLoading" :disabled="submitting" @click="loadSnapshots">
         刷新快照
       </el-button>
     </div>
@@ -20,7 +20,7 @@
     >
       <template #default>
         <p class="ra-alert-text">研究表格任务需要 Java 侧配置可用的研究宿主地址；配置前提交会返回 503。</p>
-        <el-button size="small" :loading="snapshotLoading" @click="loadSnapshots(true)">重新检查</el-button>
+        <el-button size="small" :loading="snapshotLoading" @click="loadSnapshots">重新检查</el-button>
       </template>
     </el-alert>
 
@@ -36,11 +36,10 @@
       />
 
       <template v-else>
-        <el-form label-width="96px" class="ra-form" @submit.prevent>
+        <el-form v-if="snapshots.length" label-width="96px" class="ra-form" @submit.prevent>
           <el-form-item label="冻结快照">
             <div class="ra-picker">
               <el-select
-                v-if="snapshots.length && !manualMode"
                 v-model="selectedSnapshotId"
                 class="ra-control"
                 placeholder="选择已登记快照"
@@ -51,45 +50,21 @@
                   :key="item.snapshotId"
                   :label="snapshotLabel(item)"
                   :value="item.snapshotId"
-                  :disabled="item.compatible === false"
+                  :disabled="item.compatible === false && !item.taskId"
                 />
               </el-select>
-              <el-input
-                v-else
-                v-model="manualSnapshotId"
-                class="ra-control"
-                placeholder="输入快照 ID（正整数）"
-                :disabled="submitting"
-              />
-              <el-button
-                v-if="snapshots.length"
-                link
-                type="primary"
-                :disabled="submitting"
-                @click="toggleManual"
-              >
-                {{ manualMode ? '从列表选择' : '手动输入' }}
-              </el-button>
             </div>
           </el-form-item>
         </el-form>
 
         <el-alert
-          v-if="fallbackNotice"
-          class="ra-block"
-          type="info"
-          :closable="false"
-          show-icon
-          :title="fallbackNotice"
-        />
-        <el-alert
-          v-else-if="!snapshots.length"
+          v-if="!snapshots.length"
           class="ra-block"
           type="info"
           :closable="false"
           show-icon
           title="该受试者还没有当前账号获准评估的冻结快照。"
-          description="请先由受控登记流程生成快照（CONSTRUCTED_VALIDATION + trained-seven-logistic），或换一个有快照的受试者。"
+          :description="emptySnapshotMessage"
         />
         <el-alert
           v-if="selectedIncompatible"
@@ -107,7 +82,24 @@
           :closable="false"
           show-icon
           :title="`该快照已有研究任务 #${selectedOption.taskId}`"
-          description="点击下方“读取已有任务”直接回读结果；同一快照不会重复提交。"
+          description="同一份冻结资料对应一条任务，可读取原结果。"
+        />
+        <el-alert
+          v-else-if="waitingForSync"
+          class="ra-block"
+          type="info"
+          :closable="false"
+          title="此快照尚未同步"
+          description="同步完成后，刷新快照即可提交。"
+        />
+        <el-alert
+          v-else-if="selectedOption?.dataScope === CONTROLLED_RESEARCH"
+          class="ra-block"
+          type="info"
+          :closable="false"
+          show-icon
+          title="当前受控档案开放资料核验"
+          description="模型预测与解释还需完成受控执行接入及授权。"
         />
 
         <div class="ra-actions">
@@ -117,9 +109,8 @@
             :disabled="!effectiveSnapshotId"
             @click="run"
           >
-            {{ activeTaskId ? '读取已有任务' : '提交研究评估' }}
+            {{ actionLabel }}
           </el-button>
-          <span class="ra-hint">同一快照复用幂等键；已有任务直接回读。</span>
         </div>
       </template>
     </template>
@@ -137,8 +128,15 @@
       <div class="ra-result__head">
         <StatusTag :type="task.status" />
         <span class="ra-meta">
-          任务 #{{ task.taskId }} · 快照 #{{ task.snapshotId }} · 受试者 #{{ task.subjectId }}
+          {{ researchScopeLabel(task.dataScope) }} · 任务 #{{ task.taskId }} · 快照 #{{ task.snapshotId }} · 受试者 #{{ task.subjectId }}
         </span>
+        <router-link class="el-button is-link el-button--primary" :to="{ name: 'ResearchReportDetail', params: { taskId: task.taskId } }">
+          {{ task.status === 'BLOCKED' ? '查看核验报告' : '查看评估报告' }}
+        </router-link>
+        <router-link v-if="task.status === 'BLOCKED' && task.dataScope === CONTROLLED_RESEARCH"
+          class="el-button is-link el-button--primary" :to="completedSampleReports">
+          查看已完成测试报告
+        </router-link>
       </div>
 
       <el-alert
@@ -147,9 +145,15 @@
         type="warning"
         :closable="false"
         show-icon
-        title="本次评估被阻断（BLOCKED），未给出风险数值。"
-        description="不得用 0、均值或插值代替分数；请先补齐资料，或联系管理员确认快照准入。"
-      />
+        title="资料核验未通过，本次未运行模型预测。"
+      >
+        <ul v-if="admissionIssues.length" class="ra-admission-list">
+          <li v-for="(issue, index) in admissionIssues" :key="index">
+            {{ issue.severity === 'BLOCK' ? '阻断' : '提示' }} · {{ researchFeatureLabel(issue.feature) }} · {{ researchIssueLabel(issue.code) }}
+          </li>
+        </ul>
+        <p v-else class="ra-alert-text">在核验报告中查看这次核验的资料状态。</p>
+      </el-alert>
       <el-alert
         v-else-if="task.status === 'FAILED'"
         class="ra-block"
@@ -188,7 +192,7 @@
           </div>
           <div>
             <dt>数据范围</dt>
-            <dd>{{ result?.dataScope || 'CONSTRUCTED_VALIDATION' }} · 人工样例</dd>
+            <dd>{{ researchScopeLabel(task.dataScope) }}</dd>
           </div>
           <div>
             <dt>预测窗口</dt>
@@ -230,16 +234,24 @@
           </el-collapse-item>
         </el-collapse>
       </template>
+      <ResearchAdmissionGuidance v-if="task.status === 'BLOCKED' && task.dataScope === CONTROLLED_RESEARCH"
+        :issues="admissionIssues" />
     </div>
   </section>
 </template>
 
 <script setup>
+import {
+  CONTROLLED_RESEARCH, CONSTRUCTED_VALIDATION, completedSampleReports, modelContributions,
+  researchFeatureLabel, researchIssueLabel, researchScopeLabel
+} from '@/utils/researchResults.js'
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import StatusTag from '@/components/common/StatusTag.vue'
+import ResearchAdmissionGuidance from '@/components/assessment/ResearchAdmissionGuidance.vue'
 import {
   getResearchTableTask,
+  getResearchIntakeState,
   listResearchSnapshots,
   submitResearchTableTask
 } from '@/api/research.js'
@@ -248,20 +260,19 @@ import { newIdempotencyKey } from '@/api/assessments.js'
 const HOST_UNAVAILABLE = '当前未配置研究宿主，请联系管理员配置研究宿主。'
 
 const props = defineProps({
-  subjectId: { type: [Number, String], default: null }
+  subjectId: { type: [Number, String], default: null },
+  dataScope: { type: String, required: true }
 })
 
-const emit = defineEmits(['completed'])
+const emit = defineEmits(['submitted'])
 
 const snapshots = ref([])
 const snapshotLoading = ref(false)
 const snapshotError = ref('')
-const fallbackNotice = ref('')
 const hostUnavailable = ref(false)
+const intakeState = ref('')
 
-const manualMode = ref(false)
 const selectedSnapshotId = ref(null)
-const manualSnapshotId = ref('')
 
 const submitting = ref(false)
 const taskError = ref('')
@@ -276,25 +287,33 @@ const selectedOption = computed(
   () => snapshots.value.find(item => Number(item.snapshotId) === Number(selectedSnapshotId.value)) || null
 )
 
-const activeTaskId = computed(() => {
-  if (manualMode.value || !snapshots.value.length) return null
-  return selectedOption.value?.taskId ?? null
+const activeTaskId = computed(() => selectedOption.value?.taskId ?? null)
+const actionLabel = computed(() => {
+  if (activeTaskId.value) return '读取已有任务'
+  if (selectedOption.value?.dataScope === CONSTRUCTED_VALIDATION) return '运行模型预测'
+  return '提交资料核验'
 })
 
 const selectedIncompatible = computed(
-  () => !manualMode.value && selectedOption.value?.compatible === false
+  () => !activeTaskId.value && selectedOption.value?.compatible === false
 )
+const waitingForSync = computed(() => !activeTaskId.value && selectedOption.value
+  && selectedOption.value.hostSyncStatus !== 'SYNCED')
 
 const effectiveSnapshotId = computed(() => {
-  if (selectedIncompatible.value) return 0
-  const raw = manualMode.value || !snapshots.value.length
-    ? manualSnapshotId.value
-    : selectedSnapshotId.value
-  const value = Number(raw)
-  return Number.isInteger(value) && value > 0 ? value : 0
+  if (selectedIncompatible.value || waitingForSync.value) return 0
+  return selectedOption.value?.snapshotId ?? 0
+})
+const emptySnapshotMessage = computed(() => {
+  if (props.dataScope === CONTROLLED_RESEARCH) return '请核对该档案的来源资料登记和研究授权。'
+  return ({
+    WAITING_RESEARCH_GRANT: '医生已保存测试资料。请管理员为当前研究账号授予这份档案的研究访问权限。',
+    READY: '资料已交接。请刷新快照或从评估任务中查阅已有结果。'
+  })[intakeState.value] || '请让医生先录入并保存测试资料，或选择已有快照的受试者。'
 })
 
 const result = computed(() => task.value?.result || null)
+const admissionIssues = computed(() => result.value?.admission?.issues || [])
 const prediction = computed(() => result.value?.prediction || null)
 const model = computed(() => result.value?.model || null)
 const artifactSha256 = computed(() => model.value?.artifactSha256 || '')
@@ -302,10 +321,10 @@ const prettyResult = computed(() => JSON.stringify(task.value, null, 2))
 
 const modelText = computed(() => {
   const value = model.value
-  if (!value) return '已训练的七变量逻辑回归（24 个月，人工样例）'
+  if (!value) return '已训练的七变量逻辑回归（24 个月）'
   const family = value.family === 'logistic' ? '逻辑回归' : value.family
   const specification = value.specification === 'seven' ? '七变量' : value.specification
-  return `${specification} ${family}（24 个月，人工样例）`
+  return `${specification} ${family}（24 个月）`
 })
 
 const explanationBoundary = computed(() => {
@@ -318,29 +337,18 @@ const explanationBoundary = computed(() => {
   return parts.join(' ')
 })
 
-const explanationRows = computed(() => {
-  const explanation = result.value?.explanation
-  const groups = explanation?.groups
-  const contributions = explanation?.contributions
-  if (!Array.isArray(groups) || !Array.isArray(contributions)) return []
-  const first = contributions[0]
-  if (!Array.isArray(first)) return []
-  return groups.map((group, index) => {
-    const pair = Array.isArray(first[index]) ? first[index] : []
-    return { group: String(group), ad: pair[0], other: pair[1] }
-  })
-})
+const explanationRows = computed(() => modelContributions(task.value))
 
 function snapshotLabel(item) {
   const base = item.taskId
     ? `快照 #${item.snapshotId} · 已有任务 #${item.taskId}`
     : `快照 #${item.snapshotId}`
-  return item.compatible === false ? `${base} · 需重新登记` : base
+  const withModel = [researchScopeLabel(item.dataScope), base, item.modelKey].filter(Boolean).join(' · ')
+  return item.compatible === false ? `${withModel} · 需重新登记` : withModel
 }
 
 function formatCif(value) {
-  const number = Number(value)
-  return Number.isFinite(number) ? `${(number * 100).toFixed(2)}%` : '—'
+  return Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : '—'
 }
 
 function formatSigned(value) {
@@ -355,24 +363,10 @@ function shortHash(value) {
   return value.length > 22 ? `${value.slice(0, 12)}…${value.slice(-8)}` : value
 }
 
-function toggleManual() {
-  manualMode.value = !manualMode.value
-  if (manualMode.value) {
-    manualSnapshotId.value = selectedSnapshotId.value ? String(selectedSnapshotId.value) : ''
-  }
-  task.value = null
-  taskError.value = ''
-}
-
 function handleSnapshotProblem(problem) {
   const status = problem?.httpStatus
   if (status === 503 || problem?.errorCode === 'RESEARCH_UNAVAILABLE') {
     hostUnavailable.value = true
-    return
-  }
-  if (status === 404 || status === 405 || status === 501) {
-    manualMode.value = true
-    fallbackNotice.value = '当前后端未提供快照列表接口，请手动输入快照 ID；升级后端后会自动改为下拉选择。'
     return
   }
   if (status === 403) {
@@ -389,9 +383,8 @@ function handleSnapshotProblem(problem) {
 async function loadSnapshots() {
   const subjectId = Number(props.subjectId)
   const requestId = ++snapshotRequestSeq
-  const hadFallback = Boolean(fallbackNotice.value)
   snapshotError.value = ''
-  fallbackNotice.value = ''
+  intakeState.value = ''
   hostUnavailable.value = false
   if (!Number.isInteger(subjectId) || subjectId <= 0) {
     snapshots.value = []
@@ -406,11 +399,16 @@ async function loadSnapshots() {
     snapshots.value = Array.isArray(data) ? data : []
     loadedSubjectId.value = subjectId
     const current = snapshots.value.find(item => Number(item.snapshotId) === Number(selectedSnapshotId.value))
-    if (!current || current.compatible === false) {
-      const firstCompatible = snapshots.value.find(item => item.compatible !== false)
+    if (!current || (current.compatible === false && !current.taskId)) {
+      const firstCompatible = snapshots.value.find(item => item.compatible !== false || item.taskId)
       selectedSnapshotId.value = firstCompatible ? Number(firstCompatible.snapshotId) : null
     }
-    if (hadFallback) manualMode.value = false
+    if (!snapshots.value.length && props.dataScope === CONSTRUCTED_VALIDATION) {
+      const state = await getResearchIntakeState(subjectId).catch(() => null)
+      if (requestId === snapshotRequestSeq && Number(props.subjectId) === subjectId) {
+        intakeState.value = state?.status || ''
+      }
+    }
   } catch (problem) {
     if (requestId !== snapshotRequestSeq || Number(props.subjectId) !== subjectId) return
     snapshots.value = []
@@ -424,9 +422,9 @@ async function loadSnapshots() {
 
 function describeTaskProblem(problem) {
   const status = problem?.httpStatus
-  if (status === 503 || problem?.errorCode === 'RESEARCH_UNAVAILABLE') return HOST_UNAVAILABLE
-  if (status === 409) return '该快照已有提交意图正在处理中（409），请刷新快照后读取已有任务。'
-  if (status === 403) return '当前账号无权评估该快照（需要研究员/管理员，且拥有该档案的原始数据权限）。'
+  if (status === 503 || problem?.errorCode === 'RESEARCH_UNAVAILABLE') return problem?.message || HOST_UNAVAILABLE
+  if (status === 409) return problem?.message || '快照状态已变化，请刷新后重试。'
+  if (status === 403) return '当前账号无法使用此档案的快照，请检查研究账号的档案授权。'
   if (status === 404) return problem?.message || '研究任务不存在或后端尚未提供该接口。'
   if (problem?.errorCode === 'NETWORK_ERROR') return '无法连接服务器，请确认后端已启动。'
   return problem?.message || '提交失败，请稍后重试。'
@@ -448,7 +446,7 @@ async function run() {
   }
   const snapshotId = effectiveSnapshotId.value
   if (!snapshotId) {
-    ElMessage.warning('请选择或输入快照 ID')
+    ElMessage.warning('请选择此受试者的快照')
     return
   }
   submitting.value = true
@@ -463,22 +461,28 @@ async function run() {
         intentKey = newIdempotencyKey()
         intentSnapshotId = snapshotId
       }
-      const created = await submitResearchTableTask({ snapshotId, idempotencyKey: intentKey })
+      const created = await submitResearchTableTask({ subjectId, snapshotId, idempotencyKey: intentKey })
       if (Number(props.subjectId) !== subjectId) return
       task.value = created
       intentKey = ''
       intentSnapshotId = null
-      if (created?.status === 'COMPLETED') emit('completed', created)
+      if (created?.taskId) emit('submitted', created)
       await loadSnapshots()
     }
   } catch (problem) {
     if (Number(props.subjectId) !== subjectId) return
-    if (problem?.httpStatus === 503 || problem?.errorCode === 'RESEARCH_UNAVAILABLE') {
-      hostUnavailable.value = true
-    } else {
-      taskError.value = describeTaskProblem(problem)
+    taskError.value = describeTaskProblem(problem)
+    if (problem?.httpStatus === 409) {
+      await loadSnapshots()
+      if (Number(props.subjectId) === subjectId && selectedOption.value?.snapshotId === snapshotId
+          && activeTaskId.value) {
+        const existing = await getResearchTableTask(activeTaskId.value).catch(() => null)
+        if (existing && Number(props.subjectId) === subjectId) {
+          task.value = existing
+          taskError.value = ''
+        }
+      }
     }
-    if (problem?.httpStatus === 409) await loadSnapshots()
   } finally {
     submitting.value = false
   }
@@ -490,21 +494,21 @@ watch(
     task.value = null
     taskError.value = ''
     selectedSnapshotId.value = null
-    manualSnapshotId.value = ''
-    manualMode.value = false
     loadedSubjectId.value = null
     loadSnapshots()
   },
   { immediate: true }
 )
 
-watch([selectedSnapshotId, manualSnapshotId], () => {
+watch(selectedSnapshotId, () => {
   task.value = null
   taskError.value = ''
 })
 </script>
 
 <style scoped>
+.ra-admission-list { margin: 8px 0 4px; padding-left: 1.25rem; line-height: 1.6; }
+
 .research-assessment {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -556,10 +560,6 @@ watch([selectedSnapshotId, manualSnapshotId], () => {
   margin-top: 12px;
 }
 
-.ra-hint {
-  font-size: 12px;
-  color: var(--muted);
-}
 
 .ra-block {
   margin-top: 12px;

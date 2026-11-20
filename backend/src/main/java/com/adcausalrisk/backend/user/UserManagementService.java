@@ -51,6 +51,18 @@ public class UserManagementService {
 
     @Transactional
     public long save(Long id, Map<String, Object> body, AppUserPrincipal actor) {
+        return saveAccount(id, body, actor, false);
+    }
+
+    long issuePatient(long subjectId, String username, String password, AppUserPrincipal actor) {
+        long id = saveAccount(null, Map.of("username", username, "password", password,
+                "roles", List.of("PATIENT")), actor, true);
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'SUMMARY_READ')",
+                subjectId, id);
+        return id;
+    }
+
+    private long saveAccount(Long id, Map<String, Object> body, AppUserPrincipal actor, boolean patientIssuance) {
         BusinessQueries.admin(actor);
         Set<String> allowed =
                 Set.of(
@@ -74,6 +86,12 @@ public class UserManagementService {
             roles = values.stream().map(Object::toString).distinct().toList();
             if (!ROLES.containsAll(roles) || roles.contains("PATIENT") && roles.size() > 1)
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR, "患者账号须独立使用PATIENT角色");
+            if (roles.contains("PATIENT") && !patientIssuance && (id == null || !hasPatientRole(id))) {
+                throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "请通过患者账号申请核对并发放账号");
+            }
+            if (id != null && !roles.contains("PATIENT") && hasPatientRole(id)) {
+                throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "请单独创建工作人员账号，原患者账号可停用");
+            }
         }
         String password = text(body, "password", 100), status = text(body, "status", 20);
         String scope = text(body, "dataScope", 20);
@@ -174,6 +192,13 @@ public class UserManagementService {
         return id;
     }
 
+    private boolean hasPatientRole(long id) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*) FROM user_role ur JOIN sys_role r ON r.id=ur.role_id
+                WHERE ur.user_id=? AND r.role_code='PATIENT'
+                """, Integer.class, id) > 0;
+    }
+
     public List<Map<String, Object>> permissions(long subject, AppUserPrincipal actor) {
         BusinessQueries.admin(actor);
         return queries.rows(
@@ -212,13 +237,19 @@ public class UserManagementService {
                         user,
                         subject,
                         permission)
-                == 0)
+                        == 0) {
+            if (roles.contains("PATIENT") && jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM patient_account_request WHERE subject_id=? AND issued_user_id=?
+                    """, Integer.class, subject, user) == 0) {
+                throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "请通过患者账号申请绑定档案");
+            }
             jdbc.update(
                     "INSERT INTO subject_permission(subject_id,user_id,permission_type)"
                             + " VALUES(?,?,?)",
                     subject,
                     user,
                     permission);
+        }
     }
 
     public void revoke(long subject, long permission, AppUserPrincipal actor) {

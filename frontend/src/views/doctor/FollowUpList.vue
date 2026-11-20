@@ -11,7 +11,7 @@
         <el-button
           type="primary"
           :disabled="view !== 'BY_SUBJECT' || !subjectId"
-          @click="dialogOpen = true"
+          @click="openBooking()"
         >
           新建随访
         </el-button>
@@ -61,8 +61,18 @@
           </template>
         </el-table-column>
         <el-table-column prop="purpose" label="目的" min-width="200" show-overflow-tooltip />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="患者回执" min-width="160">
           <template #default="{ row }">
+            {{ responseLabel(row.responseStatus) }}
+            <p v-if="row.responseStatus === 'RESCHEDULE_REQUESTED' && row.responseNote">{{ row.responseNote }}</p>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="245" fixed="right">
+          <template #default="{ row }">
+            <el-button text type="primary" @click="openBooking(row)">修改安排</el-button>
+            <el-button v-if="row.responseStatus === 'RESCHEDULE_REQUESTED'" text @click="keepBooking(row)">
+              保留原安排
+            </el-button>
             <el-button
               text
               type="primary"
@@ -159,13 +169,22 @@
             </template>
           </el-table-column>
           <el-table-column prop="purpose" label="目的" min-width="220" show-overflow-tooltip />
+          <el-table-column label="患者回执" min-width="160">
+            <template #default="{ row }">
+              {{ responseLabel(row.responseStatus) }}
+              <p v-if="row.responseStatus === 'RESCHEDULE_REQUESTED' && row.responseNote">{{ row.responseNote }}</p>
+            </template>
+          </el-table-column>
           <el-table-column label="状态" width="120">
             <template #default="{ row }">
               <StatusTag :type="row.status" />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" min-width="245" fixed="right">
             <template #default="{ row }">
+              <el-button v-if="row.status === 'PLANNED'" text type="primary" @click="openBooking(row)">修改安排</el-button>
+              <el-button v-if="row.status === 'PLANNED' && row.responseStatus === 'RESCHEDULE_REQUESTED'" text
+                @click="keepBooking(row)">保留原安排</el-button>
               <el-button
                 text
                 type="primary"
@@ -191,10 +210,11 @@
     </template>
 
     <FollowUpDialog
-      v-if="subjectId"
+      v-if="subjectId || editingPlan"
       v-model="dialogOpen"
-      :subject-id="subjectId"
-      @created="loadFollowUps"
+      :subject-id="editingPlan?.subjectId || subjectId"
+      :initial-plan="editingPlan"
+      @created="refreshBookings"
     />
   </div>
 </template>
@@ -209,7 +229,7 @@ import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import FollowUpDialog from '@/components/followup/FollowUpDialog.vue'
 import { listSubjects } from '@/api/subjects.js'
-import { listFollowUps, listFollowUpsPaged, updateFollowUp } from '@/api/followups.js'
+import { declineReschedule, listFollowUps, listFollowUpsPaged, updateFollowUp } from '@/api/followups.js'
 import { downloadCsv } from '@/utils/csv.js'
 
 const view = ref('BY_SUBJECT')
@@ -226,6 +246,32 @@ const loading = ref(false)
 const error = ref('')
 const updating = ref(null)
 const dialogOpen = ref(false)
+const editingPlan = ref(null)
+
+function responseLabel(status) {
+  return { CONFIRMED: '患者已确认', RESCHEDULE_REQUESTED: '待处理改期',
+    RESCHEDULE_DECLINED: '已回执保留原安排' }[status] || '等患者确认'
+}
+
+function openBooking(plan = null) {
+  editingPlan.value = plan
+  dialogOpen.value = true
+}
+
+function refreshBookings() {
+  if (view.value === 'ALL') return loadAll(todoPage.value)
+  return loadFollowUps()
+}
+
+async function keepBooking(plan) {
+  try {
+    await ElMessageBox.confirm('保留原复诊时间，患者会看到改期未获安排的回执。', '处理改期申请', {
+      confirmButtonText: '保留原安排', cancelButtonText: '返回'
+    })
+    await declineReschedule(plan.id, plan.appointmentRevision)
+    await refreshBookings()
+  } catch { /* request.js displays API errors */ }
+}
 
 // ---- 全部待办（服务端分页）----
 const allItems = ref([])

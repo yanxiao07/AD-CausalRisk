@@ -1,4 +1,13 @@
 import request from './request.js'
+
+export const getPatientPublication = id => request.get(`/research/table-assessment-tasks/${id}/patient-publication`)
+export const publishPatientMessage = (id, message) => request.put(`/research/table-assessment-tasks/${id}/patient-publication`, { message })
+export const withdrawPatientMessage = id => request.delete(`/research/table-assessment-tasks/${id}/patient-publication`)
+export function importModelCsv(file, preview) {
+  const body = new FormData()
+  body.append('file', file)
+  return request.post('/research/table-assessment-tasks/snapshots/batch-csv', body, { params: { preview } })
+}
 import { newIdempotencyKey } from './assessments.js'
 
 /**
@@ -68,10 +77,16 @@ export function reRegisterResearchSnapshot(snapshotId) {
   )
 }
 
-export function submitResearchTableTask({ snapshotId, idempotencyKey }) {
+export function getResearchIntakeState(subjectId) {
+  return request.get('/research/table-assessment-tasks/intake-state', {
+    params: { subjectId: Number(subjectId) }, silent: true
+  })
+}
+
+export function submitResearchTableTask({ subjectId, snapshotId, idempotencyKey }) {
   return request.post(
     '/research/table-assessment-tasks',
-    { snapshotId: Number(snapshotId) },
+    { snapshotId: Number(snapshotId), ...(subjectId == null ? {} : { subjectId: Number(subjectId) }) },
     {
       headers: { 'Idempotency-Key': idempotencyKey || newIdempotencyKey() },
       silent: true
@@ -128,17 +143,6 @@ export function listResearchTaskHistory(subjectId) {
   })
 }
 
-/**
- * GET /api/research/table-assessment-tasks/archive?subjectId={id}
- * 该受试者名下的研究验证结果；ADMIN / RESEARCHER / 有档案 VIEW/MANAGE 的 DOCTOR 可读。
- */
-export function listResearchArchive(subjectId) {
-  return request.get('/research/table-assessment-tasks/archive', {
-    params: { subjectId: Number(subjectId) },
-    silent: true
-  })
-}
-
 /** POST /api/research/table-assessment-tasks/{id}/retry —— 仅 FAILED / OUTCOME_UNKNOWN。 */
 export function retryResearchTableTask(taskId) {
   return request.post(`/research/table-assessment-tasks/${Number(taskId)}/retry`, null, {
@@ -150,9 +154,9 @@ export function retryResearchTableTask(taskId) {
  * GET /api/research/table-assessment-tasks/reviews?status&page&pageSize
  * 医生研究模型复核队列；仅 COMPLETED 任务，按档案权限过滤。
  */
-export function listResearchReviews({ status = 'PENDING', page = 1, pageSize = 20 } = {}) {
+export function listResearchReviews({ status = 'PENDING', page = 1, pageSize = 20, dataScope } = {}) {
   return request.get('/research/table-assessment-tasks/reviews', {
-    params: { status, page, pageSize },
+    params: { status, page, pageSize, dataScope },
     silent: true
   })
 }
@@ -170,21 +174,21 @@ export function reviewResearchTask(taskId, { decision, comment }) {
  * GET /api/research/table-assessment-tasks/reports?status&page&pageSize
  * 统一研究验证报告列表：医生按档案授权、研究员按本人任务。
  */
-export function listResearchReports({ status = 'ALL', page = 1, pageSize = 20 } = {}) {
+export function listResearchReports({ status = 'ALL', page = 1, pageSize = 20, dataScope, subjectId } = {}) {
   return request.get('/research/table-assessment-tasks/reports', {
-    params: { status, page, pageSize },
+    params: { status, page, pageSize, dataScope, subjectId },
     silent: true
   })
 }
 
 /** GET /api/research/table-assessment-tasks/summary —— 当前研究员今日任务吞吐。 */
-export function getResearchTaskSummary() {
-  return request.get('/research/table-assessment-tasks/summary', { silent: true })
+export function getResearchTaskSummary(dataScope) {
+  return request.get('/research/table-assessment-tasks/summary', { params: { dataScope }, silent: true })
 }
 
 /** GET /api/research/table-assessment-tasks/metrics — 研究验证指标，与旧规则评估分开统计。 */
-export function getResearchMetrics() {
-  return request.get('/research/table-assessment-tasks/metrics', { silent: true })
+export function getResearchMetrics(dataScope) {
+  return request.get('/research/table-assessment-tasks/metrics', { params: { dataScope }, silent: true })
 }
 
 /**

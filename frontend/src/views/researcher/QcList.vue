@@ -45,7 +45,7 @@
             :disabled="selectedRows.length === 0"
             @click="openBatch"
           >
-            批量生成快照
+            生成测试快照
           </el-button>
         </div>
       </div>
@@ -128,7 +128,7 @@
       </template>
     </DataCard>
 
-    <el-dialog v-model="batchOpen" title="批量生成七变量快照" width="640px" :close-on-click-modal="!batchRunning">
+    <el-dialog v-model="batchOpen" title="批量生成测试快照" width="640px" :close-on-click-modal="!batchRunning">
       <div v-if="!batchResult" class="batch-confirm">
         <p>
           将从 {{ selectedRows.length }} 个受试者的最新访视生成快照。缺失变量会按
@@ -211,7 +211,7 @@ const error = ref('')
 const selectedRows = ref([])
 const batchOpen = ref(false)
 const batchRunning = ref(false)
-const batchEvaluate = ref(true)
+const batchEvaluate = ref(false)
 const batchResult = ref(null)
 
 /** 请求序号守卫：翻页/切筛选时只认最后一次查询 */
@@ -257,7 +257,7 @@ function openBatch() {
     return
   }
   batchResult.value = null
-  batchEvaluate.value = true
+  batchEvaluate.value = false
   batchOpen.value = true
 }
 

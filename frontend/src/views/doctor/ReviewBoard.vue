@@ -1,6 +1,6 @@
 <template>
   <div class="review-page">
-    <PageHeader back title="待办复核" subtitle="按时间倒序展示评估结果，最新的在前。">
+    <PageHeader back title="结果复核" subtitle="查看评估报告，记录确认、补充资料或驳回意见。">
       <template #extra>
         <template v-if="view === 'legacy'">
           <el-radio-group v-model="filter" size="small" @change="loadPage(1)">
@@ -42,8 +42,7 @@
       </template>
     </PageHeader>
 
-    <el-tabs v-model="view" class="review-tabs">
-      <el-tab-pane label="旧规则复核" name="legacy">
+    <template v-if="view === 'legacy'">
     <DataCard padding="none">
       <div class="filter">
         <span class="filter__count">共 {{ total }} 条 · 当前页 {{ items.length }} 条</span>
@@ -68,7 +67,7 @@
         :description="
           filter === 'PENDING'
             ? '所有评估都已复核；可以切换到「全部」查看历史结果。'
-            : '研究员发起评估后，结果会自动出现在这里。'
+            : '评估完成后，结果会出现在这里。'
         "
       />
 
@@ -121,9 +120,9 @@
         />
       </div>
     </DataCard>
-      </el-tab-pane>
+    </template>
 
-      <el-tab-pane v-if="isDoctor" label="研究模型复核" name="research">
+    <template v-else-if="isDoctor">
         <DataCard padding="none">
           <div class="filter">
             <el-radio-group v-model="researchFilter" size="small" @change="loadResearch(1)">
@@ -140,11 +139,11 @@
             type="warning"
             :closable="false"
             show-icon
-            title="研究验证用途，不可用于临床决策"
-            description="研究模型输出为未校准的 24 个月累积发生率，不等于个体因果效应；复核只记录医生对结果的审阅意见。"
+            title="评估结果仅供研究参考"
+            description="医生确认后，已绑定患者可查看简要说明。"
           />
 
-          <el-skeleton v-if="researchFirstLoading" :rows="4" animated />
+          <el-skeleton v-if="researchLoading" :rows="4" animated />
 
           <EmptyState
             v-else-if="researchError"
@@ -159,7 +158,7 @@
             v-else-if="researchItems.length === 0"
             :icon="Document"
             title="没有待复核的研究结果"
-            description="研究员完成研究模型评估后，结果会进入这里等待医生复核。"
+            description="评估完成后，结果会进入这里等待医生复核。"
           />
 
           <el-table
@@ -176,7 +175,7 @@
                 <span class="subtle" :title="row.subjectAlias">{{ row.subjectAlias || '未设置别名' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="AD 24 个月" width="120">
+            <el-table-column label="阿尔茨海默病" width="125">
               <template #default="{ row }">{{ formatCif(row.result?.prediction?.adCif24m) }}</template>
             </el-table-column>
             <el-table-column label="其他痴呆 24 个月" width="140">
@@ -213,8 +212,7 @@
             />
           </div>
         </DataCard>
-      </el-tab-pane>
-    </el-tabs>
+    </template>
 
     <!-- 复核抽屉：列表行只有摘要，打开时再拉完整结果（含因果图） -->
     <el-drawer
@@ -391,7 +389,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import CausalGraph from '@/components/charts/CausalGraph.vue'
 import { getAssessment, getAssessmentTaskInput, listAssessments, reviewAssessment } from '@/api/assessments.js'
 import { getSubjectCapabilities } from '@/api/subjects.js'
-import { listResearchReviews, reviewResearchTask } from '@/api/research.js'
+import { getResearchReportTask, listResearchReviews, reviewResearchTask } from '@/api/research.js'
 import { useTableKeyboard } from '@/composables/useTableKeyboard.js'
 import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
 import { useUserStore } from '@/stores/user.js'
@@ -411,14 +409,13 @@ const filter = ref('ALL')
 const riskFilter = ref('')
 const subjectFilter = ref('')
 
-const view = ref('legacy')
+const view = computed(() => route.query.assessmentId || route.query.tab === 'legacy' ? 'legacy' : 'research')
 const researchFilter = ref('PENDING')
 const researchItems = ref([])
 const researchTotal = ref(0)
 const researchPage = ref(1)
 const researchPageSize = ref(20)
 const researchLoading = ref(false)
-const researchFirstLoading = ref(true)
 const researchError = ref('')
 const researchDrawerOpen = ref(false)
 const researchCurrent = ref(null)
@@ -646,7 +643,6 @@ async function loadResearch(target = researchPage.value) {
   } finally {
     if (seq === researchSeq) {
       researchLoading.value = false
-      researchFirstLoading.value = false
     }
   }
 }
@@ -662,7 +658,7 @@ function openResearchReview(row) {
 }
 
 async function submitResearchReview(decision) {
-  if (!researchCurrent.value) return
+  if (!researchCurrent.value || researchSubmitting.value) return
   if (!researchComment.value.trim()) {
     ElMessage.warning('复核意见不能为空')
     return
@@ -674,27 +670,36 @@ async function submitResearchReview(decision) {
       decision,
       comment: researchComment.value.trim()
     })
-    researchCurrent.value = updated
-    const index = researchItems.value.findIndex((item) => item.taskId === updated.taskId)
-    if (index >= 0) researchItems.value[index] = updated
+    if (researchDrawerOpen.value && researchCurrent.value?.taskId === updated.taskId) {
+      researchCurrent.value = updated
+    }
+    loadResearch(1)
     ElMessage.success('研究复核已记录')
-  } catch {
-    // request.js 已提示
+  } catch (problem) {
+    ElMessage.error(problem?.message || '复核保存失败，请刷新后重试')
   } finally {
     researchSubmitting.value = ''
   }
 }
 
-watch(view, (value) => {
-  if (value === 'research' && researchFirstLoading.value) {
-    loadResearch(1)
-  }
-})
-
 onMounted(async () => {
-  if (String(route.query.tab || '') === 'research' && isDoctor.value) {
-    view.value = 'research'
+  if (view.value === 'research') {
+    if (!isDoctor.value) {
+      router.replace({ name: 'ReportList' })
+      return
+    }
     await loadResearch(1)
+    const taskId = Number(route.query.taskId)
+    if (Number.isSafeInteger(taskId) && taskId > 0) {
+      try {
+        const selected = researchItems.value.find(item => item.taskId === taskId) ?? await getResearchReportTask(taskId)
+        if (selected?.status === 'COMPLETED') {
+          openResearchReview(selected)
+        }
+      } catch (problem) {
+        ElMessage.warning(problem?.message || '无法打开该报告，请从复核列表选择。')
+      }
+    }
     return
   }
   const statusFromQuery = String(route.query.status || '').toUpperCase()
@@ -717,10 +722,6 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.review-tabs {
-  margin-top: -4px;
 }
 
 .note {
@@ -758,6 +759,8 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
 }

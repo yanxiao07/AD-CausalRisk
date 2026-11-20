@@ -185,7 +185,7 @@ const initial = computed(() => (userStore.username || '?').slice(0, 1).toUpperCa
 /** 第一项永远是本角色工作台；其余由后端 menus 决定。 */
 const items = computed(() => [
   { key: 'home', label: '工作台', path: userStore.homePath, icon: HomeFilled, ready: true },
-  ...buildMenuItems(userStore.menus)
+  ...buildMenuItems(userStore.menus, userStore.primaryRole)
 ])
 
 const activeKey = computed(() => {

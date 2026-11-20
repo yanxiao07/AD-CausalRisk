@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 
@@ -36,17 +37,42 @@ public class ResearchTableAssessmentController {
         } catch (IOException | IllegalArgumentException invalid) {
             throw new BusinessException(ErrorCode.MALFORMED_JSON);
         }
-        if (request == null || !request.isObject() || request.size() != 1) {
+        if (request == null || !request.isObject()
+                || request.size() != (request.has("subjectId") ? 2 : 1) || !request.has("snapshotId")) {
             throw new BusinessException(ErrorCode.MALFORMED_JSON);
         }
         JsonNode id = request.path("snapshotId");
         if (!id.isIntegralNumber() || !id.canConvertToLong() || id.longValue() <= 0) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "snapshotId 须为正整数");
         }
-        return Envelope.success(service.submit(id.longValue(), key, (AppUserPrincipal) auth.getPrincipal()));
+        JsonNode subject = request.get("subjectId");
+        if (subject != null && (!subject.isIntegralNumber() || !subject.canConvertToLong() || subject.longValue() <= 0)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "subjectId 须为正整数");
+        }
+        return Envelope.success(service.submit(id.longValue(), subject == null ? null : subject.longValue(),
+                key, (AppUserPrincipal) auth.getPrincipal()));
     }
 
     record SnapshotRegistration(long snapshotId, String hostSyncStatus) {}
+    record DoctorIntake(long subjectId, String indexDate, JsonNode features) {}
+
+    @GetMapping("/snapshots/doctor-intake")
+    public Envelope<?> doctorIntakeHistory(@RequestParam long subjectId,
+                                           @RequestParam(defaultValue = "1") int page,
+                                           @RequestParam(defaultValue = "20") int pageSize,
+                                           Authentication auth) {
+        return Envelope.success(service.doctorIntakeHistory(subjectId, page, pageSize,
+                (AppUserPrincipal) auth.getPrincipal()));
+    }
+
+    @PostMapping("/snapshots/doctor-intake")
+    public Envelope<?> doctorIntake(@RequestBody DoctorIntake intake, Authentication auth) {
+        if (intake.indexDate() == null || intake.features() == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请输入评估日期和七项模型输入");
+        }
+        return Envelope.success(service.recordDoctorIntake(intake.subjectId(), intake.features(),
+                intake.indexDate(), (AppUserPrincipal) auth.getPrincipal()));
+    }
 
     @PostMapping(value = "/snapshots/register", consumes = MediaType.APPLICATION_JSON_VALUE)
     public Envelope<?> register(@RequestBody byte[] body, Authentication auth) {
@@ -105,14 +131,24 @@ public class ResearchTableAssessmentController {
         return Envelope.success(service.batch(subjectIds, evaluate, (AppUserPrincipal) auth.getPrincipal()));
     }
 
+    @PostMapping(value = "/snapshots/batch-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Envelope<?> modelCsv(@RequestPart("file") MultipartFile file,
+                                @RequestParam(defaultValue = "true") boolean preview,
+                                Authentication auth) throws IOException {
+        if (file.isEmpty() || file.getSize() > 30000) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请上传不超过 30,000 字节的 CSV");
+        }
+        return Envelope.success(service.modelCsv(file.getBytes(), preview, (AppUserPrincipal) auth.getPrincipal()));
+    }
+
     @GetMapping("/summary")
-    public Envelope<?> summary(Authentication auth) {
-        return Envelope.success(service.summary((AppUserPrincipal) auth.getPrincipal()));
+    public Envelope<?> summary(@RequestParam(required = false) String dataScope, Authentication auth) {
+        return Envelope.success(service.summary(reportDataScope(dataScope), (AppUserPrincipal) auth.getPrincipal()));
     }
 
     @GetMapping("/metrics")
-    public Envelope<?> metrics(Authentication auth) {
-        return Envelope.success(service.metrics((AppUserPrincipal) auth.getPrincipal()));
+    public Envelope<?> metrics(@RequestParam(required = false) String dataScope, Authentication auth) {
+        return Envelope.success(service.metrics(reportDataScope(dataScope), (AppUserPrincipal) auth.getPrincipal()));
     }
 
     @PostMapping("/snapshots/migrate")
@@ -153,6 +189,12 @@ public class ResearchTableAssessmentController {
         return Envelope.success(service.snapshots(subjectId, (AppUserPrincipal) auth.getPrincipal()));
     }
 
+    @GetMapping("/intake-state")
+    public Envelope<?> intakeState(@RequestParam long subjectId, Authentication auth) {
+        return Envelope.success(java.util.Map.of("status",
+                service.intakeState(subjectId, (AppUserPrincipal) auth.getPrincipal())));
+    }
+
     @GetMapping("/history")
     public Envelope<?> history(@RequestParam long subjectId, Authentication auth) {
         if (subjectId <= 0) {
@@ -183,18 +225,27 @@ public class ResearchTableAssessmentController {
     public Envelope<?> reports(@RequestParam(defaultValue = "ALL") String status,
                                @RequestParam(defaultValue = "1") int page,
                                @RequestParam(defaultValue = "20") int pageSize,
+                               @RequestParam(required = false) String dataScope,
+                               @RequestParam(required = false) Long subjectId,
                                Authentication auth) {
+        if (subjectId != null && subjectId <= 0) throw new BusinessException(ErrorCode.VALIDATION_ERROR);
         return Envelope.success(service.reports(status, page, pageSize,
-                (AppUserPrincipal) auth.getPrincipal()));
+                reportDataScope(dataScope), subjectId, (AppUserPrincipal) auth.getPrincipal()));
     }
 
     @GetMapping("/reviews")
     public Envelope<?> reviews(@RequestParam(defaultValue = "PENDING") String status,
                                @RequestParam(defaultValue = "1") int page,
                                @RequestParam(defaultValue = "20") int pageSize,
+                               @RequestParam(required = false) String dataScope,
                                Authentication auth) {
         return Envelope.success(service.reviewQueue(status, page, pageSize,
-                (AppUserPrincipal) auth.getPrincipal()));
+                reportDataScope(dataScope), (AppUserPrincipal) auth.getPrincipal()));
+    }
+
+    private static String reportDataScope(String value) {
+        if (value == null || "CONTROLLED_RESEARCH".equals(value) || "CONSTRUCTED_VALIDATION".equals(value)) return value;
+        throw new BusinessException(ErrorCode.VALIDATION_ERROR, "无效的数据来源");
     }
 
     @PostMapping(value = "/{id}/review", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -204,6 +255,23 @@ public class ResearchTableAssessmentController {
         }
         return Envelope.success(service.review(id, request.decision(), request.comment(),
                 (AppUserPrincipal) auth.getPrincipal()));
+    }
+
+    record PublicationRequest(String message) {}
+
+    @GetMapping("/{id}/patient-publication")
+    public Envelope<?> patientPublication(@PathVariable long id, Authentication auth) {
+        return Envelope.success(service.publication(id, (AppUserPrincipal) auth.getPrincipal()));
+    }
+
+    @PutMapping("/{id}/patient-publication")
+    public Envelope<?> publishToPatient(@PathVariable long id, @RequestBody PublicationRequest request, Authentication auth) {
+        return Envelope.success(service.changePublication(id, request.message(), true, (AppUserPrincipal) auth.getPrincipal()));
+    }
+
+    @DeleteMapping("/{id}/patient-publication")
+    public Envelope<?> withdrawPatientPublication(@PathVariable long id, Authentication auth) {
+        return Envelope.success(service.changePublication(id, null, false, (AppUserPrincipal) auth.getPrincipal()));
     }
 
     @GetMapping("/{id}/export")

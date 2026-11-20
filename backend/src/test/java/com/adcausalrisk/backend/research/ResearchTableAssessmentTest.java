@@ -18,10 +18,12 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -49,6 +51,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -57,8 +61,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 class ResearchTableAssessmentTest {
     private static final String PATH = "/api/research/table-assessment-tasks";
+    private static final String SUPPLEMENTS = "/api/research/supplements";
     private static final String TOKEN = "constructed-test-token";
     private static final AtomicInteger REQUESTS = new AtomicInteger();
+    private static final AtomicInteger SNAPSHOT_REQUESTS = new AtomicInteger();
+    private static final AtomicReference<String> SNAPSHOT_REPLY_MODE = new AtomicReference<>("MATCH");
     private static final AtomicReference<Exchange> EXCHANGE = new AtomicReference<>();
     private static final ExecutorService HOST_THREADS = Executors.newVirtualThreadPerTaskExecutor();
     private static final HttpServer SERVER = startServer();
@@ -92,15 +99,267 @@ class ResearchTableAssessmentTest {
 
     @BeforeEach
     void clearResearchTasks() {
+        SNAPSHOT_REPLY_MODE.set("MATCH");
+        jdbc.update("DELETE FROM controlled_assessment_request");
+        jdbc.update("DELETE FROM research_supplement_request");
         jdbc.update("DELETE FROM idempotency_record WHERE operation='RESEARCH_TABLE_ASSESSMENT'");
+        jdbc.update("DELETE FROM patient_research_publication");
         jdbc.update("DELETE FROM research_table_task");
         jdbc.update("DELETE FROM research_table_snapshot");
+    }
+
+    @Test
+    void doctorRequestsMatchingTestInputOnceWithoutAPatientAccount() throws Exception {
+        String code = "DEMO-DOCTOR-REQUEST-" + UUID.randomUUID().toString().substring(0, 8);
+        long subjectId = subject(code);
+        String route = "/api/subjects/" + subjectId + "/assessment-request";
+        var doctor = actor("doctor", "DOCTOR");
+        mvc.perform(get(route).with(authentication(doctor))).andExpect(status().isForbidden());
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'MANAGE')",
+                subjectId, userId("doctor"));
+        mvc.perform(post(route).with(authentication(doctor))).andExpect(status().isConflict());
+        String date = "2025-06-01";
+        insertRequestVisit(subjectId, date);
+        insertQuality(subjectId, "WARN");
+        assertThat(body(mvc.perform(get(route).with(authentication(doctor)))).at("/data/state").asText())
+                .isEqualTo("NEEDS_SNAPSHOT");
+
+        String payload = """
+                {"subjectId":%d,"indexDate":"%s","features":{"age_years":71,"education_years":12,
+                 "mmse":25,"cdr_sb":2,"cdr_global":0.5,"adas__total13":19,"faq__faqtotal":6}}
+                """.formatted(subjectId, date);
+        var snapshot = body(mvc.perform(post(PATH + "/snapshots/doctor-intake").with(authentication(doctor))
+                .contentType(MediaType.APPLICATION_JSON).content(payload))).path("data");
+        assertThat(snapshot.path("hostSyncStatus").asText()).isEqualTo("SYNCED");
+        long snapshotId = snapshot.path("snapshotId").asLong();
+        String requestText = jdbc.queryForObject("SELECT request_json FROM research_table_snapshot WHERE id=?",
+                String.class, snapshotId);
+        JsonNode request = protocol.parse(requestText.getBytes(StandardCharsets.UTF_8));
+        reply(request, successfulReply(requestText.getBytes(StandardCharsets.UTF_8)), 200, false);
+        int called = REQUESTS.get();
+        var first = body(mvc.perform(post(route).with(authentication(doctor))));
+        assertThat(ContractSchemas.validateResponse(first, "/api/subjects/{subjectId}/assessment-request", "post", 200)).isEmpty();
+        assertThat(first.at("/data/state").asText()).isEqualTo("REVIEW_PENDING");
+        assertThat(body(mvc.perform(post(route).with(authentication(doctor)))).path("data")).isEqualTo(first.path("data"));
+        assertThat(REQUESTS.get() - called).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM patient_account_request WHERE subject_id=?",
+                Integer.class, subjectId)).isZero();
+        jdbc.update("UPDATE visit SET mmse=24 WHERE subject_id=?", subjectId);
+        assertThat(body(mvc.perform(get(route).with(authentication(doctor)))).at("/data/qualityStatus").asText())
+                .isEqualTo("STALE");
+        mvc.perform(post(route).with(authentication(doctor))).andExpect(status().isConflict());
+        insertQuality(subjectId, "PASS");
+        assertThat(body(mvc.perform(get(route).with(authentication(doctor)))).at("/data/state").asText())
+                .isEqualTo("NEEDS_SNAPSHOT");
+    }
+
+    @Test
+    void controlledDoctorRequestRequiresExplicitResearchGrantAndExecutionAuthorization() throws Exception {
+        long frozen = snapshot(fixture("request-seven"), fixture("response-seven"), "researcher");
+        long subjectId = jdbc.queryForObject("SELECT subject_id FROM research_table_snapshot WHERE id=?", Long.class, frozen);
+        jdbc.update("UPDATE research_table_snapshot SET data_scope='CONTROLLED_RESEARCH' WHERE id=?", frozen);
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'MANAGE')",
+                subjectId, userId("doctor"));
+        insertRequestVisit(subjectId, "2025-06-01");
+        insertQuality(subjectId, "PASS");
+        String route = "/api/subjects/" + subjectId + "/assessment-request";
+        String queue = "/api/research/assessment-requests";
+        var doctor = actor("doctor", "DOCTOR");
+        var researcher = actor("researcher", "RESEARCHER");
+        var patient = actor("patient", "PATIENT");
+        int calls = REQUESTS.get();
+        var created = body(mvc.perform(post(route).with(authentication(doctor)))).path("data");
+        assertThat(created.path("state").asText()).isEqualTo("RESEARCH_REVIEW");
+        assertThat(body(mvc.perform(post(route).with(authentication(doctor)))).path("data")).isEqualTo(created);
+        assertThat(body(mvc.perform(get(queue).with(authentication(researcher)))).at("/data/total").asLong()).isZero();
+        String dispatch = queue + "/" + created.path("requestId").asLong() + "/execute";
+        mvc.perform(post(dispatch).with(authentication(researcher))).andExpect(status().isForbidden());
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'VIEW')",
+                subjectId, userId("researcher"));
+        var listing = body(mvc.perform(get(queue).with(authentication(researcher))));
+        assertThat(ContractSchemas.validateResponse(listing, queue, "get", 200)).isEmpty();
+        assertThat(listing.at("/data/items/0/canExecute").asBoolean()).isFalse();
+        mvc.perform(post(dispatch).with(authentication(researcher))).andExpect(status().isConflict());
+        mvc.perform(get(route).with(authentication(patient))).andExpect(status().isForbidden());
+        mvc.perform(get(queue).with(authentication(patient))).andExpect(status().isForbidden());
+        assertThat(REQUESTS.get()).isEqualTo(calls);
+    }
+
+    @Test
+    void modelCsvPreviewsAndRegistersOneFullTestSnapshotWithoutRunningPrediction() throws Exception {
+        String code = "DEMO-FULL-MODEL-CSV";
+        long subjectId = subject(code);
+        insertRequestVisit(subjectId, "2025-06-01");
+        insertQuality(subjectId, "WARN");
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'MANAGE')",
+                subjectId, userId("researcher"));
+        var researcher = actor("researcher", "RESEARCHER");
+        var csv = new MockMultipartFile("file", "model.csv", "text/csv", ("""
+                subjectCode,visitDate,age_years,education_years,cdr_global,adas__total13,faq__faqtotal
+                DEMO-FULL-MODEL-CSV,2025-06-01,73,12,0.5,14,3
+                DEMO-DOES-NOT-EXIST,2025-06-01,73,12,0.5,14,3
+                """).getBytes(StandardCharsets.UTF_8));
+        String path = PATH + "/snapshots/batch-csv";
+        int assessments = REQUESTS.get();
+        int syncs = SNAPSHOT_REQUESTS.get();
+        var preview = body(mvc.perform(multipart(path).file(csv).with(authentication(researcher))));
+        assertThat(ContractSchemas.validateResponse(preview, path, "post", 200)).isEmpty();
+        assertThat(preview.at("/data/0/status").asText()).isEqualTo("READY");
+        assertThat(preview.at("/data/1/status").asText()).isEqualTo("INVALID");
+        assertThat(SNAPSHOT_REQUESTS.get()).isEqualTo(syncs);
+        var committed = body(mvc.perform(multipart(path).file(csv).param("preview", "false").with(authentication(researcher))));
+        long snapshot = committed.at("/data/0/snapshotId").asLong();
+        assertThat(snapshot).isPositive();
+        assertThat(committed.at("/data/0/hostSyncStatus").asText()).isEqualTo("SYNCED");
+        var request = json.readTree(jdbc.queryForObject("SELECT request_json FROM research_table_snapshot WHERE id=?", String.class, snapshot));
+        assertThat(request.path("features").size()).isEqualTo(7);
+        assertThat(request.at("/features/mmse/value").asDouble()).isEqualTo(25.0);
+        assertThat(request.at("/features/faq__faqtotal/value").asDouble()).isEqualTo(3.0);
+        assertThat(body(mvc.perform(multipart(path).file(csv).param("preview", "false").with(authentication(researcher))))
+                .at("/data/0/snapshotId").asLong()).isEqualTo(snapshot);
+        assertThat(SNAPSHOT_REQUESTS.get()).isEqualTo(syncs + 1);
+        assertThat(REQUESTS.get()).isEqualTo(assessments);
+    }
+
+    private void insertRequestVisit(long subjectId, String date) {
+        jdbc.update("INSERT INTO visit(subject_id,visit_code,visit_date,mmse,cdr_sb) VALUES(?,?,?,?,?)",
+                subjectId, "V-REQUEST", java.sql.Date.valueOf(date), 25, 2);
     }
 
     @Test
     void canonicalDigestMatchesThePythonRuntimeFixture() throws Exception {
         assertThat(protocol.digest(fixture("request-seven")))
                 .isEqualTo(fixture("response-seven").get("requestSha256").asText());
+    }
+
+    @Test
+    void supplementPreservesOriginalAndReturnsNewTaskWithExplicitGrants() throws Exception {
+        var researcher = actor("researcher", "RESEARCHER");
+        var doctor = actor("doctor", "DOCTOR");
+        var patient = actor("patient", "PATIENT");
+        var other = actor("research_doctor", "RESEARCHER");
+        var request = fixture("request-blocked");
+        var response = fixture("response-blocked");
+        long originalSnapshot = snapshot(request, response, "researcher");
+        long subjectId = jdbc.queryForObject("SELECT subject_id FROM research_table_snapshot WHERE id=?",
+                Long.class, originalSnapshot);
+        for (String username : List.of("doctor", "researcher", "research_doctor")) {
+            jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'VIEW')",
+                    subjectId, userId(username));
+        }
+        reply(request, response, 200, false);
+        var original = body(submit(originalSnapshot, "supplement-original", researcher)).path("data");
+        long originalId = original.path("taskId").asLong();
+        assertThat(original.path("status").asText()).isEqualTo("BLOCKED");
+        int hostCalls = REQUESTS.get();
+        String createBody = json.createObjectNode().put("originalTaskId", originalId)
+                .put("note", "请核查原始量表与缺失依据").toString();
+        var opened = body(mvc.perform(post(SUPPLEMENTS).with(authentication(doctor))
+                .contentType(MediaType.APPLICATION_JSON).content(createBody)));
+        assertThat(ContractSchemas.validateResponse(opened, SUPPLEMENTS, "post", 200)).isEmpty();
+        long id = opened.at("/data/id").asLong();
+        assertThat(opened.at("/data/status").asText()).isEqualTo("OPEN");
+        assertThat(opened.at("/data/issues").size()).isEqualTo(response.at("/admission/issues").size());
+        assertThat(body(mvc.perform(post(SUPPLEMENTS).with(authentication(doctor))
+                .contentType(MediaType.APPLICATION_JSON).content(createBody))).path("data"))
+                .isEqualTo(opened.path("data"));
+        mvc.perform(get(SUPPLEMENTS).with(authentication(patient))).andExpect(status().isForbidden());
+        var queue = body(mvc.perform(get(SUPPLEMENTS).with(authentication(researcher))
+                .param("originalTaskId", String.valueOf(originalId))));
+        assertThat(ContractSchemas.validateResponse(queue, SUPPLEMENTS, "get", 200)).isEmpty();
+        assertThat(queue.at("/data/total").asInt()).isEqualTo(1);
+
+        var claim = body(changeSupplement(id, "CLAIM", null, researcher));
+        assertThat(claim.at("/data/assignedTo").asLong()).isEqualTo(userId("researcher"));
+        changeSupplement(id, "CLAIM", null, other).andExpect(status().isConflict());
+        changeSupplement(id, "RETURN", originalId, researcher).andExpect(status().isConflict());
+        changeSupplement(id, "RETURN", originalId, other).andExpect(status().isForbidden());
+        body(changeSupplement(id, "RELEASE", null, doctor));
+        body(changeSupplement(id, "CLAIM", null, researcher));
+
+        var newRequest = fixture("request-seven");
+        var newResponse = fixture("response-seven");
+        long updatedSnapshot = snapshot(newRequest, newResponse, "researcher");
+        jdbc.update("UPDATE research_table_snapshot SET subject_id=? WHERE id=?", subjectId, updatedSnapshot);
+        reply(newRequest, newResponse, 200, false);
+        var replacement = body(submit(updatedSnapshot, "supplement-replacement", researcher)).path("data");
+        long replacementId = replacement.path("taskId").asLong();
+        assertThat(replacement.path("status").asText()).isEqualTo("COMPLETED");
+        mvc.perform(post(SUPPLEMENTS).with(authentication(doctor)).contentType(MediaType.APPLICATION_JSON)
+                .content(json.createObjectNode().put("originalTaskId", replacementId).put("note", "尚未复核").toString()))
+                .andExpect(status().isConflict());
+        var returned = body(changeSupplement(id, "RETURN", replacementId, researcher));
+        assertThat(ContractSchemas.validateResponse(returned, SUPPLEMENTS + "/{id}", "patch", 200)).isEmpty();
+        assertThat(returned.at("/data/status").asText()).isEqualTo("RETURNED");
+        assertThat(returned.at("/data/replacementTaskId").asLong()).isEqualTo(replacementId);
+        assertThat(body(changeSupplement(id, "RETURN", replacementId, researcher)).path("data"))
+                .isEqualTo(returned.path("data"));
+        assertThat(body(mvc.perform(get(PATH + "/reports/" + originalId).with(authentication(doctor))))
+                .at("/data/status").asText()).isEqualTo("BLOCKED");
+        assertThat(body(mvc.perform(get(PATH + "/reviews").with(authentication(doctor))))
+                .at("/data/items/0/taskId").asLong()).isEqualTo(replacementId);
+        assertThat(REQUESTS.get() - hostCalls).isEqualTo(1);
+    }
+
+    @Test
+    void doctorIntakeRequiresResearchGrantInsteadOfPatientAccount() throws Exception {
+        var researcher = actor("researcher", "RESEARCHER");
+        long frozen = snapshot(fixture("request-seven"), fixture("response-seven"), "doctor");
+        jdbc.update("UPDATE research_table_snapshot SET doctor_handoff=TRUE WHERE id=?", frozen);
+        long subject = jdbc.queryForObject("SELECT subject_id FROM research_table_snapshot WHERE id=?",
+                Long.class, frozen);
+        assertThat(body(mvc.perform(get(PATH + "/snapshots").param("subjectId", String.valueOf(subject))
+                .with(authentication(researcher)))).path("data").size()).isZero();
+        submit(frozen, "intake-no-grant", researcher).andExpect(status().isForbidden());
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'VIEW')",
+                subject, userId("researcher"));
+        assertThat(body(mvc.perform(get(PATH + "/intake-state").param("subjectId", String.valueOf(subject))
+                .with(authentication(researcher)))).at("/data/status").asText()).isEqualTo("READY");
+        assertThat(body(mvc.perform(get(PATH + "/snapshots").param("subjectId", String.valueOf(subject))
+                .with(authentication(researcher)))).at("/data/0/snapshotId").asLong()).isEqualTo(frozen);
+        reply(fixture("request-seven"), fixture("response-seven"), 200, false);
+        assertThat(body(submit(frozen, "intake-with-grant", researcher)).at("/data/status").asText())
+                .isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM patient_account_request WHERE subject_id=?",
+                Long.class, subject)).isZero();
+    }
+
+    @Test
+    void doctorCanReadPersistedTestIntakeWithoutCreatingVisitsOrTasks() throws Exception {
+        var doctor = actor("doctor", "DOCTOR");
+        var request = fixture("request-seven");
+        long frozen = snapshot(request, fixture("response-seven"), "doctor");
+        long subject = jdbc.queryForObject("SELECT subject_id FROM research_table_snapshot WHERE id=?",
+                Long.class, frozen);
+        String route = PATH + "/snapshots/doctor-intake";
+        mvc.perform(get(route).param("subjectId", Long.toString(subject)).with(authentication(doctor)))
+                .andExpect(status().isForbidden());
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'MANAGE')",
+                subject, userId("doctor"));
+        assertThat(body(mvc.perform(get(route).param("subjectId", Long.toString(subject))
+                .with(authentication(doctor)))).at("/data/total").asLong()).isZero();
+        jdbc.update("UPDATE research_table_snapshot SET doctor_handoff=TRUE WHERE id=?", frozen);
+        JsonNode response = body(mvc.perform(get(route).param("subjectId", Long.toString(subject))
+                .with(authentication(doctor))));
+        assertThat(ContractSchemas.validateResponse(response, route, "get", 200)).isEmpty();
+        assertThat(response.at("/data/total").asLong()).isEqualTo(1);
+        var item = response.at("/data/items/0");
+        assertThat(item.path("snapshotId").asLong()).isEqualTo(frozen);
+        assertThat(item.path("indexDate")).isEqualTo(request.path("indexDate"));
+        assertThat(item.at("/features/mmse")).isEqualTo(request.at("/features/mmse/value"));
+        assertThat(item.has("request") || item.has("runId")).isFalse();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM visit WHERE subject_id=?", Long.class, subject)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM research_table_task WHERE snapshot_id=?", Long.class, frozen)).isZero();
+        mvc.perform(get(route).param("subjectId", Long.toString(subject))
+                .with(authentication(actor("patient", "PATIENT")))).andExpect(status().isForbidden());
+    }
+
+    private ResultActions changeSupplement(long id, String action, Long task,
+                                           UsernamePasswordAuthenticationToken actor) throws Exception {
+        var payload = json.createObjectNode().put("action", action);
+        if (task != null) payload.put("replacementTaskId", task);
+        return mvc.perform(patch(SUPPLEMENTS + "/" + id).with(authentication(actor))
+                .contentType(MediaType.APPLICATION_JSON).content(payload.toString()));
     }
 
     @ParameterizedTest
@@ -126,6 +385,47 @@ class ResearchTableAssessmentTest {
         assertThat(REQUESTS.get() - before).isEqualTo(1);
         assertThat(exchange.problem().get()).isNull();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM risk_assessment", Integer.class)).isZero();
+    }
+
+    @Test
+    void rejectsSnapshotFromAnotherSelectedSubjectEvenWithAccessToBoth() throws Exception {
+        long snapshot = snapshot(fixture("request-seven"), fixture("response-seven"), "admin");
+        long selected = subject("DEMO-OTHER-" + UUID.randomUUID());
+        int before = REQUESTS.get();
+        mvc.perform(post(PATH).with(authentication(actor("admin", "ADMIN")))
+                        .header("Idempotency-Key", "misbound-snapshot")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.createObjectNode().put("snapshotId", snapshot).put("subjectId", selected).toString()))
+                .andExpect(status().isConflict());
+        assertThat(REQUESTS.get()).isEqualTo(before);
+    }
+
+    @Test
+    void rejectsMismatchedSyncReceiptsAndDoesNotSendChangedFrozenData() throws Exception {
+        String code = "DEMO-SYNC-" + UUID.randomUUID();
+        var actor = actor("admin", "ADMIN");
+        var payload = json.createObjectNode().put("subjectId", subject(code))
+                .set("request", uniqueRequest().put("subjectCode", code).put("modelKey", "trained-seven-logistic"));
+        JsonNode registered = body(mvc.perform(post(PATH + "/snapshots/register")
+                .with(authentication(actor)).contentType(MediaType.APPLICATION_JSON)
+                .content(payload.toString()))).path("data");
+        long id = registered.path("snapshotId").asLong();
+        assertThat(registered.path("hostSyncStatus").asText()).isEqualTo("SYNCED");
+
+        for (String mode : List.of("WRONG_RUN", "WRONG_SNAPSHOT")) {
+            SNAPSHOT_REPLY_MODE.set(mode);
+            JsonNode sync = body(mvc.perform(post(PATH + "/snapshots/" + id + "/sync")
+                    .with(authentication(actor)))).path("data");
+            assertThat(sync.path("hostSyncStatus").asText()).isEqualTo("FAILED");
+        }
+
+        SNAPSHOT_REPLY_MODE.set("MATCH");
+        int before = SNAPSHOT_REQUESTS.get();
+        jdbc.update("UPDATE research_table_snapshot SET context_sha256=? WHERE id=?", "0".repeat(64), id);
+        JsonNode sync = body(mvc.perform(post(PATH + "/snapshots/" + id + "/sync")
+                .with(authentication(actor)))).path("data");
+        assertThat(sync.path("hostSyncStatus").asText()).isEqualTo("FAILED");
+        assertThat(SNAPSHOT_REQUESTS.get()).isEqualTo(before);
     }
 
     @Test
@@ -388,7 +688,8 @@ class ResearchTableAssessmentTest {
                 .getField(service, "client");
         ResearchTableClient mock = org.mockito.Mockito.mock(ResearchTableClient.class);
         org.mockito.Mockito.when(mock.registerSnapshot(org.mockito.ArgumentMatchers.any(byte[].class)))
-                .thenReturn(new ResearchTableClient.Reply(200, json.createObjectNode().put("status", "SYNCED")));
+                .thenAnswer(invocation -> new ResearchTableClient.Reply(200,
+                        snapshotReceipt(json.readTree((byte[]) invocation.getArgument(0)), "MATCH")));
         org.mockito.Mockito.when(mock.assess(org.mockito.ArgumentMatchers.any(byte[].class)))
                 .thenAnswer(invocation -> {
                     try {
@@ -566,6 +867,31 @@ class ResearchTableAssessmentTest {
     }
 
     @Test
+    void admissionAloneNeverPersistsAControlledSuccess() throws Exception {
+        var request = fixture("request-seven");
+        var response = fixture("response-seven").put("dataScope", "CONTROLLED_RESEARCH");
+        long snapshot = snapshot(request, response, "admin");
+        jdbc.update("UPDATE research_table_snapshot SET data_scope='CONTROLLED_RESEARCH' WHERE id=?", snapshot);
+        reply(request, response, 200, false);
+        int before = REQUESTS.get();
+        var admin = actor("admin", "ADMIN");
+        ReflectionTestUtils.setField(service, "controlledAdmissionEnabled", true);
+        try {
+            JsonNode task = body(submit(snapshot, "admission-only", admin)).path("data");
+            assertThat(task.path("status").asText()).isEqualTo("OUTCOME_UNKNOWN");
+            assertThat(task.path("errorCode").asText()).isEqualTo("RESEARCH_PROTOCOL_INVALID");
+            assertThat(task.path("result").isNull()).isTrue();
+            assertThat(body(submit(snapshot, "admission-only", admin)).path("data")).isEqualTo(task);
+            assertThat(REQUESTS.get() - before).isEqualTo(1);
+            mvc.perform(post(PATH + "/" + task.path("taskId").asLong() + "/retry").with(authentication(admin)))
+                    .andExpect(status().isConflict());
+            assertThat(REQUESTS.get() - before).isEqualTo(1);
+        } finally {
+            ReflectionTestUtils.setField(service, "controlledAdmissionEnabled", false);
+        }
+    }
+
+    @Test
     void timeoutRetainsUnknownAndTheSameKeyCannotSendAgain() throws Exception {
         var request = uniqueRequest();
         long snapshot = snapshot(request, fixture("response-seven"), "admin");
@@ -703,6 +1029,40 @@ class ResearchTableAssessmentTest {
         JsonNode visible = body(mvc.perform(get(PATH + "/reports").with(authentication(doctor)))).get("data");
         assertThat(visible.get("total").asLong()).isEqualTo(1);
         assertThat(visible.get("items").get(0).get("taskId").asLong()).isEqualTo(task.get("taskId").asLong());
+    }
+
+    @Test
+    void reportScopeAndSubjectFilterBeforePickingLatestResult() throws Exception {
+        var request = fixture("request-seven");
+        var result = fixture("response-seven");
+        long controlled = snapshot(request, result, "researcher");
+        long demo = snapshot(request, result, "researcher");
+        long subject = jdbc.queryForObject("SELECT subject_id FROM research_table_snapshot WHERE id=?",
+                Long.class, controlled);
+        jdbc.update("UPDATE research_table_snapshot SET data_scope='CONTROLLED_RESEARCH' WHERE id=?", controlled);
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,created_at,updated_at)
+                VALUES(?,?,'BLOCKED',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, controlled, "run-scoped-controlled");
+        jdbc.update("""
+                INSERT INTO research_table_task(snapshot_id,run_id,status,review_status,created_at,updated_at)
+                VALUES(?,?,'COMPLETED','PENDING',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, demo, "run-scoped-demo");
+        var researcher = actor("researcher", "RESEARCHER");
+
+        JsonNode latest = body(mvc.perform(get(PATH + "/reports").with(authentication(researcher))
+                .param("dataScope", "CONTROLLED_RESEARCH").param("subjectId", Long.toString(subject))
+                .param("pageSize", "1"))).get("data");
+        assertThat(latest.get("total").asLong()).isEqualTo(1);
+        assertThat(latest.at("/items/0/status").asText()).isEqualTo("BLOCKED");
+        assertThat(latest.at("/items/0/dataScope").asText()).isEqualTo("CONTROLLED_RESEARCH");
+
+        JsonNode demoPage = body(mvc.perform(get(PATH + "/reports").with(authentication(researcher))
+                .param("dataScope", "CONSTRUCTED_VALIDATION").param("pageSize", "1"))).get("data");
+        assertThat(demoPage.get("total").asLong()).isEqualTo(1);
+        assertThat(demoPage.at("/items/0/dataScope").asText()).isEqualTo("CONSTRUCTED_VALIDATION");
+        mvc.perform(get(PATH + "/reports").with(authentication(researcher))
+                .param("dataScope", "SYNTHETIC_DEMO")).andExpect(status().isBadRequest());
     }
 
     @Test
@@ -1228,8 +1588,10 @@ class ResearchTableAssessmentTest {
             server.setExecutor(HOST_THREADS);
             server.createContext("/api/research-table/v1/snapshots", http -> {
                 try (http) {
-                    http.getRequestBody().readAllBytes();
-                    byte[] response = "{\"status\":\"SYNCED\"}".getBytes(StandardCharsets.UTF_8);
+                    SNAPSHOT_REQUESTS.incrementAndGet();
+                    var mapper = new ObjectMapper();
+                    JsonNode request = mapper.readTree(http.getRequestBody());
+                    byte[] response = mapper.writeValueAsBytes(snapshotReceipt(request, SNAPSHOT_REPLY_MODE.get()));
                     http.getResponseHeaders().set("Content-Type", "application/json");
                     http.sendResponseHeaders(200, response.length);
                     http.getResponseBody().write(response);
@@ -1271,5 +1633,14 @@ class ResearchTableAssessmentTest {
         } catch (IOException failure) {
             throw new ExceptionInInitializerError(failure);
         }
+    }
+
+    private static ObjectNode snapshotReceipt(JsonNode request, String mode) {
+        long id = request.path("snapshotId").asLong();
+        String runId = request.path("runId").asText();
+        return com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
+                .put("status", "SYNCED")
+                .put("runId", mode.equals("WRONG_RUN") ? "run-other-snapshot" : runId)
+                .put("snapshotId", mode.equals("WRONG_SNAPSHOT") ? id + 1 : id);
     }
 }

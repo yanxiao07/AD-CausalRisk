@@ -104,7 +104,7 @@ public class SubjectService {
      */
     @Transactional
     public SubjectView createSubject(SubjectCreateRequest request, AppUserPrincipal principal) {
-        if (!accessPolicy.canCreate(principal)) {
+        if (!accessPolicy.canCreateArchive(principal)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权创建档案");
         }
 
@@ -116,7 +116,7 @@ public class SubjectService {
         String dataVersion = generateDataVersion();
         Subject entity = SubjectMapper.toEntity(request, dataVersion, Instant.now());
         Subject saved = subjectRepository.saveAndFlush(entity);
-        if (!accessPolicy.hasFullVisibility(principal))
+        if (principal.roleCodes().contains("DOCTOR") || !accessPolicy.hasFullVisibility(principal))
             jdbc.update(
                     "INSERT INTO subject_permission(subject_id,user_id,permission_type)"
                             + " VALUES(?,?,'MANAGE')",

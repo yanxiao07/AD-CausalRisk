@@ -3,8 +3,12 @@ package com.adcausalrisk.backend.research;
 import com.adcausalrisk.backend.audit.AuditService;
 import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
+import com.adcausalrisk.backend.common.PageResult;
 import com.adcausalrisk.backend.importjob.IdempotencyRecordRepository;
+import com.adcausalrisk.backend.importjob.csv.CsvParser;
+import com.adcausalrisk.backend.importjob.csv.CsvRecord;
 import com.adcausalrisk.backend.importjob.entity.IdempotencyRecord;
+import com.adcausalrisk.backend.qualitycheck.CurrentArchiveQuality;
 import com.adcausalrisk.backend.qualitycheck.QualityCheckService;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.SubjectAccessPolicy;
@@ -22,6 +26,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -53,20 +59,21 @@ class ResearchTableAssessmentService {
     private static final String TASK_QUERY = """
             SELECT t.id,t.snapshot_id,t.run_id,t.status,t.error_code,t.result_json,t.created_at,t.updated_at,
                    t.review_status,t.reviewed_by,t.reviewed_at,t.review_comment,
-                   s.subject_id,s.authorized_user_id,sub.subject_code,sub.alias AS subject_alias
+                   s.subject_id,s.authorized_user_id,s.data_scope,sub.subject_code,sub.alias AS subject_alias
             FROM research_table_task t
             JOIN research_table_snapshot s ON s.id=t.snapshot_id
             JOIN subject sub ON sub.id=s.subject_id
             """;
 
     record Task(long taskId, long snapshotId, long subjectId, String subjectCode, String subjectAlias,
-                String runId, String status, String errorCode, JsonNode result,
+                String runId, String status, String errorCode, String dataScope, JsonNode result,
                 Instant createdAt, Instant updatedAt,
                 String reviewStatus, Long reviewedBy, Instant reviewedAt, String reviewComment) {}
 
     record ReviewQueue(List<Task> items, long total, int page, int pageSize) {}
+    record PatientPublication(boolean published, String message) {}
     record SnapshotOption(long snapshotId, Long taskId, String hostSyncStatus,
-                          boolean compatible, String compatibilityMessage) {}
+                          boolean compatible, String compatibilityMessage, String modelKey, String dataScope) {}
     record Registration(long snapshotId, String hostSyncStatus) {}
     record TaskSummary(long tasksToday, long completedToday, long failedToday, long averageSeconds,
                        List<Task> recent) {}
@@ -91,9 +98,13 @@ class ResearchTableAssessmentService {
     record MigrationResult(int migrated, int failed, int skipped, List<Long> failedSnapshotIds,
                            List<Long> skippedSnapshotIds) {}
 
-    private record Snapshot(byte[] requestBytes, JsonNode request, JsonNode model, String requestDigest,
-                            String inputDigest, String contextDigest) {}
+    private record Snapshot(byte[] requestBytes, JsonNode request, JsonNode model, String dataScope,
+                            ControlledResearchCompletion.Binding binding) {}
     private record Submission(long taskId, Snapshot snapshot, String executionId) {}
+
+    private record SyncSnapshot(long subjectId, long ownerId, String request, String model,
+                                String context, String dataScope, String wireSha256,
+                                String requestSha256, String inputSha256, String contextSha256) {}
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaction;
@@ -101,40 +112,72 @@ class ResearchTableAssessmentService {
     private final SubjectAccessPolicy access;
     private final ResearchTableClient client;
     private final ResearchTableProtocol protocol;
+    private final ControlledResearchCompletion controlledCompletion;
     private final ResearchModelIdentity modelIdentity;
     private final ResearchTaskLease lease;
     private final QualityCheckService qualityChecks;
+    private final CurrentArchiveQuality archiveQuality;
     private final AuditService audit;
     private final Clock clock;
     @Value("${research.table.test-fixtures-enabled:false}")
     private boolean testFixturesEnabled;
+    @Value("${research.table.controlled-admission-enabled:false}")
+    private boolean controlledAdmissionEnabled;
 
     ResearchTableAssessmentService(JdbcTemplate jdbc, PlatformTransactionManager manager,
             IdempotencyRecordRepository idempotency, SubjectAccessPolicy access,
             ResearchTableClient client, ResearchTableProtocol protocol, ResearchModelIdentity modelIdentity,
-            ResearchTaskLease lease, QualityCheckService qualityChecks, AuditService audit, Clock clock) {
+            ResearchTaskLease lease, QualityCheckService qualityChecks, AuditService audit, Clock clock,
+            ControlledResearchCompletion controlledCompletion,
+            CurrentArchiveQuality archiveQuality) {
         this.jdbc = jdbc;
         transaction = new TransactionTemplate(manager);
         this.idempotency = idempotency;
         this.access = access;
         this.client = client;
         this.protocol = protocol;
+        this.controlledCompletion = controlledCompletion;
         this.modelIdentity = modelIdentity;
         this.lease = lease;
         this.qualityChecks = qualityChecks;
+        this.archiveQuality = archiveQuality;
         this.audit = audit;
         this.clock = clock;
     }
 
     Task submit(long snapshotId, String key, AppUserPrincipal principal) {
+        return submit(snapshotId, null, key, principal);
+    }
+
+    Task submit(long snapshotId, Long subjectId, String key, AppUserPrincipal principal) {
         requireResearchRole(principal);
+        return submitBound(snapshotId, subjectId, key, principal, false, null);
+    }
+
+    Task submitDoctorFixture(long snapshotId, long subjectId, AppUserPrincipal principal) {
+        if (!principal.roleCodes().contains("DOCTOR") || principal.roleCodes().contains("PATIENT")
+                || !hasExplicitManageGrant(principal.userId(), subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        return submitBound(snapshotId, subjectId, "doctor-assessment-" + snapshotId, principal, true, null);
+    }
+
+    record ControlledDispatch(long requestId, long qualityId) {}
+
+    Task submitControlledRequest(long snapshotId, long subjectId, ControlledDispatch dispatch, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        return submitBound(snapshotId, subjectId, "controlled-assessment-" + dispatch.requestId(), principal, false, dispatch);
+    }
+
+    private Task submitBound(long snapshotId, Long subjectId, String key, AppUserPrincipal principal,
+                             boolean doctorFixture, ControlledDispatch dispatch) {
         if (key.isBlank() || key.length() > 100 || !key.equals(key.trim())) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "幂等键须为1至100个字符");
         }
         String digest = snapshotKey(snapshotId);
         Submission submission;
         try {
-            submission = transaction.execute(status -> reserve(snapshotId, key, digest, principal));
+            submission = transaction.execute(status -> reserve(snapshotId, subjectId, key, digest, principal, doctorFixture, dispatch));
         } catch (DataIntegrityViolationException race) {
             return replay(key, digest, principal).map(id -> find(id, principal)).orElseThrow(() -> race);
         }
@@ -142,7 +185,8 @@ class ResearchTableAssessmentService {
         if (submission.snapshot() != null) {
             audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SUBMIT",
                     "taskId=" + taskId + " executionId=" + submission.executionId());
-            execute(taskId, submission.snapshot(), submission.executionId());
+            execute(taskId, submission.snapshot(), submission.executionId(),
+                    dispatch == null ? null : controlledCompletion.endpoint());
             Task task = find(taskId, principal);
             audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_RESULT",
                     "taskId=" + taskId + " status=" + task.status());
@@ -151,18 +195,44 @@ class ResearchTableAssessmentService {
         return find(taskId, principal);
     }
 
+    String intakeState(long subjectId, AppUserPrincipal principal) {
+        requireResearchRole(principal);
+        if (!access.canReadRawScores(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        return jdbc.query("""
+                SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM research_table_snapshot s
+                                             WHERE s.subject_id=sub.id AND s.doctor_handoff=TRUE)
+                                 THEN 'NO_INTAKE'
+                            WHEN EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=sub.id
+                                         AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))
+                                 THEN 'READY'
+                            ELSE 'WAITING_RESEARCH_GRANT' END
+                FROM subject sub
+                WHERE sub.id=?
+                """, (row, index) -> row.getString(1), principal.userId(), subjectId).stream().findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
+    }
+
     long register(long subjectId, JsonNode request, AppUserPrincipal principal) {
         requireResearchRole(principal);
+        return register(subjectId, request, principal, false);
+    }
+
+    private long register(long subjectId, JsonNode request, AppUserPrincipal principal, boolean handoff) {
         if (!access.canReadRawScores(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
         String subjectCode = jdbc.query("SELECT subject_code FROM subject WHERE id=?", (row, index) -> row.getString(1),
                 subjectId).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
-        ObjectNode model = modelIdentity.identity();
-        ObjectNode normalized = normalizedRequest(request, subjectCode);
-        if (!TRAINED_MODEL.equals(normalized.path("modelKey").asText())) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "受控登记只接受已训练的七变量逻辑回归身份");
+        if (!subjectCode.startsWith("DEMO-")) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "研究档案须使用独立来源冻结的快照");
         }
+        ObjectNode model = modelIdentity.identity(request.path("modelKey").asText(), protocol);
+        if (model == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "研究模型未配置");
+        }
+        ObjectNode normalized = normalizedRequest(request, subjectCode);
         try {
             protocol.validateRequest(normalized, model);
         } catch (IllegalArgumentException invalid) {
@@ -177,8 +247,8 @@ class ResearchTableAssessmentService {
         jdbc.update(connection -> {
             var statement = connection.prepareStatement("""
                     INSERT INTO research_table_snapshot(subject_id,authorized_user_id,request_json,wire_sha256,
-                        request_sha256,model_json,data_scope,input_sha256,context_sha256,context_json)
-                    VALUES(?,?,?,?,?,?,?,?,?,?)
+                        request_sha256,model_json,data_scope,input_sha256,context_sha256,context_json,doctor_handoff)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?)
                     """, Statement.RETURN_GENERATED_KEYS);
             statement.setLong(1, subjectId);
             statement.setLong(2, principal.userId());
@@ -190,12 +260,78 @@ class ResearchTableAssessmentService {
             statement.setString(8, inputDigest);
             statement.setString(9, contextDigest);
             statement.setString(10, context.toString());
+            statement.setBoolean(11, handoff);
             return statement;
         }, keys);
         long id = keys.getKey().longValue();
         audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_REGISTERED",
                 "snapshotId=" + id + " subjectId=" + subjectId);
         return id;
+    }
+
+    Registration recordDoctorIntake(long subjectId, JsonNode features, String date, AppUserPrincipal principal) {
+        if (!principal.roleCodes().contains("DOCTOR") || !access.canManage(principal, subjectId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        var subject = jdbc.queryForMap("SELECT subject_code,data_version FROM subject WHERE id=?", subjectId);
+        String code = (String) subject.get("subject_code");
+        if (!code.startsWith("DEMO-") || !features.isObject()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "本入口用于模拟档案录入");
+        }
+        try {
+            LocalDate.parse(date);
+        } catch (java.time.DateTimeException invalid) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请输入有效的评估日期");
+        }
+        for (String feature : MANUAL_FEATURES) {
+            if (!features.path(feature).isNumber()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请填写七项模型输入");
+            }
+        }
+        var request = manualRequest(code, features, date, (String) subject.get("data_version"),
+                "run-intake-" + UUID.randomUUID());
+        long id = register(subjectId, request, principal, true);
+        return new Registration(id, syncToHost(id, principal, true));
+    }
+
+    record DoctorIntakeView(long snapshotId, String indexDate, String hostSyncStatus, JsonNode features) {}
+
+    PageResult<DoctorIntakeView> doctorIntakeHistory(long subjectId, int page, int pageSize,
+                                                     AppUserPrincipal principal) {
+        if (subjectId <= 0 || page < 1 || pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "档案编号或分页参数无效");
+        }
+        if (!principal.roleCodes().contains("DOCTOR") || principal.roleCodes().contains("PATIENT")) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        long permitted = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM subject sub JOIN subject_permission p ON p.subject_id=sub.id
+                WHERE sub.id=? AND sub.subject_code LIKE 'DEMO-%' AND p.user_id=? AND p.permission_type='MANAGE'
+                """, Long.class, subjectId, principal.userId());
+        if (permitted == 0) throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        String scope = " FROM research_table_snapshot WHERE subject_id=? AND doctor_handoff=TRUE"
+                + " AND data_scope='CONSTRUCTED_VALIDATION'";
+        long total = jdbc.queryForObject("SELECT COUNT(*)" + scope, Long.class, subjectId);
+        var items = jdbc.query("SELECT id,request_json,wire_sha256,host_sync_status" + scope
+                        + " ORDER BY id DESC LIMIT ? OFFSET ?", (row, index) -> {
+                    byte[] bytes = row.getString("request_json").getBytes(StandardCharsets.UTF_8);
+                    try {
+                        if (!sha256(bytes).equals(row.getString("wire_sha256"))) {
+                            throw new IOException("Stored snapshot bytes changed");
+                        }
+                        JsonNode request = protocol.parse(bytes);
+                        var values = JsonNodeFactory.instance.objectNode();
+                        for (String feature : MANUAL_FEATURES) {
+                            JsonNode value = request.path("features").path(feature).path("value");
+                            values.set(feature, value.isNumber() ? value : JsonNodeFactory.instance.nullNode());
+                        }
+                        return new DoctorIntakeView(row.getLong("id"), request.path("indexDate").asText(),
+                                row.getString("host_sync_status"), values);
+                    } catch (IOException invalid) {
+                        throw new BusinessException(ErrorCode.INTERNAL_ERROR, "已保存的测试快照无法读取");
+                    }
+                }, subjectId, pageSize, (long) (page - 1) * pageSize);
+        return new PageResult<>(items, page, pageSize, total);
     }
 
     Registration registerAndSync(long subjectId, JsonNode request, AppUserPrincipal principal) {
@@ -232,7 +368,7 @@ class ResearchTableAssessmentService {
         } catch (IOException | IllegalArgumentException invalid) {
             throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "旧快照配置不可解析");
         }
-        if (modelIdentity.identity().equals(storedModel)) {
+        if (storedModel.equals(modelIdentity.identity(request.path("modelKey").asText(), protocol))) {
             throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT,
                     "该快照的模型身份仍与研究宿主兼容，无需重新登记");
         }
@@ -363,6 +499,96 @@ class ResearchTableAssessmentService {
         return new BigDecimal(raw.trim());
     }
 
+    private static final List<String> MODEL_CSV_FEATURES = List.of(
+            "age_years", "education_years", "cdr_global", "adas__total13", "faq__faqtotal");
+    private static final List<String> MODEL_CSV_HEADER = List.of("subjectCode", "visitDate",
+            "age_years", "education_years", "cdr_global", "adas__total13", "faq__faqtotal");
+    record ModelCsvRow(int row, String subjectCode, String status, Long snapshotId, String hostSyncStatus, String message) {}
+
+    List<ModelCsvRow> modelCsv(byte[] bytes, boolean preview, AppUserPrincipal actor) {
+        requireResearchRole(actor);
+        List<CsvRecord> records;
+        try {
+            records = CsvParser.parse(StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString());
+        } catch (CharacterCodingException invalid) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "CSV 必须使用 UTF-8 编码");
+        }
+        if (records.size() < 2 || records.size() > 51 || !MODEL_CSV_HEADER.equals(records.getFirst().fields())) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请使用七变量模型 CSV 模板，每次上传 1 至 50 条测试档案");
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        List<ModelCsvRow> result = new ArrayList<>();
+        for (CsvRecord row : records.subList(1, records.size())) {
+            String code = row.field(0);
+            try {
+                if (row.fields().size() != MODEL_CSV_HEADER.size() || !code.matches("DEMO-[A-Za-z0-9-]{1,45}")) {
+                    throw new BusinessException(ErrorCode.VALIDATION_ERROR, "需要完整字段和 DEMO 档案编号");
+                }
+                if (!seen.add(code)) throw new BusinessException(ErrorCode.VALIDATION_ERROR, "每个档案只能出现一次");
+                Long subjectId = jdbc.query("""
+                        SELECT s.id FROM subject s WHERE s.subject_code=? AND NOT EXISTS (
+                            SELECT 1 FROM research_table_snapshot r WHERE r.subject_id=s.id AND r.data_scope='CONTROLLED_RESEARCH')
+                        """,
+                        (rs, index) -> rs.getLong(1), code).stream().findFirst().orElse(null);
+                if (subjectId == null || !access.canReadRawScores(actor, subjectId)) {
+                    throw new BusinessException(ErrorCode.ACCESS_DENIED, "档案不存在或没有资料访问权限");
+                }
+                var registration = transaction.execute(status -> {
+                    jdbc.queryForObject("SELECT id FROM subject WHERE id=? FOR UPDATE", Long.class, subjectId);
+                    var request = modelCsvRequest(row, subjectId, actor);
+                    if (preview) return null;
+                    return jdbc.query("""
+                            SELECT id,host_sync_status FROM research_table_snapshot WHERE subject_id=? AND authorized_user_id=?
+                                AND request_sha256=? AND data_scope='CONSTRUCTED_VALIDATION'
+                            ORDER BY id LIMIT 1
+                            """, (rs, index) -> new Registration(rs.getLong(1), rs.getString(2)),
+                            subjectId, actor.userId(), protocol.digest(request)).stream().findFirst()
+                            .orElseGet(() -> new Registration(register(subjectId, request, actor), "PENDING"));
+                });
+                Long id = registration == null ? null : registration.snapshotId();
+                String sync = registration == null ? null : "SYNCED".equals(registration.hostSyncStatus())
+                        ? registration.hostSyncStatus() : syncToHost(registration.snapshotId(), actor);
+                result.add(new ModelCsvRow(row.lineNumber(), code, preview ? "READY" : "SAVED", id, sync, null));
+            } catch (BusinessException problem) {
+                result.add(new ModelCsvRow(row.lineNumber(), code, "INVALID", null, null, problem.getMessage()));
+            }
+        }
+        return result;
+    }
+
+    private ObjectNode modelCsvRequest(CsvRecord row, long subjectId, AppUserPrincipal actor) {
+        Integer controlled = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM research_table_snapshot WHERE subject_id=? AND data_scope='CONTROLLED_RESEARCH'
+                """, Integer.class, subjectId);
+        if (controlled != null && controlled > 0) {
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "请从受控研究入口办理此档案");
+        }
+        var gate = archiveQuality.forSubject(subjectId);
+        if (!gate.ready() || gate.visit() == null || !gate.visit().date().equals(row.field(1))) {
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "访视日期须与当前通过质控的最近访视一致");
+        }
+        String version = jdbc.queryForObject("SELECT data_version FROM subject WHERE id=?", String.class, subjectId);
+        ObjectNode features = JsonNodeFactory.instance.objectNode();
+        features.put("mmse", gate.visit().mmse().doubleValue());
+        features.put("cdr_sb", gate.visit().cdrSb().doubleValue());
+        for (int index = 0; index < MODEL_CSV_FEATURES.size(); index++) {
+            var text = row.field(index + 2);
+            if (!text.matches("[0-9]{1,4}(\\.[0-9]{1,6})?")) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, MODEL_CSV_FEATURES.get(index) + " 必须填写非负数值");
+            }
+            features.put(MODEL_CSV_FEATURES.get(index), new BigDecimal(text).doubleValue());
+        }
+        var request = manualRequest(row.field(0), features, gate.visit().date(), version, "run-csv-preview");
+        request.put("runId", "run-csv-" + protocol.digest(request.deepCopy().put("owner", actor.userId())).substring(0, 32));
+        var normalized = normalizedRequest(request, row.field(0));
+        try {
+            protocol.validateRequest(normalized, modelIdentity.identity());
+        } catch (IllegalArgumentException invalid) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "七变量数值不符合模型输入要求，请核对单位和范围");
+        }
+        return normalized;
+    }
+
     private static void putIfPresent(ObjectNode features, String name, BigDecimal value) {
         if (value == null) {
             features.putNull(name);
@@ -374,13 +600,14 @@ class ResearchTableAssessmentService {
     }
 
     /** Today's research throughput for the researcher workbench (owner-scoped). */
-    TaskSummary summary(AppUserPrincipal principal) {
+    TaskSummary summary(String dataScope, AppUserPrincipal principal) {
         requireResearchRole(principal);
         Instant start = LocalDate.now(clock).atStartOfDay(clock.getZone()).toInstant();
-        List<Task> tasks = jdbc.query(TASK_QUERY + """
-                 WHERE s.authorized_user_id=? AND t.created_at>=?
-                 ORDER BY t.created_at DESC,t.id DESC
-                """, (row, index) -> {
+        List<Object> args = new ArrayList<>(List.of(principal.userId(), Timestamp.from(start)));
+        if (dataScope != null) args.add(dataScope);
+        String scope = dataScope == null ? "" : " AND s.data_scope=?";
+        List<Task> tasks = jdbc.query(TASK_QUERY + " WHERE s.authorized_user_id=? AND t.created_at>=?"
+                + scope + " ORDER BY t.created_at DESC,t.id DESC", (row, index) -> {
                     try {
                         return mapTask(row, principal);
                     } catch (BusinessException denied) {
@@ -389,7 +616,8 @@ class ResearchTableAssessmentService {
                         }
                         throw denied;
                     }
-                }, principal.userId(), Timestamp.from(start)).stream().filter(java.util.Objects::nonNull).toList();
+                }, args.toArray())
+                .stream().filter(java.util.Objects::nonNull).toList();
         long completed = tasks.stream().filter(task -> "COMPLETED".equals(task.status())).count();
         long failed = tasks.stream().filter(task -> "FAILED".equals(task.status())
                 || OUTCOME_UNKNOWN.equals(task.status())).count();
@@ -400,7 +628,7 @@ class ResearchTableAssessmentService {
                 tasks.stream().limit(5).toList());
     }
 
-    Metrics metrics(AppUserPrincipal principal) {
+    Metrics metrics(String dataScope, AppUserPrincipal principal) {
         requireMetricsRole(principal);
         Instant start = LocalDate.now(clock).atStartOfDay(clock.getZone()).toInstant();
         String scope;
@@ -414,6 +642,10 @@ class ResearchTableAssessmentService {
         } else {
             scope = " AND s.authorized_user_id=?";
             args.add(principal.userId());
+        }
+        if (dataScope != null) {
+            scope += " AND s.data_scope=?";
+            args.add(dataScope);
         }
         args.add(Timestamp.from(start));
         List<Object[]> rows = jdbc.query("""
@@ -466,30 +698,45 @@ class ResearchTableAssessmentService {
 
     String syncToHost(long snapshotId, AppUserPrincipal principal) {
         requireResearchRole(principal);
-        var row = jdbc.query("""
-                SELECT subject_id,authorized_user_id,request_json,model_json,context_json,bundle_json
+        return syncToHost(snapshotId, principal, false);
+    }
+
+    private String syncToHost(long snapshotId, AppUserPrincipal principal, boolean doctorIntake) {
+        SyncSnapshot snapshot = jdbc.query("""
+                SELECT subject_id,authorized_user_id,request_json,model_json,context_json,data_scope,
+                       wire_sha256,request_sha256,input_sha256,context_sha256
                 FROM research_table_snapshot WHERE id=?
-                """, (result, index) -> new Object[] {result.getLong(1), result.getLong(2),
-                result.getString(3), result.getString(4), result.getString(5), result.getString(6)},
+                """, (result, index) -> new SyncSnapshot(result.getLong(1), result.getLong(2),
+                result.getString(3), result.getString(4), result.getString(5), result.getString(6),
+                result.getString(7), result.getString(8), result.getString(9), result.getString(10)),
                 snapshotId).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
-        long subjectId = (long) row[0];
-        if ((long) row[1] != principal.userId() || !access.canReadRawScores(principal, subjectId)
-                || row[4] == null) {
+        long subjectId = snapshot.subjectId();
+        if ((!doctorIntake && snapshot.ownerId() != principal.userId() && !canReceiveDoctorIntake(snapshotId, principal))
+                || !access.canReadRawScores(principal, subjectId)
+                || snapshot.context() == null || !"CONSTRUCTED_VALIDATION".equals(snapshot.dataScope())) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
         try {
-            JsonNode request = protocol.parse(((String) row[2]).getBytes(StandardCharsets.UTF_8));
-            JsonNode model = protocol.parse(((String) row[3]).getBytes(StandardCharsets.UTF_8));
-            JsonNode context = protocol.parse(((String) row[4]).getBytes(StandardCharsets.UTF_8));
+            byte[] requestBytes = snapshot.request().getBytes(StandardCharsets.UTF_8);
+            JsonNode request = protocol.parse(requestBytes);
+            JsonNode model = protocol.parse(snapshot.model().getBytes(StandardCharsets.UTF_8));
+            JsonNode context = protocol.parse(snapshot.context().getBytes(StandardCharsets.UTF_8));
+            if (!sha256(requestBytes).equals(snapshot.wireSha256())
+                    || !protocol.digest(request).equals(snapshot.requestSha256())
+                    || !protocol.digest(protocol.admissionCore(request, model)).equals(snapshot.inputSha256())
+                    || !protocol.digest(context).equals(snapshot.contextSha256())) {
+                throw new IllegalArgumentException("Frozen snapshot digest mismatch");
+            }
+            String runId = request.path("runId").asText();
             ObjectNode bundle = JsonNodeFactory.instance.objectNode();
             bundle.put("schemaVersion", "research-dynamic-snapshot-v1");
-            bundle.put("runId", request.path("runId").asText());
+            bundle.put("runId", runId);
             bundle.set("request", request);
             bundle.set("model", model);
             bundle.set("context", context);
-            bundle.put("requestSha256", protocol.digest(request));
-            bundle.put("inputSha256", protocol.digest(protocol.admissionCore(request, model)));
-            bundle.put("contextSha256", protocol.digest(context));
+            bundle.put("requestSha256", snapshot.requestSha256());
+            bundle.put("inputSha256", snapshot.inputSha256());
+            bundle.put("contextSha256", snapshot.contextSha256());
             bundle.put("dataScope", "CONSTRUCTED_VALIDATION");
             bundle.put("snapshotId", snapshotId);
             bundle.put("subjectId", subjectId);
@@ -511,8 +758,11 @@ class ResearchTableAssessmentService {
                         "snapshotId=" + snapshotId + " error=host-protocol");
                 return "FAILED";
             }
-            if (reply == null || reply.httpStatus() != 200
-                    || !"SYNCED".equals(reply.body().path("status").asText())) {
+            if (reply != null && reply.httpStatus() == 503) {
+                updateSync(snapshotId, "PENDING");
+                return "PENDING";
+            }
+            if (!matchesSyncReply(reply, snapshotId, runId)) {
                 String hostError = reply == null ? "" : reply.body().path("errorCode").asText("");
                 updateSync(snapshotId, "FAILED");
                 audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_SYNC_FAILED",
@@ -525,10 +775,36 @@ class ResearchTableAssessmentService {
             audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_SYNCED",
                     "snapshotId=" + snapshotId + " subjectId=" + subjectId);
             return "SYNCED";
-        } catch (IOException invalid) {
+        } catch (IOException | IllegalArgumentException invalid) {
             updateSync(snapshotId, "FAILED");
+            audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_SNAPSHOT_SYNC_FAILED",
+                    "snapshotId=" + snapshotId + " error=frozen-snapshot");
             return "FAILED";
         }
+    }
+
+    private static boolean matchesSyncReply(ResearchTableClient.Reply reply, long snapshotId, String runId) {
+        if (reply == null || reply.httpStatus() != 200) {
+            return false;
+        }
+        JsonNode body = reply.body();
+        JsonNode returnedId = body.path("snapshotId");
+        return "SYNCED".equals(body.path("status").asText())
+                && runId.equals(body.path("runId").asText())
+                && returnedId.isIntegralNumber() && returnedId.canConvertToLong()
+                && returnedId.longValue() == snapshotId;
+    }
+
+    private boolean canReceiveDoctorIntake(long snapshotId, AppUserPrincipal principal) {
+        if (!principal.roleCodes().contains("RESEARCHER")) return false;
+        Integer count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM research_table_snapshot s
+                WHERE s.id=? AND s.doctor_handoff=TRUE
+                AND EXISTS (SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id
+                            AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))
+                AND NOT EXISTS (SELECT 1 FROM research_table_task t WHERE t.snapshot_id=s.id)
+                """, Integer.class, snapshotId, principal.userId());
+        return count != null && count != 0;
     }
 
     private void updateSync(long snapshotId, String status) {
@@ -551,10 +827,11 @@ class ResearchTableAssessmentService {
         ObjectNode request = source.deepCopy();
         JsonNode node = request.get("features");
         if (node == null || !node.isObject()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "features 必须为七变量对象");
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "features 必须为模型观测对象");
         }
         ObjectNode features = (ObjectNode) node;
-        for (String feature : MANUAL_FEATURES) {
+        for (var names = features.fieldNames(); names.hasNext();) {
+            String feature = names.next();
             JsonNode raw = features.get(feature);
             if (raw == null || !raw.isObject()) {
                 throw new BusinessException(ErrorCode.VALIDATION_ERROR, "缺少特征 " + feature);
@@ -562,7 +839,9 @@ class ResearchTableAssessmentService {
             ObjectNode observation = (ObjectNode) raw;
             boolean missing = !observation.has("value") || observation.get("value").isNull();
             boolean demographic = feature.equals("age_years") || feature.equals("education_years");
-            observation.put("unit", demographic ? "years" : "score");
+            boolean mri = feature.startsWith("mri_");
+            boolean apoe = feature.equals("apoe4_count");
+            observation.put("unit", demographic ? "years" : apoe ? "count" : mri ? "mm3" : "score");
             observation.put("sourceRef", "CONSTRUCTED-SRC-" + feature);
             observation.put("evidenceRef", "EV-" + feature);
             if (missing) {
@@ -576,7 +855,7 @@ class ResearchTableAssessmentService {
                 observation.put("missingReason", "NOT_COLLECTED");
             } else {
                 observation.put("qc", demographic ? "NOT_APPLICABLE" : "PASS");
-                observation.put("completion", demographic ? "NOT_APPLICABLE" : "COMPLETE");
+                observation.put("completion", demographic || apoe || mri ? "NOT_APPLICABLE" : "COMPLETE");
                 observation.putNull("missingReason");
                 if (!observation.hasNonNull("dateBasis")) {
                     observation.put("dateBasis", "MEASUREMENT_DATE");
@@ -669,45 +948,69 @@ class ResearchTableAssessmentService {
         if (!access.canReadRawScores(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
-        JsonNode currentModel = modelIdentity.identity();
         return jdbc.query("""
-                SELECT s.id,s.request_json,s.model_json,s.host_sync_status,t.id AS task_id
+                SELECT s.id,s.request_json,s.model_json,s.host_sync_status,s.data_scope,t.id AS task_id
                 FROM research_table_snapshot s LEFT JOIN research_table_task t ON t.snapshot_id=s.id
-                WHERE s.subject_id=? AND s.authorized_user_id=? AND s.data_scope='CONSTRUCTED_VALIDATION'
+                WHERE s.subject_id=? AND (s.authorized_user_id=? OR (
+                  ? AND s.doctor_handoff=TRUE AND t.id IS NULL AND EXISTS (
+                    SELECT 1 FROM subject_permission p WHERE p.subject_id=s.subject_id
+                    AND p.user_id=? AND p.permission_type IN ('VIEW','MANAGE'))))
+                  AND (s.data_scope='CONSTRUCTED_VALIDATION' OR (? AND s.data_scope='CONTROLLED_RESEARCH'))
                 ORDER BY s.id
                 """, (row, index) -> {
                     try {
                         JsonNode request = protocol.parse(row.getString("request_json").getBytes(StandardCharsets.UTF_8));
-                        if (!TRAINED_MODEL.equals(request.path("modelKey").asText())) {
-                            return null;
-                        }
+                        String modelKey = request.path("modelKey").asText();
                         boolean compatible;
                         try {
                             JsonNode storedModel = protocol.parse(
                                     row.getString("model_json").getBytes(StandardCharsets.UTF_8));
-                            compatible = currentModel.equals(storedModel);
+                            compatible = "CONTROLLED_RESEARCH".equals(row.getString("data_scope"))
+                                    ? "SYNCED".equals(row.getString("host_sync_status"))
+                                    : storedModel.equals(modelIdentity.identity(modelKey, protocol));
                         } catch (IOException | IllegalArgumentException invalid) {
                             compatible = false;
                         }
                         return new SnapshotOption(row.getLong("id"), row.getObject("task_id", Long.class),
                                 row.getString("host_sync_status"), compatible,
-                                compatible ? null : "旧模型身份或软件锁摘要与新研究宿主不兼容，请重新登记");
+                                compatible ? null : "当前宿主未配置该模型版本或软件锁，请重新登记",
+                                modelKey, row.getString("data_scope"));
                     } catch (IOException | IllegalArgumentException invalid) {
                         throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "冻结研究快照配置无效");
                     }
-                }, subjectId, principal.userId()).stream().filter(java.util.Objects::nonNull).toList();
+                }, subjectId, principal.userId(), principal.roleCodes().contains("RESEARCHER"), principal.userId(),
+                controlledAdmissionEnabled).stream().filter(java.util.Objects::nonNull).toList();
     }
 
-    private Submission reserve(long snapshotId, String key, String digest, AppUserPrincipal principal) {
+    private Submission reserve(long snapshotId, Long subjectId, String key, String digest, AppUserPrincipal principal,
+                               boolean doctorFixture, ControlledDispatch dispatch) {
         // Serialize this actor's reservations across snapshots and release the lock before HTTP.
         jdbc.queryForObject("SELECT id FROM sys_user WHERE id=? FOR UPDATE", Long.class, principal.userId());
+        if (doctorFixture || dispatch != null) {
+            jdbc.queryForObject("SELECT id FROM subject WHERE id=? FOR UPDATE", Long.class, subjectId);
+        }
         Snapshot snapshot = jdbc.query("SELECT * FROM research_table_snapshot WHERE id=? FOR UPDATE",
-                (row, index) -> readSnapshot(row, principal), snapshotId).stream().findFirst()
+                (row, index) -> {
+                    if (doctorFixture && (!row.getBoolean("doctor_handoff")
+                            || !"CONSTRUCTED_VALIDATION".equals(row.getString("data_scope")))) {
+                        throw new BusinessException(ErrorCode.ACCESS_DENIED);
+                    }
+                    Snapshot frozen = readSnapshot(row, principal);
+                    if (subjectId != null && subjectId != row.getLong("subject_id")) {
+                        throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "该快照不属于当前选中的受试者");
+                    }
+                    if (doctorFixture && (!hasExplicitManageGrant(principal.userId(), subjectId)
+                            || !isCurrentDoctorFixture(subjectId, frozen))) {
+                        throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "请用当前访视重新质控并保存匹配资料");
+                    }
+                    return frozen;
+                }, snapshotId).stream().findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
         Optional<Long> existing = replay(key, digest, principal);
         if (existing.isPresent()) {
             return new Submission(existing.get(), null, null);
         }
+        if (dispatch != null) reserveControlledDispatch(dispatch, snapshot, principal);
         String syncStatus = jdbc.queryForObject(
                 "SELECT host_sync_status FROM research_table_snapshot WHERE id=?", String.class, snapshotId);
         if (!"SYNCED".equals(syncStatus)) {
@@ -718,6 +1021,8 @@ class ResearchTableAssessmentService {
                 snapshotId).isEmpty()) {
             throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "该冻结快照已有关联任务");
         }
+        jdbc.update("UPDATE research_table_snapshot SET authorized_user_id=? WHERE id=? AND doctor_handoff=TRUE",
+                principal.userId(), snapshotId);
         client.requireConfigured();
         var keys = new GeneratedKeyHolder();
         Timestamp now = Timestamp.from(clock.instant());
@@ -747,6 +1052,43 @@ class ResearchTableAssessmentService {
         return new Submission(id, snapshot, executionId);
     }
 
+    private boolean isCurrentDoctorFixture(long subjectId, Snapshot snapshot) {
+        String code = jdbc.query("""
+                SELECT s.subject_code FROM subject s WHERE s.id=? AND s.data_version=?
+                AND NOT EXISTS (SELECT 1 FROM research_table_snapshot other WHERE other.subject_id=s.id
+                            AND other.data_scope='CONTROLLED_RESEARCH')
+                """, (row, index) -> row.getString(1), subjectId, snapshot.request().path("dataVersion").textValue())
+                .stream().findFirst().orElse(null);
+        return code != null && code.startsWith("DEMO-") && code.equals(snapshot.request().path("subjectCode").textValue())
+                && archiveQuality.forSubject(subjectId).matchesVisit(snapshot.request());
+    }
+
+    private void reserveControlledDispatch(ControlledDispatch dispatch, Snapshot snapshot, AppUserPrincipal principal) {
+        var binding = snapshot.binding();
+        requireControlledDispatch(dispatch.qualityId(), snapshot, principal);
+        int changed = jdbc.update("""
+                UPDATE controlled_assessment_request SET snapshot_id=?
+                WHERE id=? AND subject_id=? AND quality_check_id=? AND snapshot_id IS NULL
+                """, binding.snapshotId(), dispatch.requestId(), binding.subjectId(), dispatch.qualityId());
+        if (changed != 1) {
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "评估申请已关联任务，请刷新状态");
+        }
+    }
+
+    private void requireControlledDispatch(long qualityId, Snapshot snapshot, AppUserPrincipal principal) {
+        var binding = snapshot.binding();
+        var gate = archiveQuality.forSubject(binding.subjectId());
+        if (!"CONTROLLED_RESEARCH".equals(snapshot.dataScope()) || !principal.roleCodes().contains("RESEARCHER")
+                || !hasExplicitReviewGrant(principal.userId(), binding.subjectId())
+                || !"RETROSPECTIVE_SNAPSHOT".equals(snapshot.request().path("availabilityPolicy").asText())
+                || !java.util.Objects.equals(qualityId, gate.id()) || !gate.matchesVisit(snapshot.request())
+                || !binding.requestSha256().equals(protocol.digest(snapshot.request()))
+                || !binding.inputSha256().equals(protocol.digest(protocol.admissionCore(snapshot.request(), snapshot.model())))
+                || !controlledCompletion.permits(client.configuredAssessmentEndpoint(), binding)) {
+            throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "当前质控、档案授权或执行许可已变化");
+        }
+    }
+
     private Optional<Long> replay(String key, String digest, AppUserPrincipal principal) {
         return idempotency.findByUserIdAndOperationAndIdempotencyKey(principal.userId(), OPERATION, key)
                 .map(record -> {
@@ -760,9 +1102,14 @@ class ResearchTableAssessmentService {
     private Snapshot readSnapshot(ResultSet row, AppUserPrincipal principal) throws SQLException {
         long subject = row.getLong("subject_id");
         long owner = row.getLong("authorized_user_id");
-        authorize(principal, subject, owner);
-        if (!"CONSTRUCTED_VALIDATION".equals(row.getString("data_scope"))) {
-            throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "当前宿主只具备合成研究快照");
+        if (!access.canReadRawScores(principal, subject)
+                || (owner != principal.userId() && !canReceiveDoctorIntake(row.getLong("id"), principal))) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+        String dataScope = row.getString("data_scope");
+        if (!"CONSTRUCTED_VALIDATION".equals(dataScope)
+                && !(controlledAdmissionEnabled && "CONTROLLED_RESEARCH".equals(dataScope))) {
+            throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "当前宿主未启用此快照数据范围");
         }
         try {
             byte[] bytes = row.getString("request_json").getBytes(StandardCharsets.UTF_8);
@@ -772,30 +1119,40 @@ class ResearchTableAssessmentService {
             JsonNode request = protocol.parse(bytes);
             JsonNode model = protocol.parse(row.getString("model_json").getBytes(StandardCharsets.UTF_8));
             protocol.validateRequest(request, model);
-            if (!testFixturesEnabled && (!TRAINED_MODEL.equals(request.path("modelKey").asText())
-                    || !"seven".equals(model.path("specification").asText())
-                    || !"logistic".equals(model.path("family").asText()))) {
+            if (!testFixturesEnabled && !TRAINED_MODEL.equals(request.path("modelKey").asText())
+                    && !model.equals(modelIdentity.identity(request.path("modelKey").asText(), protocol))) {
                 throw new IllegalArgumentException("Expected the registered trained model");
             }
-            return new Snapshot(bytes, request, model,
+            var binding = new ControlledResearchCompletion.Binding(row.getLong("id"), subject,
+                    request.path("runId").textValue(),
                     digestColumn(row, "request_sha256"), digestColumn(row, "input_sha256"),
                     digestColumn(row, "context_sha256"));
+            return new Snapshot(bytes, request, model, dataScope, binding);
         } catch (IOException | RuntimeException invalid) {
             throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "冻结研究快照配置无效");
         }
     }
 
     private void execute(long taskId, Snapshot snapshot, String executionId) {
+        execute(taskId, snapshot, executionId, null);
+    }
+
+    private void execute(long taskId, Snapshot snapshot, String executionId, java.net.URI requiredEndpoint) {
         String status = OUTCOME_UNKNOWN;
         String code = "RESEARCH_OUTCOME_UNKNOWN";
         String result = null;
         try {
-            ResearchTableClient.Reply reply = client.assess(snapshot.requestBytes());
+            ResearchTableClient.Reply reply = requiredEndpoint == null ? client.assess(snapshot.requestBytes())
+                    : client.assess(snapshot.requestBytes(), requiredEndpoint);
             if (reply != null && reply.httpStatus() == 200) {
-                status = protocol.validateResponse(reply.body(), snapshot.request(), snapshot.model(),
-                        "CONSTRUCTED_VALIDATION", snapshot.requestDigest(),
-                        snapshot.inputDigest(), snapshot.contextDigest());
+                var binding = snapshot.binding();
+                String validated = protocol.validateResponse(reply.body(), snapshot.request(), snapshot.model(),
+                        snapshot.dataScope(), binding.requestSha256(), binding.inputSha256(), binding.contextSha256());
+                if ("CONTROLLED_RESEARCH".equals(snapshot.dataScope()) && "COMPLETED".equals(validated)) {
+                    validateControlledCompletion(snapshot, reply);
+                }
                 result = reply.body().toString();
+                status = validated;
                 code = null;
             } else if (reply != null) {
                 code = protocol.validateError(reply.httpStatus(), reply.body(),
@@ -823,6 +1180,22 @@ class ResearchTableAssessmentService {
                 SET status=?,error_code=?,result_json=?,executor_id=NULL,lease_expires_at=NULL,updated_at=?
                 WHERE id=? AND status='RUNNING' AND execution_id=?
                 """, status, code, result, Timestamp.from(clock.instant()), taskId, executionId);
+    }
+
+    private void validateControlledCompletion(Snapshot snapshot, ResearchTableClient.Reply reply) {
+        var binding = snapshot.binding();
+        JsonNode request = snapshot.request();
+        if (!controlledCompletion.permits(reply.endpoint(), binding)
+                || !"RETROSPECTIVE_SNAPSHOT".equals(request.path("availabilityPolicy").asText())
+                || !binding.requestSha256().equals(protocol.digest(request))
+                || !binding.inputSha256().equals(protocol.digest(protocol.admissionCore(request, snapshot.model())))) {
+            throw new IllegalArgumentException("Controlled completion authorization does not match the snapshot");
+        }
+        String subjectCode = jdbc.queryForObject("SELECT subject_code FROM subject WHERE id=?",
+                String.class, binding.subjectId());
+        if (!request.path("subjectCode").textValue().equals(subjectCode)) {
+            throw new IllegalArgumentException("Controlled completion subject does not match the snapshot");
+        }
     }
 
     private record ReportScope(String filter, List<Object> params) {}
@@ -871,7 +1244,7 @@ class ResearchTableAssessmentService {
                 id).stream().findFirst().orElseThrow(() -> new BusinessException(ErrorCode.ACCESS_DENIED));
     }
 
-    ReviewQueue reviewQueue(String status, int page, int pageSize, AppUserPrincipal principal) {
+    ReviewQueue reviewQueue(String status, int page, int pageSize, String dataScope, AppUserPrincipal principal) {
         requireReviewRole(principal);
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(100, pageSize));
@@ -885,16 +1258,17 @@ class ResearchTableAssessmentService {
                 JOIN research_table_snapshot s ON s.id=t.snapshot_id
                 JOIN subject sub ON sub.id=s.subject_id
                 WHERE t.status='COMPLETED'
-                """ + reviewFilter + permissionFilter;
+                """ + reviewFilter + permissionFilter + (dataScope == null ? "" : " AND s.data_scope=?");
         List<Object> params = new ArrayList<>();
         if (!all) params.add(status.toUpperCase(Locale.ROOT));
         params.add(principal.userId());
+        if (dataScope != null) params.add(dataScope);
 
         Long total = jdbc.queryForObject("SELECT COUNT(*) " + from, Long.class, params.toArray());
         String select = """
                 SELECT t.id,t.snapshot_id,t.run_id,t.status,t.error_code,t.result_json,t.created_at,t.updated_at,
                        t.review_status,t.reviewed_by,t.reviewed_at,t.review_comment,
-                       s.subject_id,s.authorized_user_id,sub.subject_code,sub.alias AS subject_alias
+                       s.subject_id,s.authorized_user_id,s.data_scope,sub.subject_code,sub.alias AS subject_alias
                 """ + from + " ORDER BY t.created_at DESC,t.id DESC LIMIT ? OFFSET ?";
         List<Object> pageParams = new ArrayList<>(params);
         pageParams.add(safeSize);
@@ -903,7 +1277,7 @@ class ResearchTableAssessmentService {
         return new ReviewQueue(items, total == null ? 0 : total, safePage, safeSize);
     }
 
-    ReviewQueue reports(String status, int page, int pageSize, AppUserPrincipal principal) {
+    ReviewQueue reports(String status, int page, int pageSize, String dataScope, Long subjectId, AppUserPrincipal principal) {
         ReportScope scope = reportScope(principal);
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(100, pageSize));
@@ -912,17 +1286,20 @@ class ResearchTableAssessmentService {
         List<Object> params = new ArrayList<>();
         if (!all) params.add(status.toUpperCase(Locale.ROOT));
         params.addAll(scope.params());
+        if (dataScope != null) params.add(dataScope);
+        if (subjectId != null) params.add(subjectId);
         String from = """
                 FROM research_table_task t
                 JOIN research_table_snapshot s ON s.id=t.snapshot_id
                 JOIN subject sub ON sub.id=s.subject_id
                 WHERE 1=1
-                """ + statusFilter + scope.filter();
+                """ + statusFilter + scope.filter() + (dataScope == null ? "" : " AND s.data_scope=?")
+                        + (subjectId == null ? "" : " AND s.subject_id=?");
         Long total = jdbc.queryForObject("SELECT COUNT(*) " + from, Long.class, params.toArray());
         String select = """
                 SELECT t.id,t.snapshot_id,t.run_id,t.status,t.error_code,t.result_json,t.created_at,t.updated_at,
                        t.review_status,t.reviewed_by,t.reviewed_at,t.review_comment,
-                       s.subject_id,s.authorized_user_id,sub.subject_code,sub.alias AS subject_alias
+                       s.subject_id,s.authorized_user_id,s.data_scope,sub.subject_code,sub.alias AS subject_alias
                 """ + from + " ORDER BY t.created_at DESC,t.id DESC LIMIT ? OFFSET ?";
         List<Object> pageParams = new ArrayList<>(params);
         pageParams.add(safeSize);
@@ -959,6 +1336,53 @@ class ResearchTableAssessmentService {
         audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_REVIEW",
                 "taskId=" + taskId + " decision=" + normalized);
         return find(taskId, principal);
+    }
+
+    PatientPublication publication(long id, AppUserPrincipal actor) {
+        requirePublicationReview(id, actor);
+        return lastPublication(id);
+    }
+
+    PatientPublication changePublication(long id, String message, boolean publish, AppUserPrincipal actor) {
+        String text = message == null ? "" : message.strip();
+        if (publish && (text.isEmpty() || text.length() > 1000)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "患者说明须填写 1 至 1000 个字符");
+        }
+        return transaction.execute(ignored -> {
+            requireReviewRole(actor);
+            jdbc.query("SELECT id FROM research_table_task WHERE id=? FOR UPDATE", (row, index) -> row.getLong(1), id);
+            var task = requirePublicationReview(id, actor);
+            if (!"COMPLETED".equals(task.status()) || !"CONFIRMED".equals(task.reviewStatus())) {
+                throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "请先确认本次医生复核");
+            }
+            var previous = lastPublication(id);
+            var next = new PatientPublication(publish, publish ? text : null);
+            if (!previous.equals(next)) {
+                jdbc.update("""
+                        INSERT INTO patient_research_publication(task_id,actor_id,action,message,recorded_at)
+                        VALUES(?,?,?,?,CURRENT_TIMESTAMP)
+                        """, id, actor.userId(), publish ? "PUBLISHED" : "WITHDRAWN", next.message());
+                audit.recordQuietly(actor.userId(), publish ? "PATIENT_SUMMARY_PUBLISHED" : "PATIENT_SUMMARY_WITHDRAWN",
+                        "taskId=" + id);
+            }
+            return next;
+        });
+    }
+
+    private Task requirePublicationReview(long id, AppUserPrincipal actor) {
+        requireReviewRole(actor);
+        Task task = find(id, actor);
+        if (!hasExplicitManageGrant(actor.userId(), task.subjectId())) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "仅有档案管理权限的医生可以发布患者说明");
+        }
+        return task;
+    }
+
+    private PatientPublication lastPublication(long id) {
+        return jdbc.query("""
+                SELECT action,message FROM patient_research_publication WHERE task_id=? ORDER BY id DESC LIMIT 1
+                """, (row, index) -> new PatientPublication("PUBLISHED".equals(row.getString(1)), row.getString(2)), id)
+                .stream().findFirst().orElseGet(() -> new PatientPublication(false, null));
     }
 
     /** Research results that belong to one subject, readable by the treating doctor as well. */
@@ -1070,9 +1494,25 @@ class ResearchTableAssessmentService {
         // would be left RUNNING without an executor.
         client.requireConfigured();
         String executionId = UUID.randomUUID().toString();
+        boolean controlled = "CONTROLLED_RESEARCH".equals(snapshot.dataScope());
+        java.net.URI allowedEndpoint = controlled ? controlledCompletion.endpoint() : null;
         // Reset and claim in one transaction so scheduled lease recovery can never observe a
         // transient RUNNING row with no owner between the two statements.
         transaction.executeWithoutResult(status -> {
+            if (controlled) {
+                long subjectId = snapshot.binding().subjectId();
+                jdbc.queryForObject("SELECT id FROM subject WHERE id=? FOR UPDATE", Long.class, subjectId);
+                Long qualityId = jdbc.query("""
+                        SELECT a.quality_check_id FROM controlled_assessment_request a
+                        WHERE a.subject_id=? AND a.snapshot_id=? AND a.id=(
+                            SELECT MAX(id) FROM controlled_assessment_request WHERE subject_id=?)
+                        """, (row, index) -> row.getLong(1), subjectId, snapshot.binding().snapshotId(), subjectId)
+                        .stream().findFirst().orElse(null);
+                if (qualityId == null || allowedEndpoint == null) {
+                    throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "原评估申请已失效，请重新核验资料");
+                }
+                requireControlledDispatch(qualityId, snapshot, principal);
+            }
             int claimed = jdbc.update("""
                     UPDATE research_table_task SET status='RUNNING',execution_id=?,error_code=NULL,
                         result_json=NULL,executor_id=NULL,lease_expires_at=NULL,updated_at=?
@@ -1087,7 +1527,7 @@ class ResearchTableAssessmentService {
         });
         audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_RETRY",
                 "taskId=" + taskId + " executionId=" + executionId);
-        execute(taskId, snapshot, executionId);
+        execute(taskId, snapshot, executionId, allowedEndpoint);
         audit.recordQuietly(principal.userId(), "RESEARCH_TABLE_RESULT",
                 "taskId=" + taskId + " status=" + find(taskId, principal).status());
         return find(taskId, principal);
@@ -1111,7 +1551,7 @@ class ResearchTableAssessmentService {
             return new Task(row.getLong("id"), row.getLong("snapshot_id"), subjectId,
                     row.getString("subject_code"), row.getString("subject_alias"),
                     row.getString("run_id"),
-                    row.getString("status"), row.getString("error_code"),
+                    row.getString("status"), row.getString("error_code"), row.getString("data_scope"),
                     result == null ? null : protocol.parse(result.getBytes(StandardCharsets.UTF_8)),
                     row.getTimestamp("created_at").toInstant(), row.getTimestamp("updated_at").toInstant(),
                     row.getString("review_status"), reviewer,
@@ -1134,6 +1574,12 @@ class ResearchTableAssessmentService {
                 WHERE subject_id=? AND user_id=? AND permission_type IN ('VIEW','MANAGE')
                 """, Long.class, subjectId, userId);
         return count != null && count > 0;
+    }
+
+    private boolean hasExplicitManageGrant(long userId, long subjectId) {
+        return !jdbc.queryForList("""
+                SELECT user_id FROM subject_permission WHERE subject_id=? AND user_id=? AND permission_type='MANAGE'
+                """, Long.class, subjectId, userId).isEmpty();
     }
 
     private static void requireMetricsRole(AppUserPrincipal principal) {

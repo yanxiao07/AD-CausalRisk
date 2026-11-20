@@ -7,9 +7,10 @@ import request from './request.js'
  *
  * 注意：不要手动设置 Content-Type，让浏览器带上 multipart boundary。
  */
-export function createImportJob(file, idempotencyKey) {
+export function createImportJob(file, idempotencyKey, mapping = {}) {
   const form = new FormData()
   form.append('file', file)
+  if (Object.keys(mapping).length) form.append('mapping', JSON.stringify(mapping))
   return request.post('/import-jobs', form, {
     headers: { 'Idempotency-Key': idempotencyKey }
   })

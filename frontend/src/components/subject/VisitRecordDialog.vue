@@ -1,12 +1,13 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="补录访视"
+    title="录入访视量表"
     width="480px"
     :close-on-click-modal="false"
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
   >
+    <p v-if="initial">已从测试快照带入日期和量表。核对后点击保存，资料才会写入访视记录。</p>
     <el-form ref="formRef" :model="form" :rules="rules" label-width="96px" @submit.prevent>
       <el-form-item label="访视编号" prop="visitCode">
         <el-input v-model="form.visitCode" maxlength="50" placeholder="例如：V2026-03" />
@@ -45,7 +46,8 @@ import { createSubjectVisit } from '@/api/subjects.js'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
-  subjectId: { type: [Number, String], required: true }
+  subjectId: { type: [Number, String], required: true },
+  initial: { type: Object, default: null }
 })
 const emit = defineEmits(['update:modelValue', 'saved'])
 
@@ -69,10 +71,10 @@ watch(
   (open) => {
     if (!open) return
     form.visitCode = ''
-    form.visitDate = ''
-    form.mmse = null
+    form.visitDate = props.initial?.visitDate || ''
+    form.mmse = props.initial?.mmse ?? null
     form.moca = null
-    form.cdrSb = null
+    form.cdrSb = props.initial?.cdrSb ?? null
     formRef.value?.clearValidate()
   }
 )

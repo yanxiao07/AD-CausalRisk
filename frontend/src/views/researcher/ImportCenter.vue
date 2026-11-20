@@ -1,15 +1,41 @@
 <template>
   <div class="import-center">
     <PageHeader back
-      title="数据导入"
-      subtitle="上传 CSV → 预检 → 确认入库。预检不写库，确认后才落库。"
+      title="导入测试资料"
+      subtitle="每次上传一种 CSV。预检会保存任务记录，确认后才写入档案、访视或特征。"
     >
       <template #extra>
         <el-button v-if="job" :icon="RefreshLeft" @click="reset">重新上传</el-button>
       </template>
     </PageHeader>
 
-    <DataCard title="上传 CSV" subtitle="单文件，最大 64 KB；列名与示例文件保持一致">
+    <DataCard title="下载 CSV 模板" subtitle="用于 DEMO 测试档案。将示例编号换为自己的测试编号，三张表使用同一编号。">
+      <div class="templates">
+        <el-button v-for="template in csvTemplates" :key="template.name" @click="downloadTemplate(template)">
+          下载{{ template.label }}模板
+        </el-button>
+      </div>
+      <p class="template-note">
+        先导入档案，再分别导入访视量表和特征。日期使用 YYYY-MM-DD，未记录的量表值留空。
+        APOE 填 0、1 或 2，单位为 count。真实研究资料由获授权的人员登记来源和证据。
+      </p>
+    </DataCard>
+
+    <ModelCsvImport />
+
+    <DataCard title="上传 CSV" subtitle="每个文件最多 30,000 字节，保存为 UTF-8，保留模板列名。">
+      <details class="column-mapping">
+        <summary>我的 CSV 使用了其他列名</summary>
+        <p>把原列名对应到模板列名，然后上传。模板已经匹配的列可留空。</p>
+        <div v-for="(entry, index) in columnMappings" :key="index" class="mapping-row">
+          <el-input v-model="entry.from" aria-label="原列名" placeholder="原列名" />
+          <el-select v-model="entry.to" aria-label="模板列名" placeholder="模板列名" clearable>
+            <el-option v-for="field in templateFields" :key="field" :label="field" :value="field" />
+          </el-select>
+          <el-button @click="columnMappings.splice(index, 1)">移除</el-button>
+        </div>
+        <el-button @click="columnMappings.push({ from: '', to: '' })">添加列名对应</el-button>
+      </details>
       <el-upload
         drag
         class="dropzone"
@@ -24,7 +50,7 @@
             {{ uploading ? '正在预检…' : '把 CSV 拖到这里，或点击选择文件' }}
           </p>
           <p class="dropzone__hint">
-            上传时自动带上 Idempotency-Key（UUID），同一文件重复提交不会产生重复任务。
+            上传后先看预检结果，修正错误行或确认写入通过的行。
           </p>
         </div>
       </el-upload>
@@ -73,12 +99,12 @@
             预检失败，请检查文件编码与列名。
           </span>
           <span v-else-if="job.status === 'COMMITTED'" class="status-hint">
-            已入库 {{ job.validRows }} 行。可继续上传下一个文件。
+            已入库 {{ job.validRows }} 行。可继续上传下一个文件，或进入质控按档案编号查找。
           </span>
         </div>
 
         <el-alert
-          v-if="job.invalidRows > 0"
+          v-if="job.invalidRows > 0 && job.status !== 'COMMITTED'"
           class="alert"
           type="warning"
           :closable="false"
@@ -86,6 +112,9 @@
           :title="`仅 ${job.validRows} 行会被写入，${job.invalidRows} 行将被跳过`"
           description="错误行不会入库，修正 CSV 后可重新上传；本次预检结果仍可入库其余行。"
         />
+        <p v-else-if="job.invalidRows > 0" class="status-hint">
+          已跳过 {{ job.invalidRows }} 个错误行。请只修正并重新上传这些行。
+        </p>
 
         <el-table v-if="job.errors?.length" :data="job.errors" class="errors" max-height="320">
           <el-table-column prop="rowNumber" label="行号" width="90" />
@@ -95,7 +124,10 @@
       </div>
 
       <template v-if="job" #footer>
-          <div class="commit">
+          <div v-if="job.status === 'COMMITTED'" class="commit">
+            <el-button type="primary" @click="router.push({ name: 'QcList' })">去数据质控</el-button>
+          </div>
+          <div v-else class="commit">
             <span class="commit__hint">
               {{ canCommit ? '入库会写入通过预检的行，操作不可撤销。' : '当前状态不可入库。' }}
             </span>
@@ -249,6 +281,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   DocumentAdd,
@@ -261,6 +294,8 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import ModelCsvImport from '@/components/assessment/ModelCsvImport.vue'
+import { downloadCsv } from '@/utils/csv.js'
 import {
   commitImportJob,
   createImportJob,
@@ -269,8 +304,34 @@ import {
   listImportJobs
 } from '@/api/imports.js'
 
-/** 后端 multipart 限制：max-file-size 64KB / max-request-size 128KB */
-const MAX_FILE_BYTES = 64 * 1024
+const MAX_FILE_BYTES = 30_000
+const router = useRouter()
+const csvTemplates = [
+  {
+    label: '档案',
+    name: 'demo-subjects.csv',
+    headers: ['subjectCode', 'alias', 'status'],
+    sample: ['DEMO-CSV-001', '测试档案', 'ACTIVE']
+  },
+  {
+    label: '访视',
+    name: 'demo-visits.csv',
+    headers: ['subjectCode', 'visitCode', 'visitDate', 'mmse', 'moca', 'cdrSb'],
+    sample: ['DEMO-CSV-001', 'BL', '2025-01-01', 28, 25, 0.5]
+  },
+  {
+    label: '特征',
+    name: 'demo-features.csv',
+    headers: ['subjectCode', 'featureName', 'featureValue', 'recordedAt', 'unit'],
+    sample: ['DEMO-CSV-001', 'APOE_E4_COUNT', 1, '2025-01-01', 'count']
+  }
+]
+const columnMappings = ref([])
+const templateFields = [...new Set(csvTemplates.flatMap(template => template.headers))]
+
+function downloadTemplate(template) {
+  downloadCsv(template.name, template.headers, [template.sample])
+}
 
 const uploading = ref(false)
 const committing = ref(false)
@@ -373,7 +434,7 @@ async function customUpload(options) {
     return
   }
   if (file.size > MAX_FILE_BYTES) {
-    uploadError.value = `文件 ${(file.size / 1024).toFixed(1)} KB，超过 64 KB 限制。`
+    uploadError.value = `文件为 ${file.size.toLocaleString('zh-CN')} 字节，超过 30,000 字节。请拆分后分别上传。`
     ElMessage.warning(uploadError.value)
     return
   }
@@ -383,15 +444,19 @@ async function customUpload(options) {
   try {
     // 每次上传生成新的幂等键：失败重试视为新任务，避免命中上一次的结果
     const idempotencyKey = crypto.randomUUID()
-    job.value = await createImportJob(file, idempotencyKey)
+    const pairs = columnMappings.value.filter(entry => entry.from || entry.to)
+    if (pairs.some(entry => !entry.from || !entry.to) || new Set(pairs.map(entry => entry.from)).size !== pairs.length) {
+      uploadError.value = '请填写每组原列名和模板列名，原列名不能重复。'
+      return
+    }
+    job.value = await createImportJob(file, idempotencyKey, Object.fromEntries(pairs.map(entry => [entry.from, entry.to])))
     if (job.value?.status === 'PREVIEW_READY') {
       ElMessage.success(`预检完成：${job.value.validRows} 行可入库`)
     }
     // 新任务进入历史列表
     loadHistory(1)
-  } catch {
-    // request.js 已统一提示；这里只保留页面内错误态
-    uploadError.value = '上传失败，请确认后端已启动并已登录研究员账号。'
+  } catch (problem) {
+    uploadError.value = problem?.message || '上传失败，请检查连接后重试。'
   } finally {
     uploading.value = false
   }
@@ -422,6 +487,26 @@ function reset() {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.column-mapping { margin-bottom: 1rem; }
+.mapping-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.mapping-row :deep(.el-input), .mapping-row :deep(.el-select) { max-width: 12rem; }
+
+.templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.templates .el-button {
+  margin: 0;
+}
+
+.template-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .dropzone :deep(.el-upload-dragger) {

@@ -113,8 +113,15 @@ final class ResearchTableProtocol {
      * equal {@code model.sourceMappingSha256} (2be25c0e...).
      */
     ObjectNode sourceMappings() {
+        var features = json.createArrayNode();
+        SEVEN_FEATURES.forEach(features::add);
+        return sourceMappings(features);
+    }
+
+    ObjectNode sourceMappings(JsonNode features) {
         ObjectNode mappings = json.createObjectNode();
-        for (String feature : SEVEN_FEATURES) {
+        for (JsonNode name : features) {
+            String feature = name.textValue();
             ObjectNode row = mappings.putObject(feature);
             boolean instrument = INSTRUMENT_FEATURES.contains(feature);
             row.put("sourceId", "CONSTRUCTED-SRC-" + feature);
@@ -129,7 +136,8 @@ final class ResearchTableProtocol {
                 row.putNull("language");
                 row.putNull("instrumentVersion");
             }
-            row.putNull("processingVersion");
+            if (feature.startsWith("mri_")) row.put("processingVersion", "constructed-fs4.3");
+            else row.putNull("processingVersion");
         }
         return mappings;
     }
@@ -146,10 +154,11 @@ final class ResearchTableProtocol {
         context.put("indexDate", request.path("indexDate").asText());
         context.put("availabilityPolicy", request.path("availabilityPolicy").asText());
         context.set("model", model);
-        context.set("sourceMappings", sourceMappings());
+        context.set("sourceMappings", sourceMappings(model.path("features")));
         ObjectNode evidence = context.putObject("evidence");
         JsonNode features = request.path("features");
-        for (String feature : SEVEN_FEATURES) {
+        for (JsonNode name : model.path("features")) {
+            String feature = name.textValue();
             JsonNode observation = features.get(feature);
             if (observation == null || !observation.isObject()) {
                 throw new IllegalArgumentException("Missing normalized feature " + feature);

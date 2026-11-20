@@ -2,7 +2,8 @@
   <ResearchAssessmentPanel
     v-if="canResearch"
     :subject-id="subjectId"
-    @completed="onCompleted"
+    :data-scope="dataScope"
+    @submitted="$emit('submitted', $event)"
   />
   <section v-else class="assessment-unavailable">
     <h3 class="assessment-unavailable__title">研究模型评估</h3>
@@ -25,17 +26,15 @@ import ResearchAssessmentPanel from '@/components/assessment/ResearchAssessmentP
 import { useUserStore } from '@/stores/user.js'
 
 defineProps({
-  subjectId: { type: [Number, String], required: true }
+  subjectId: { type: [Number, String], required: true },
+  dataScope: { type: String, required: true }
 })
 
-const emit = defineEmits(['completed'])
+defineEmits(['submitted'])
 const userStore = useUserStore()
 
 const canResearch = computed(() => userStore.hasRole(['ADMIN', 'RESEARCHER']))
 
-function onCompleted(task) {
-  emit('completed', task)
-}
 </script>
 
 <style scoped>

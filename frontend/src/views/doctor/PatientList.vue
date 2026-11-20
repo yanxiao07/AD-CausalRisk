@@ -1,10 +1,11 @@
 <template>
   <div class="patient-list">
     <PageHeader back
-      title="受试者档案"
-      subtitle="仅展示授权范围内的受试者；点击任意一行查看档案概览。"
+      :title="doctorView ? '患者档案' : '受试者档案'"
+      subtitle="点击档案查看资料与评估记录。"
     >
       <template #extra>
+        <ResearchScopeSelect v-if="!doctorView" :model-value="scope" @update:model-value="setScope" />
         <el-select
           v-model="statusFilter"
           class="status-filter"
@@ -25,8 +26,8 @@
           @keyup.enter="search"
           @clear="search"
         />
-        <el-button v-if="canManageSubject" type="primary" :icon="DocumentAdd" @click="openCreateSubject">
-          新建档案
+        <el-button v-if="canCreateArchive && (doctorView || scope === CONSTRUCTED_VALIDATION)" type="primary" :icon="DocumentAdd" @click="openCreateSubject">
+          新建测试档案
         </el-button>
         <el-button :icon="Refresh" @click="load">刷新</el-button>
       </template>
@@ -59,7 +60,7 @@
         v-else-if="items.length === 0"
         :icon="User"
         title="授权范围内还没有档案"
-        description="档案由医生建档或研究员导入后出现在这里。"
+        :description="doctorView ? '您有权查看的档案会出现在这里。' : scope === CONTROLLED_RESEARCH ? '已登记且授权的受控档案会出现在这里。' : '可新建测试档案，或查阅已有测试样例。'"
       />
 
       <template v-else>
@@ -74,12 +75,15 @@
           >
             <el-table-column prop="subjectCode" label="档案编号" min-width="160" show-overflow-tooltip />
             <el-table-column prop="alias" label="别名" min-width="140" show-overflow-tooltip />
+            <el-table-column v-if="doctorView" label="资料来源" width="120">
+              <template #default="{ row }">{{ subjectResearchScope(row) === CONSTRUCTED_VALIDATION ? '本机测试' : '研究资料' }}</template>
+            </el-table-column>
             <el-table-column label="状态" width="120">
               <template #default="{ row }">
                 <StatusTag :type="row.status" />
               </template>
             </el-table-column>
-            <el-table-column prop="dataVersion" label="数据版本" min-width="140" show-overflow-tooltip />
+            <el-table-column v-if="!doctorView" prop="dataVersion" label="数据版本" min-width="140" show-overflow-tooltip />
             <el-table-column label="建档时间" width="180">
               <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
             </el-table-column>
@@ -119,7 +123,7 @@
     <!-- 抽屉：档案概览 + 风险评估（含因果图）+ 随访计划 + 历史访视 -->
     <el-drawer
       v-model="drawerOpen"
-      :title="selected ? '受试者档案' : '档案概览'"
+      :title="selected ? (doctorView ? '患者档案' : '受试者档案') : '档案概览'"
       direction="rtl"
       :size="drawerSize"
       destroy-on-close
@@ -141,11 +145,43 @@
           <el-descriptions-item label="状态">
             <StatusTag :type="selected.status" />
           </el-descriptions-item>
-          <el-descriptions-item label="数据版本">{{ selected.dataVersion }}</el-descriptions-item>
+          <el-descriptions-item v-if="!doctorView" label="数据版本">{{ selected.dataVersion }}</el-descriptions-item>
           <el-descriptions-item label="建档时间" :span="2">
             {{ formatTime(selected.createdAt) }}
           </el-descriptions-item>
         </el-descriptions>
+
+            <section v-if="userStore.hasRole('DOCTOR') && canEditSubject" class="drawer__section onboarding">
+              <h3>访视量表</h3>
+              <p v-if="!timelineLoading">已保存 {{ visits.length }} 条访视。质控读取档案里的访视和特征。</p>
+              <el-button type="primary" size="small" @click="openVisitRecord()">录入访视量表</el-button>
+              <el-button size="small" @click="drawerTab = 'records'">查看已保存访视</el-button>
+            </section>
+
+            <DoctorAssessmentRequest v-if="doctorView && canEditSubject" :key="selected.id"
+              :subject-id="selected.id" :revision="assessmentRequestRevision"
+              @visit="openVisitRecord()" @quality="qualityCheckOpen = true" @snapshot="intakeOpen = true" />
+
+            <section v-if="userStore.hasRole('DOCTOR') && canEditSubject" class="drawer__section onboarding">
+              <h3>患者账号开通</h3>
+              <p v-if="accountStatusLoading" role="status">正在读取本档案的质控与开通状态…</p>
+              <p v-else-if="accountStatusError" role="alert">{{ accountStatusError }}</p>
+              <template v-else-if="accountStatus">
+                <p>{{ onboardingMessage }}</p>
+                <el-button v-if="accountStatus.canApply" type="primary" size="small"
+                  :loading="accountRequestLoading" @click="applyForPatientAccount">
+                  {{ accountStatus.resubmissionRequired ? '更新质控并重新提交申请' : '申请患者账号' }}
+                </el-button>
+                <el-button v-else-if="accountStatus.accountStatus !== 'ISSUED'" size="small" @click="loadAccountStatus">
+                  刷新开通状态
+                </el-button>
+                <el-button v-if="accountStatus.qualityStatus !== 'ARCHIVED' && canQualityCheck" size="small"
+                  @click="qualityCheckOpen = true">
+                  {{ accountStatus.qualityStatus === 'NO_CHECK' ? '发起质控检查' : '重新质控检查' }}
+                </el-button>
+              </template>
+              <el-button v-if="accountStatusError" size="small" @click="loadAccountStatus">重试</el-button>
+            </section>
 
             <div class="drawer__section drawer__actions">
               <el-button
@@ -157,6 +193,7 @@
                 编辑档案
               </el-button>
               <el-button
+                v-if="showLegacy && !doctorView"
                 size="small"
                 :icon="Share"
                 :disabled="reportLibrary.length < 2"
@@ -165,26 +202,26 @@
                 图谱对比
               </el-button>
               <el-button
-                v-if="canQualityCheck"
+                v-if="canQualityCheck && !(userStore.hasRole('DOCTOR') && canEditSubject && accountStatus)"
                 size="small"
                 :icon="FirstAidKit"
                 @click="qualityCheckOpen = true"
               >
                 发起质控检查
               </el-button>
-              <span v-if="reportLibrary.length < 2" class="drawer__actions-hint">
+              <span v-if="showLegacy && !doctorView && reportLibrary.length < 2" class="drawer__actions-hint">
                 至少两次评估才能对比图谱
               </span>
             </div>
-
-            <div class="drawer__section">
+            <div v-if="!doctorView" class="drawer__section">
               <DataProvenancePanel :subject-id="selected.id" />
             </div>
 
-            <div class="drawer__section">
+            <div v-if="!doctorView" class="drawer__section">
               <AssessmentPanel
                 :subject-id="selected.id"
-                @completed="onAssessmentCompleted"
+                :data-scope="reportScope"
+                @submitted="onAssessmentSubmitted"
               />
             </div>
 
@@ -201,15 +238,19 @@
             </div>
           </el-tab-pane>
 
-          <el-tab-pane label="模型验证结果" name="research">
+          <el-tab-pane :label="doctorView ? '评估结果' : '模型验证结果'" name="research">
+            <div v-if="doctorView && canEditSubject && selected.subjectCode.startsWith('DEMO-')" class="drawer__section">
+              <el-button size="small" @click="intakeOpen = true">查看测试模型快照</el-button>
+            </div>
             <div class="research-head">
               <div>
-                <strong>该受试者的研究验证结果</strong>
-                <p>来自已登记冻结快照；只展示模型验证输出，不是临床诊断。</p>
+                <strong>评估报告</strong>
+                <p>评估完成后，可在这里查看报告和结果解读。</p>
               </div>
-              <el-button size="small" :icon="Refresh" :loading="researchLoading" @click="loadResearchArchive">
-                刷新
-              </el-button>
+              <div class="research-head__actions">
+                <el-button size="small" @click="openLatestGraph">因果图谱</el-button>
+                <el-button size="small" :icon="Refresh" :loading="researchLoading" @click="loadResearchArchive">刷新</el-button>
+              </div>
             </div>
 
             <el-alert
@@ -225,16 +266,16 @@
               v-loading="researchLoading"
               :data="researchArchive"
               size="small"
-              empty-text="还没有研究验证结果"
+              empty-text="还没有评估结果"
             >
-              <el-table-column prop="taskId" label="任务" width="64" />
-              <el-table-column prop="snapshotId" label="快照" width="64" />
+              <el-table-column prop="taskId" label="报告编号" width="88" />
+              <el-table-column v-if="!doctorView" prop="snapshotId" label="快照" width="64" />
               <el-table-column label="状态" width="96">
                 <template #default="{ row }">
                   <StatusTag :type="row.status" />
                 </template>
               </el-table-column>
-              <el-table-column label="AD 24 个月" width="96">
+              <el-table-column label="阿尔茨海默病" min-width="125">
                 <template #default="{ row }">{{ researchCif(row.result?.prediction?.adCif24m) }}</template>
               </el-table-column>
               <el-table-column label="其他痴呆 24 个月" width="120">
@@ -261,7 +302,7 @@
           </el-tab-pane>
 
           <!-- Tab 2：全量报告库（所有历史评估报告集中管理） -->
-          <el-tab-pane label="全量报告库" name="reports">
+          <el-tab-pane v-if="showLegacy" label="历史报告" name="reports">
             <div class="reports-head">
               <span class="reports-count">共 {{ reportLibrary.length }} 份报告</span>
               <el-radio-group v-model="reportSort" size="small">
@@ -315,7 +356,7 @@
           </el-tab-pane>
 
           <!-- Tab 3：生命周期 -->
-          <el-tab-pane label="生命周期" name="lifecycle">
+          <el-tab-pane label="档案记录" name="lifecycle">
             <div class="drawer__section timeline-section">
           <header class="timeline__head">
             <h3 class="timeline__title">患者 360° 总体评估记录</h3>
@@ -499,9 +540,9 @@
           <!-- Tab 4：就诊与随访记录 -->
           <el-tab-pane label="就诊与随访记录" name="records">
             <!-- 补录写 visit/subject_feature 表，后端要求 ADMIN/RESEARCHER 且对该档案有管理权 -->
-            <div v-if="canManageSubject" class="drawer__section drawer__actions">
-              <el-button size="small" :icon="FirstAidKit" @click="visitDialogOpen = true">
-                补录访视
+            <div v-if="canEditSubject" class="drawer__section drawer__actions">
+              <el-button size="small" :icon="FirstAidKit" @click="openVisitRecord()">
+                录入访视量表
               </el-button>
               <el-button size="small" :icon="DataAnalysis" @click="featureDialogOpen = true">
                 补录特征
@@ -514,7 +555,7 @@
             <div class="drawer__section">
               <VisitHistory
                 :visits="visits"
-                :loading="detailLoading"
+                :loading="timelineLoading"
                 :can-correct="canEditSubject"
                 @correct="openCorrection"
               />
@@ -638,6 +679,7 @@
       v-if="selected"
       v-model="visitDialogOpen"
       :subject-id="selected.id"
+      :initial="visitInitial"
       @saved="onRecordSaved"
     />
     <FeatureRecordDialog
@@ -669,6 +711,8 @@
       :subject-id="selected.id"
       :assessments="reportLibrary"
     />
+    <DoctorIntakeDialog v-if="selected && doctorView && selected.subjectCode.startsWith('DEMO-')"
+      :key="selected.id" v-model="intakeOpen" :subject-id="selected.id" @use-for-visit="prepareVisitFromSnapshot" />
 
     <!-- 发起质控检查（自动输入质量检查，与人工复核单是两套记录） -->
     <QualityCheckDialog
@@ -676,6 +720,9 @@
       v-model="qualityCheckOpen"
       :subject-id="selected.id"
       :subject-label="selected.alias || selected.subjectCode || ''"
+      :can-record-visit="canEditSubject"
+      @record-visit="openVisitRecord()"
+      @checked="onArchiveQualityChecked"
     />
   </div>
 </template>
@@ -715,9 +762,14 @@ import ObservationRecordDialog from '@/components/subject/ObservationRecordDialo
 import DataProvenancePanel from '@/components/subject/DataProvenancePanel.vue'
 import GraphDiffDialog from '@/components/subject/GraphDiffDialog.vue'
 import QualityCheckDialog from '@/components/subject/QualityCheckDialog.vue'
+import DoctorIntakeDialog from '@/components/assessment/DoctorIntakeDialog.vue'
+import DoctorAssessmentRequest from '@/components/assessment/DoctorAssessmentRequest.vue'
 import { getSubjectCapabilities, getSubjectDetail, listSubjects } from '@/api/subjects.js'
 import { listFollowUps } from '@/api/followups.js'
-import { listResearchArchive } from '@/api/research.js'
+import { listResearchReports } from '@/api/research.js'
+import ResearchScopeSelect from '@/components/assessment/ResearchScopeSelect.vue'
+import { CONSTRUCTED_VALIDATION, CONTROLLED_RESEARCH, researchScope, subjectResearchScope } from '@/utils/researchResults.js'
+import { getPatientOnboardingStatus, onboardingQualityLabel, requestPatientAccount } from '@/api/patientAccountRequests.js'
 import {
   getAssessment,
   getAssessmentReviews,
@@ -732,6 +784,10 @@ import { useEscapeToClose } from '@/composables/useEscapeToClose.js'
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const doctorView = computed(() => userStore.primaryRole === 'DOCTOR')
+const showLegacy = computed(() => route.query.tab === 'legacy')
+const scope = computed(() => researchScope(route.query.dataScope))
+let researchSeq = 0
 
 const items = ref([])
 const total = ref(0)
@@ -744,8 +800,8 @@ const statusFilter = ref('')
 
 const drawerOpen = ref(false)
 const selected = ref(null)
+const reportScope = computed(() => subjectResearchScope(selected.value))
 const visits = ref([])
-const detailLoading = ref(false)
 const followUps = ref([])
 const followUpLoading = ref(false)
 const followUpDialogOpen = ref(false)
@@ -754,6 +810,7 @@ const followUpDialogOpen = ref(false)
 const subjectFormOpen = ref(false)
 const subjectFormMode = ref('create')
 const visitDialogOpen = ref(false)
+const visitInitial = ref(null)
 const featureDialogOpen = ref(false)
 const observationDialogOpen = ref(false)
 const graphDiffOpen = ref(false)
@@ -761,12 +818,62 @@ const qualityCheckOpen = ref(false)
 const correctionOpen = ref(false)
 const correctionVisit = ref(null)
 const subjectCapabilities = ref(null)
+let capabilitiesRequest = 0
+let timelineRequest = 0
 
 /**
  * 建档与新建/补录只对 ADMIN / RESEARCHER 开放（后端 SubjectAccessPolicy.canCreate）。
  * 编辑还允许持有 MANAGE 授权的医生，因此以 capabilities.manage 为准。
  */
 const canManageSubject = computed(() => userStore.hasRole(['ADMIN', 'RESEARCHER']))
+const canCreateArchive = computed(() => userStore.hasRole(['ADMIN', 'RESEARCHER', 'DOCTOR']))
+const intakeOpen = ref(false)
+const assessmentRequestRevision = ref(0)
+const accountRequestLoading = ref(false)
+const accountStatusLoading = ref(false)
+const accountStatusError = ref('')
+const accountStatus = ref(null)
+let accountStatusRequest = 0
+const onboardingMessage = computed(() => {
+  const current = accountStatus.value
+  if (!current) return ''
+  if (current.accountStatus === 'ISSUED') return '患者账号已与本档案绑定。'
+  const quality = onboardingQualityLabel(current.qualityStatus)
+  if (current.resubmissionRequired) return `${quality}。原申请须由申请医生更新后，管理员才能发放。`
+  if (current.accountStatus === 'PENDING') return `${quality}。等待管理员核对患者与责任医生后发放。`
+  return `${quality}。请核对本次访视资料，满足质控条件后可提交账号申请。`
+})
+async function loadAccountStatus() {
+  const sequence = ++accountStatusRequest
+  const subjectId = selected.value?.id
+  accountStatus.value = null
+  accountStatusError.value = ''
+  accountStatusLoading.value = false
+  if (!subjectId || !userStore.hasRole('DOCTOR') || !canEditSubject.value) return
+  accountStatusLoading.value = true
+  try {
+    const status = await getPatientOnboardingStatus(subjectId)
+    if (sequence === accountStatusRequest) accountStatus.value = status
+  } catch (problem) {
+    if (sequence === accountStatusRequest) accountStatusError.value = problem.message || '无法读取开通状态'
+  } finally {
+    if (sequence === accountStatusRequest) accountStatusLoading.value = false
+  }
+}
+async function applyForPatientAccount() {
+  const subjectId = selected.value?.id
+  if (!subjectId) return
+  accountRequestLoading.value = true
+  try {
+    await requestPatientAccount(subjectId)
+    await loadAccountStatus()
+    ElMessage.success('申请已提交，请管理员在账号管理中发放并绑定。')
+  } catch {
+    await loadAccountStatus()
+  } finally {
+    accountRequestLoading.value = false
+  }
+}
 const canEditSubject = computed(
   () => canManageSubject.value || subjectCapabilities.value?.manage === true
 )
@@ -777,12 +884,26 @@ const canEditSubject = computed(
 const canQualityCheck = computed(
   () => canManageSubject.value || subjectCapabilities.value?.readRaw === true
 )
+watch([() => selected.value?.id, canEditSubject], loadAccountStatus)
+watch([visitDialogOpen, featureDialogOpen, correctionOpen, observationDialogOpen], (next, previous) => {
+  if (previous.some((open, index) => open && !next[index])) onArchiveQualityChecked()
+})
+watch(intakeOpen, (open, previous) => {
+  if (!open && previous) assessmentRequestRevision.value++
+})
+
+function onArchiveQualityChecked() {
+  assessmentRequestRevision.value++
+  loadAccountStatus()
+}
 
 async function loadSubjectCapabilities(subjectId) {
+  const sequence = ++capabilitiesRequest
   subjectCapabilities.value = null
   if (!subjectId) return
   try {
-    subjectCapabilities.value = await getSubjectCapabilities(subjectId)
+    const capabilities = await getSubjectCapabilities(subjectId)
+    if (sequence === capabilitiesRequest) subjectCapabilities.value = capabilities
   } catch {
     // 能力探测失败时按最小权限处理（隐藏编辑入口）
   }
@@ -805,6 +926,28 @@ async function onSubjectSaved({ mode, subject }) {
     selected.value = { ...selected.value, ...subject }
   }
   await load()
+  if (mode === 'create' && subject && doctorView.value) openDrawer(subject)
+}
+
+function openVisitRecord(initial = null) {
+  visitInitial.value = initial
+  drawerTab.value = 'records'
+  visitDialogOpen.value = true
+}
+
+function prepareVisitFromSnapshot(snapshot) {
+  const visitDate = snapshot.indexDate
+  if (visits.value.some(visit => visit.visitDate === visitDate)) {
+    drawerTab.value = 'records'
+    ElMessage.warning('该日期已有访视，请在访视记录中核对并更正。')
+    return
+  }
+  const { mmse, cdr_sb: cdrSb } = snapshot.features
+  const cdrValid = Number.isFinite(cdrSb) && Math.round(cdrSb * 10) / 10 === cdrSb
+  if (!Number.isInteger(mmse) || !cdrValid) {
+    ElMessage.warning('快照量表格式与访视不同，请根据原记录核对量表后填写。')
+  }
+  openVisitRecord({ visitDate, mmse: Number.isInteger(mmse) ? mmse : null, cdrSb: cdrValid ? cdrSb : null })
 }
 
 /** 补录成功：重新拉一次 360 数据（访视、随访、评估）与来源面板 */
@@ -920,6 +1063,15 @@ function search() {
   load()
 }
 
+function setScope(value) {
+  keyword.value = ''
+  router.replace({
+    query: { ...route.query, subjectId: undefined, dataScope: value === CONTROLLED_RESEARCH ? undefined : value }
+  })
+}
+
+watch(scope, search)
+
 async function load() {  const seq = (requestSeq += 1)
   loading.value = true
   error.value = null
@@ -929,7 +1081,8 @@ async function load() {  const seq = (requestSeq += 1)
       page: page.value,
       pageSize: pageSize.value,
       keyword: keyword.value.trim(),
-      status: statusFilter.value
+      status: statusFilter.value,
+      dataScope: doctorView.value ? undefined : scope.value
     })
     if (seq !== requestSeq) return // 已有更新的请求，丢弃这次结果
     items.value = dedupe(Array.isArray(data?.items) ? data.items : [])
@@ -946,6 +1099,12 @@ async function load() {  const seq = (requestSeq += 1)
 }
 
 function openDrawer(row) {
+  if (selected.value?.id !== row?.id) {
+    visits.value = []
+    timeline.value = []
+    followUps.value = []
+    reportLibrary.value = []
+  }
   selected.value = row
   drawerOpen.value = true
   activeEvent.value = null
@@ -958,22 +1117,24 @@ function openDrawer(row) {
 
 /** 模型验证结果 Tab：按受试者读取研究任务归档，只读。 */
 async function loadResearchArchive() {
-  const subjectId = selected.value?.id
-  if (!subjectId) return
+  const id = selected.value?.id
+  if (!id) return
+  const sequence = ++researchSeq
+  researchArchive.value = []
   researchLoading.value = true
   researchError.value = ''
   try {
-    const list = await listResearchArchive(subjectId)
-    researchArchive.value = Array.isArray(list) ? list : []
+    const page = await listResearchReports({ subjectId: id, dataScope: reportScope.value, pageSize: 50 })
+    if (sequence === researchSeq) researchArchive.value = page?.items || []
   } catch (problem) {
-    researchArchive.value = []
-    researchError.value =
-      problem?.httpStatus === 403
-        ? '当前账号没有该档案的研究验证结果读取权限'
-        : problem?.message || '研究验证结果加载失败，请稍后重试'
+    if (sequence === researchSeq) researchError.value = problem?.message || '评估报告加载失败，请稍后重试'
   } finally {
-    researchLoading.value = false
+    if (sequence === researchSeq) researchLoading.value = false
   }
+}
+
+function openLatestGraph() {
+  router.push({ name: 'GraphView', query: { dataScope: reportScope.value, subjectId: selected.value.id } })
 }
 
 function researchCif(value) {
@@ -982,13 +1143,16 @@ function researchCif(value) {
     : '—'
 }
 
-watch(drawerTab, (tab) => {
+watch([drawerTab, () => selected.value?.id, reportScope], ([tab]) => {
   if (tab === 'research') loadResearchArchive()
 })
 
 // 关闭抽屉时清掉 URL 上的 subjectId
 watch(drawerOpen, (open) => {
   if (!open) {
+    researchSeq += 1
+    capabilitiesRequest += 1
+    timelineRequest += 1
     researchArchive.value = []
     researchError.value = ''
     drawerTab.value = 'overview'
@@ -1017,38 +1181,6 @@ useEscapeToClose(
     graphDiffOpen.value ||
     qualityCheckOpen.value
 )
-
-/** 抽屉里的随访：GET /api/subjects/{subjectId}/follow-ups */
-async function loadFollowUps() {
-  const subjectId = selected.value?.id
-  if (!subjectId) return
-  followUpLoading.value = true
-  try {
-    const list = await listFollowUps(subjectId)
-    followUps.value = (Array.isArray(list) ? list : []).slice().sort(
-      (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)
-    )
-  } catch {
-    followUps.value = []
-  } finally {
-    followUpLoading.value = false
-  }
-}
-
-/** 抽屉里的访视：GET /api/subjects/{subjectId} 的 visits 字段。 */
-async function loadDetail(subjectId) {
-  visits.value = []
-  detailLoading.value = true
-  try {
-    const detail = await getSubjectDetail(subjectId)
-    visits.value = Array.isArray(detail?.visits) ? detail.visits : []
-  } catch {
-    // request.js 已统一提示；这里保持空列表，页面显示"还没有访视记录"
-    visits.value = []
-  } finally {
-    detailLoading.value = false
-  }
-}
 
 const TASK_STATUS = {
   PENDING: '排队中',
@@ -1102,6 +1234,7 @@ function formatScore(item) {
 async function loadTimeline() {
   const subjectId = selected.value?.id
   if (!subjectId) return
+  const sequence = ++timelineRequest
   timelineLoading.value = true
   followUpLoading.value = true
   activeEvent.value = null
@@ -1109,12 +1242,12 @@ async function loadTimeline() {
   try {
     const [detailRes, assessRes, taskRes, followRes] = await Promise.allSettled([
       getSubjectDetail(subjectId),
-      listAssessments({ subjectId, pageSize: 100 }),
-      listAssessmentTasks({ subjectId, pageSize: 100 }),
+      showLegacy.value ? listAssessments({ subjectId, pageSize: 100 }) : null,
+      showLegacy.value ? listAssessmentTasks({ subjectId, pageSize: 100 }) : null,
       listFollowUps(subjectId)
     ])
     // 抽屉已经切到别人：丢弃过期响应
-    if (selected.value?.id !== subjectId) return
+    if (sequence !== timelineRequest) return
 
     const detail = detailRes.status === 'fulfilled' ? detailRes.value : null
     visits.value = Array.isArray(detail?.visits) ? detail.visits : []
@@ -1130,7 +1263,7 @@ async function loadTimeline() {
         : []
     // 报告库与生命周期共用同一份评估历史；窗口月份由详情异步补齐
     reportLibrary.value = assessments.map((assessment) => ({ ...assessment }))
-    loadReportDetails(assessments)
+    loadReportDetails(assessments, sequence)
     const tasks =
       taskRes.status === 'fulfilled' && Array.isArray(taskRes.value?.items)
         ? taskRes.value.items
@@ -1198,6 +1331,7 @@ async function loadTimeline() {
     const reviewResults = await Promise.allSettled(
       reviewTargets.map((assessment) => getAssessmentReviews(assessment.assessmentId))
     )
+    if (sequence !== timelineRequest) return
     reviewResults.forEach((result, index) => {
       if (result.status !== 'fulfilled' || !Array.isArray(result.value)) return
       const assessment = reviewTargets[index]
@@ -1253,13 +1387,16 @@ async function loadTimeline() {
     })
     timeline.value = events.map((event, index) => ({ ...event, key: `${event.type}-${index}` }))
   } catch {
-    timeline.value = []
-    visits.value = []
-    followUps.value = []
+    if (sequence === timelineRequest) {
+      timeline.value = []
+      visits.value = []
+      followUps.value = []
+    }
   } finally {
-    timelineLoading.value = false
-    // loadTimeline 负责随访数据，必须复位，否则「概览」摘要和「就诊与随访记录」会一直停在骨架屏
-    followUpLoading.value = false
+    if (sequence === timelineRequest) {
+      timelineLoading.value = false
+      followUpLoading.value = false
+    }
   }
 }
 
@@ -1288,7 +1425,7 @@ function openReport(event) {
 }
 
 /** 逐个补齐报告库卡片需要的详情（含输入快照里的预测窗口），失败保持"—"。 */
-async function loadReportDetails(assessments) {
+async function loadReportDetails(assessments, sequence) {
   const targets = assessments.slice(0, 20)
   if (!targets.length) return
   const results = await Promise.allSettled(
@@ -1298,6 +1435,7 @@ async function loadReportDetails(assessments) {
       return { detail, input }
     })
   )
+  if (sequence !== timelineRequest) return
   results.forEach((result, index) => {
     if (result.status !== 'fulfilled' || !result.value) return
     const id = targets[index].assessmentId
@@ -1340,10 +1478,8 @@ async function openPreview(item) {
   }
 }
 
-/** 研究模型评估完成：刷新时间线，结果保留在评估卡片内。 */
-function onAssessmentCompleted(task) {
-  ElMessage.success(`研究任务 #${task?.taskId ?? ''} 已完成`)
-  loadTimeline()
+function onAssessmentSubmitted(task) {
+  ElMessage.info(`已收到评估任务 #${task.taskId} 的回执`)
 }
 
 /** 新建随访成功：刷新随访列表与时间线。 */
@@ -1742,6 +1878,8 @@ onBeforeUnmount(() => {
   line-height: 1.7;
   color: var(--muted);
 }
+
+.research-head__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .research-head {
   display: flex;

@@ -3,11 +3,13 @@ package com.adcausalrisk.backend.migration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,7 +71,11 @@ class SchemaMigrationTest {
                     "research_table_snapshot",
                     "research_table_task",
                     "system_setting",
-                    "model_release");
+                    "model_release",
+                    "patient_account_request",
+                    "research_supplement_request",
+                    "controlled_assessment_request",
+                    "follow_up_response", "patient_research_publication");
 
     /** Flyway's own bookkeeping table; created by Flyway, not by V1. */
     private static final String FLYWAY_HISTORY_TABLE = "flyway_schema_history";
@@ -95,7 +101,7 @@ class SchemaMigrationTest {
         assertThat(versions)
                 .containsExactly(
                         "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17",
-                        "18", "19", "20", "21", "22");
+                        "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29");
     }
 
     /**
@@ -196,12 +202,29 @@ class SchemaMigrationTest {
 
     @Test
     void baselineDefinesExactlyTheExpectedTables() throws SQLException {
-        assertThat(BASELINE_TABLES).hasSize(23).doesNotHaveDuplicates();
+        assertThat(BASELINE_TABLES).hasSize(28).doesNotHaveDuplicates();
 
         assertThat(applicationTables())
                 .containsExactlyInAnyOrderElementsOf(
                         Stream.concat(BASELINE_TABLES.stream(), Stream.of(FLYWAY_HISTORY_TABLE))
                                 .toList());
+    }
+
+    @Test
+    void upgradesAV26DatabaseWithoutChangingItsExistingArchive() {
+        var source = new DriverManagerDataSource("jdbc:h2:mem:assessment_v26_upgrade;MODE=MySQL;"
+                + "DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1", "sa", "");
+        Flyway.configure().dataSource(source).target("26").load().migrate();
+        var existing = new JdbcTemplate(source);
+        existing.update("""
+                INSERT INTO subject(subject_code,alias,status,data_version,created_at)
+                VALUES('DEMO-PRE27','Original archive','ACTIVE','demo-pre27',CURRENT_TIMESTAMP)
+                """);
+        assertThat(Flyway.configure().dataSource(source).target("27").load().migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(existing.queryForObject("SELECT alias FROM subject WHERE subject_code='DEMO-PRE27'", String.class))
+                .isEqualTo("Original archive");
+        assertThat(existing.queryForObject("SELECT COUNT(*) FROM controlled_assessment_request", Integer.class))
+                .isZero();
     }
 
     @Test
