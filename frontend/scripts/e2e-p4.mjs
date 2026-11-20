@@ -208,11 +208,11 @@ try {
   })
   await a.page.waitForSelector('.hcard__status', { timeout: 20000 })
   await a.page.waitForFunction(
-    () => document.body.textContent.includes('还没有绑定健康档案'),
+    () => document.body.textContent.includes('还未关联个人档案'),
     { timeout: 15000 }
   )
   const aText = await a.page.evaluate(() => document.querySelector('.patient-home')?.textContent.replace(/\s+/g, ' '))
-  check('患者未绑定 → 绑定提示文案', aText.includes('还没有绑定健康档案'), aText.slice(0, 40))
+  check('患者未绑定 → 绑定提示文案', aText.includes('还未关联个人档案'), aText.slice(0, 40))
   check('患者未绑定 → 无侧边栏', !(await a.page.evaluate(() => !!document.querySelector('aside.shell__aside'))), '')
   await a.page.screenshot({ path: join(shotDir, 'p4-patient-unbound.png'), fullPage: true })
   await a.page.close()

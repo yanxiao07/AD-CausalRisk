@@ -1,6 +1,7 @@
 <template>
   <div class="report-page">
-    <PageHeader back title="评估报告" subtitle="查看授权档案的模型评估。24 个月预测仅供研究参考。">
+    <PageHeader back title="评估报告" subtitle="查看授权档案的模型评估。24 个月预测仅供研究参考。"
+      :terms="['review', 'controlled', 'constructed', 'window']">
       <template #extra>
         <el-button v-if="!doctorView" :icon="Share" @click="router.push({ name: 'GraphView', query: { dataScope: route.query.dataScope } })">因果图谱</el-button>
         <el-button :icon="Refresh" :loading="researchLoading" @click="loadResearchPage()">刷新</el-button>

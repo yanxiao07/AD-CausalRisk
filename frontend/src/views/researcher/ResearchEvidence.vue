@@ -4,6 +4,7 @@
       back
       title="研究证据"
       subtitle="证据目录只读；研究表格评估按受试者加载冻结快照，支持多选后批量提交并查看进度。"
+      :terms="['controlled', 'frozen', 'admission', 'source']"
     >
       <template #extra>
         <el-button v-if="canRegister" :icon="Plus" @click="openRegister">手动登记快照</el-button>

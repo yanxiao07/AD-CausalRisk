@@ -1,6 +1,6 @@
 <template>
   <div class="doctor-home">
-    <PageHeader title="医生工作台" subtitle="查看待复核结果、患者档案和今日随访。">
+    <PageHeader title="医生工作台" subtitle="查看待复核结果、患者档案和今日随访。" :terms="['review', 'followup']">
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>

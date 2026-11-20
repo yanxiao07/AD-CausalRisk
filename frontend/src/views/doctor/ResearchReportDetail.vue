@@ -4,6 +4,7 @@
       back
       :title="isDoctor ? '结果与依据' : '评估报告'"
       :subtitle="task ? `报告 #${task.taskId} · ${formatDateTime(task.createdAt)}` : ''"
+      :terms="['source', 'dataVersion', 'review', 'cif']"
     >
       <template #extra>
         <el-dropdown :disabled="!task || exporting" @command="exportReport">
@@ -130,7 +131,7 @@
                 <strong>{{ cif(prediction.otherDementiaCif24m) }}</strong>
               </div>
               <div class="report-stat">
-                <span>预测窗口</span>
+                <span><TermHelp name="window" /></span>
                 <strong>{{ windowMonths }} 个月</strong>
               </div>
               <div class="report-stat">
@@ -139,7 +140,7 @@
               </div>
             </div>
             <template v-if="contributions.length">
-              <h3 class="section-title">本次预测的分组贡献</h3>
+              <h3 class="section-title">本次预测的<TermHelp name="attribution" label="分组贡献" /></h3>
               <ResearchAttributionGraph :contributions="contributions" />
               <el-table :data="contributions" size="small">
                 <el-table-column label="因素" min-width="180">
@@ -206,6 +207,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, Download, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import TermHelp from '@/components/common/TermHelp.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import StatusTag from '@/components/common/StatusTag.vue'

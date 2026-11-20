@@ -4,6 +4,7 @@
       back
       title="账号管理"
       subtitle="维护工作人员账号与授权。请在「患者账号申请」核对并发放患者账号。"
+      :terms="['archiveBinding', 'doctorAssignment', 'archivePermission']"
     >
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>

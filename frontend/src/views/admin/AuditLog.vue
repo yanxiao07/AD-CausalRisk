@@ -1,6 +1,7 @@
 <template>
   <div class="audit-page">
-    <PageHeader back title="审计日志" subtitle="谁在什么时候做了什么；仅管理员可见，按时间倒序。">
+    <PageHeader back title="审计日志" subtitle="查看操作时间、操作人和简要结果。最新记录排在前面。"
+      :terms="['audit', 'traceId']">
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="load(page)">刷新</el-button>
       </template>
@@ -78,7 +79,7 @@
             <el-tag size="small" effect="plain">{{ selected.eventType }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="操作人">{{ selected.actorId ?? '—' }}</el-descriptions-item>
-          <el-descriptions-item label="TraceId">
+          <el-descriptions-item label="追踪编号（TraceId）">
             <span class="mono">{{ selected.traceId || '—' }}</span>
             <el-button v-if="selected.traceId" link type="primary" @click="copyTrace">复制</el-button>
           </el-descriptions-item>

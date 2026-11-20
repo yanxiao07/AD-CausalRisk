@@ -3,7 +3,8 @@
     <PageHeader
       back
       title="数据质控"
-      subtitle="系统对导入数据的自动质量检查：PASS 通过、WARN 需关注、BLOCKED 阻断评估。人工复核单在「评估复核」中处理。"
+      subtitle="查看资料检查结果与缺项。被阻断时请补齐或更正，再重新检查。"
+      :terms="['quality', 'testSnapshot', 'dataVersion']"
     >
       <template #extra>
         <el-radio-group v-model="status" size="small" @change="reload">

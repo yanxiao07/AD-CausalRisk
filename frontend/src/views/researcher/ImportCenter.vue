@@ -3,6 +3,7 @@
     <PageHeader back
       title="导入测试资料"
       subtitle="每次上传一种 CSV。预检会保存任务记录，确认后才写入档案、访视或特征。"
+      :terms="['csv', 'preview', 'modelCsv', 'constructed']"
     >
       <template #extra>
         <el-button v-if="job" :icon="RefreshLeft" @click="reset">重新上传</el-button>
@@ -16,6 +17,7 @@
         </el-button>
       </div>
       <p class="template-note">
+        <TermHelp name="csv" /> 可从表格工具另存后上传。
         先导入档案，再分别导入访视量表和特征。日期使用 YYYY-MM-DD，未记录的量表值留空。
         APOE 填 0、1 或 2，单位为 count。真实研究资料由获授权的人员登记来源和证据。
       </p>
@@ -291,6 +293,7 @@ import {
   WarningFilled
 } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import TermHelp from '@/components/common/TermHelp.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'

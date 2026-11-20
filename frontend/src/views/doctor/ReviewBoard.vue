@@ -1,6 +1,7 @@
 <template>
   <div class="review-page">
-    <PageHeader back title="结果复核" subtitle="查看评估报告，记录确认、补充资料或驳回意见。">
+    <PageHeader back title="结果复核" subtitle="查看评估报告，记录确认、补充资料或驳回意见。"
+      :terms="['review', 'supplement', 'publication']">
       <template #extra>
         <template v-if="view === 'legacy'">
           <el-radio-group v-model="filter" size="small" @change="loadPage(1)">

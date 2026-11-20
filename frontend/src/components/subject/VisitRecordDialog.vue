@@ -7,7 +7,8 @@
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <p v-if="initial">已从测试快照带入日期和量表。核对后点击保存，资料才会写入访视记录。</p>
+    <p v-if="initial">已预填测试快照的日期及格式符合要求的 MMSE、CDR-SB。请核对并填写访视编号后保存。</p>
+    <p v-else>填写本次访视实际完成的量表。评估质控需要最近访视的 MMSE 和 CDR-SB，未测的项目留空。</p>
     <el-form ref="formRef" :model="form" :rules="rules" label-width="96px" @submit.prevent>
       <el-form-item label="访视编号" prop="visitCode">
         <el-input v-model="form.visitCode" maxlength="50" placeholder="例如：V2026-03" />

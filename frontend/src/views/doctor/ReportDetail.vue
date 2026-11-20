@@ -1,6 +1,6 @@
 <template>
   <div class="report-page">
-    <PageHeader back title="历史规则报告" :subtitle="subtitle">
+    <PageHeader back title="历史规则报告" :subtitle="subtitle" :terms="['window', 'review']">
       <template #extra>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button type="primary" :icon="Printer" :disabled="!report" @click="print">

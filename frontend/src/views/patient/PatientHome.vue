@@ -36,7 +36,7 @@
           <button type="button" class="booking-button" :disabled="bookingBusy" @click="selectAppointment(null)">返回下次复诊</button>
         </div>
         <details v-else-if="otherAppointments.length" class="research-notes">
-          <summary>其他复诊和回执</summary>
+          <summary>其他复诊和医院回复</summary>
           <ul class="appointment-list">
             <li v-for="item in otherAppointments" :key="item.id">
               <button type="button" class="booking-button" :disabled="bookingBusy" @click="selectAppointment(item.id)">
@@ -77,7 +77,7 @@
     <section class="hcard hcard--research" aria-labelledby="research-title">
       <div class="hcard__heading">
         <h2 id="research-title" class="hcard__label">评估进度</h2>
-        <span class="research-use">研究用途 · 非临床诊断</span>
+        <span class="research-use">研究资料，仅供参考</span>
       </div>
       <p class="hcard__status" aria-live="polite">{{ researchText }}</p>
       <div v-if="research?.publishedMessage" class="patient-message">
@@ -86,12 +86,13 @@
       </div>
       <el-button v-if="researchState === 'degraded'" class="hcard__retry" @click="loadResearch">重新加载</el-button>
       <p v-if="research?.subjectCode" class="hcard__note">
-        已绑定档案 {{ research.alias || research.subjectCode }}（{{ research.subjectCode }}）
+        当前查看的档案 {{ research.alias || research.subjectCode }}（{{ research.subjectCode }}）
       </p>
-      <details v-if="research?.notice || research?.limitations?.length" class="research-notes">
-        <summary>了解评估说明</summary>
-        <p v-if="research.notice" class="hcard__note">{{ research.notice }}</p>
-        <ul v-if="research.limitations?.length">
+      <details class="research-notes">
+        <summary>这项评估有什么用？</summary>
+        <p class="hcard__note">这里可以查看研究评估进度和医生发给您的说明。诊断和就诊安排请向医生确认。</p>
+        <p v-if="research?.notice" class="hcard__note">{{ research.notice }}</p>
+        <ul v-if="research?.limitations?.length">
           <li v-for="item in research.limitations" :key="item">{{ item }}</li>
         </ul>
       </details>
@@ -195,7 +196,7 @@ const researchStatusText = {
 const researchText = computed(() => {
   if (researchState.value === 'loading') return '正在读取评估进度…'
   if (researchState.value === 'degraded') return '暂时无法读取评估进度，请稍后重试。'
-  if (!research.value?.subjectCode) return '您的账号还没有绑定健康档案。'
+  if (!research.value?.subjectCode) return '您的账号还未关联个人档案。需要查看时，请联系医院核对。'
   return researchStatusText[research.value.state] || '请向医院了解本次评估进度。'
 })
 
