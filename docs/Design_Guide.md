@@ -76,6 +76,8 @@ Python响应是AgentResult，Java响应是Envelope，两种格式分别处理。
 
 ## 5. 页面与交互
 
+四个角色的关键步骤、资料缺项和下一步直接写在相关控件附近。医护和管理页面在「本页术语」提供可展开的解释。正文中带点状下划线的词可以悬停、聚焦或点击查看简短说明，也可以用 Esc 关闭。患者端用日常语言呈现就诊安排及医生说明。新增词语复用前端词表，页面只引入该任务相关的词。[NHS 内容指南](https://service-manual.nhs.uk/content/how-we-write) · [GOV.UK 展开说明](https://design-system.service.gov.uk/components/details/) · [USWDS 简短提示](https://designsystem.digital.gov/components/tooltip/) · [W3C 悬停和焦点要求](https://www.w3.org/WAI/WCAG22/Understanding/content-on-hover-or-focus.html)
+
 | 页面 | 主要内容 | 重点状态 |
 | --- | --- | --- |
 | 登录与工作台 | 登录、角色菜单、待办和服务提示 | 凭据错误、未登录、网络失败 |
