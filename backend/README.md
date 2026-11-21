@@ -16,9 +16,11 @@ Java负责会话、对象授权、资料、导入、质量、持久化任务/结
 
 需要 JDK21。Windows 运行 `.\mvnw.cmd -B -ntp verify`，Linux/macOS 运行 `./mvnw -B -ntp verify`。测试使用 H2 MySQL 兼容模式，核对 115 个 API 操作与实际路由。研究适配测试使用隔离环回宿主、公开构造请求与响应。
 
+Java 有一项跨语言快照检查使用仓库根目录的 `.venv/Scripts/python.exe`。在 Windows 上先按[项目验证步骤](../README.md#验证与升级)创建 `.venv` 并安装锁定依赖，即可运行该项。其他环境可执行同节的公开 HTTP 契约验证。
+
 ## 启动
 
-目标数据库是MySQL8。将 `src/main/resources/application-local.example.yml` 复制为同目录 `application-local.yml`（已被Git忽略），创建空的专用数据库，配置：
+目标数据库是 MySQL 8。仓库内置 `local` 配置。创建专用数据库后在终端设置连接参数，字段可参照 `src/main/resources/application-local.example.yml`。
 
 ```powershell
 $env:SPRING_PROFILES_ACTIVE='local'
@@ -42,7 +44,50 @@ Java 默认端口为 8080。Flyway 在启动时执行 V1–V31，Hibernate 验�
 
 `synthetic-care` 用于隔离的人工验收。Java 配置 `--server.address=127.0.0.1`，并使用 `jdbc:h2:mem:adcr_care_sandbox` 或带下划线和字母数字后缀的指定内存库。配置不匹配会在连接数据库前失败。配套 Python 研究宿主使用独立环回端口、固定摘要的模型清单和专用人工快照目录。研究用途标记随报告保存。默认配置继续保存普通评估申请，待取得适用于普通患者的模型版本后接入业务运行。
 
-医生在同一次访视填写七项资料并质控，从档案点击「提交预测评估」。Java 读取已保存的当前版本并绑定质控记录，缺项时引导至原访视，齐备时固定输入并复用现有模型执行和任务回读。同一版本重复提交回读原任务。报告沿用档案授权与医生复核流程。
+从模型保管方取得七变量 `Model_Manifest.json`、同目录 `final__logistic.joblib` 和独立提供的清单 SHA-256。下列命令从仓库根目录开始，使用 Windows PowerShell 7。将示例中的清单路径和摘要替换为收到的内容。三个终端的端口分别为 `16301`、`8080` 和 `5173`。如果已经按快速开始启动了 Java、Vue 或研究宿主，先在原终端按 Ctrl+C 停止，再用新终端启动这套流程。
+
+**终端一启动 Python 研究宿主**
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r research_runtime/requirements.lock
+$manifestPath = (Resolve-Path 'C:/controlled-model/Model_Manifest.json').Path
+$manifestSha256 = '<模型保管方提供的 SHA-256>'
+$env:RESEARCH_TABLE_TEST_TOKEN = Read-Host '设置研究宿主访问令牌' -MaskInput
+.\.venv\Scripts\python.exe -B -m research_runtime.dynamic_host `
+  --host 127.0.0.1 --port 16301 --manifest $manifestPath `
+  --trusted-manifest-sha256 $manifestSha256 --snapshot-dir runtime/synthetic-care-snapshots
+```
+
+**终端二启动 Java**
+
+```powershell
+$manifestPath = (Resolve-Path 'C:/controlled-model/Model_Manifest.json').Path
+$manifestSha256 = '<与终端一相同的 SHA-256>'
+$lockSha256 = .\.venv\Scripts\python.exe -B -c 'from research_runtime.lock_digest import lock_sha256; print(lock_sha256())'
+$researchToken = Read-Host '输入终端一的访问令牌' -MaskInput
+$env:SPRING_APPLICATION_JSON = @{research=@{table=@{'bearer-token'=$researchToken}}} | ConvertTo-Json -Depth 4 -Compress
+Set-Location backend
+.\mvnw.cmd -B -ntp compile dependency:build-classpath '-DincludeScope=test' '-Dmdep.outputFile=target/h2-demo-classpath.txt'
+$demoDependencies = (Get-Content target/h2-demo-classpath.txt -Raw).Trim()
+java -cp "target/classes;$demoDependencies" com.adcausalrisk.backend.BackendApplication `
+  --spring.profiles.active=synthetic-care --server.address=127.0.0.1 --server.port=8080 `
+  '--spring.datasource.url=jdbc:h2:mem:adcr_care_sandbox;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE' `
+  --spring.datasource.driver-class-name=org.h2.Driver --spring.datasource.username=sa `
+  '--spring.datasource.password=' --research.table.base-url=http://127.0.0.1:16301 `
+  "--research.model.manifest-path=$manifestPath" "--research.model.trusted-manifest-sha256=$manifestSha256" `
+  "--research.model.software-lock-sha256=$lockSha256"
+```
+
+**终端三启动 Vue**
+
+```powershell
+Set-Location frontend
+npm.cmd ci
+npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
+
+用演练医生账号登录。新建普通编号人工档案，在同一次访视填入 MMSE、CDR-SB 和五项补充资料并质控，然后点击「提交预测评估」。Java 读取已保存的当前版本并绑定质控记录，缺项时引导至原访视，齐备时固定输入并调用模型。同一版本重复提交回读原任务。报告沿用档案授权与医生复核流程。关闭 Java 后，这次验收的内存档案即清空。
 
 ## 研究补件交接
 
@@ -119,6 +164,6 @@ python -m research_runtime.examples.run_research_table_integration runtime/train
 - 报告JSON资源保持兼容；`/api/reports/{assessmentId}/download?format=pdf|html|json&audience=research|doctor`返回附件。PDF内嵌[OFL字体](src/main/resources/fonts/README.md)，不依赖系统中文字体。
 - 业务审计记录主体、操作、HTTP结果与traceId，不记录密码、完整请求或内部异常正文；写审计失败会记录错误，不回滚已完成业务。管理员分页接口为 `/api/audit-logs/page`。
 
-会话采用JSESSIONID；现有契约未提供CSRF令牌流程，当前CSRF关闭。对公网部署的认证/CSRF/审计可靠性与目标库验收须在部署任务中处理，本地运行不代表生产准入。
+会话使用 `JSESSIONID`。默认启用 CSRF 校验。使用 Cookie 会话的写请求先调用 `GET /api/auth/csrf`，保留返回的 Cookie，并按响应指定的 `X-CSRF-TOKEN` 请求头回传令牌。Vue 共用请求层已处理。登录接口豁免该校验。
 
 研究证据接口 `/api/research/evidence` 与 `/{key}` 仅向ADMIN/RESEARCHER开放。Maven按白名单打包十份现有Git文档，Java返回内容摘要与聚合原文；`research.artifacts-root`仅用于核对15个既定模型文件是否存在，不读取权重。真实患者输入准入见业务状态。

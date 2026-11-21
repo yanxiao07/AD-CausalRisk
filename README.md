@@ -18,7 +18,7 @@ AD-CausalRisk 是面向阿尔茨海默病研究的协作平台。它把受试者
 | 管理员 | 核对患者身份后发放账号，办理责任医生交接，管理档案权限和审计，核对模型仓库与宿主实际加载的发布物。 |
 | 患者 | 查看本人评估进度、医生已发布的说明、责任医生及联系渠道、下次和其他复诊。可以确认、申请改期并查看回执。 |
 
-医生保存访视并对当前资料质控后，可分别申请患者账号和预测评估。管理员发放账号时，再次核对质控、档案和责任医生。普通档案的评估申请保存在当前质控版本下。当前暂无可用于该流程的模型版本，申请显示「等待可用模型」，医生仍可安排复诊。患者能查看本人就诊安排、确认或申请改期。等待改期期间原复诊继续有效，医院处理后患者可查看回执。
+医生保存访视并对当前资料质控后，可分别申请患者账号和预测评估。管理员发放账号时，再次核对质控、档案和责任医生。普通档案的评估申请保存在当前质控版本下。按默认业务配置启动时，页面显示「等待可用模型」。此状态表示申请已经登记，系统没有创建预测任务。要立即验证普通档案出报告，请用下文的隔离预测验收方式启动。医生可独立安排复诊。患者能查看本人就诊安排、确认或申请改期。等待改期期间原复诊继续有效，医院处理后患者可查看回执。
 
 隔离人工验收配置支持普通编号档案的完整预测流程。医生提交后，系统从同一次已质控访视读取七项已保存资料，直接调用现有研究模型，报告回到原档案供医生复核。研究员无需逐单审批。配置与用途见[后端说明](backend/README.md#普通档案自动预测的人工验收)。
 
@@ -53,7 +53,7 @@ Set-Location AD-CausalRisk
 
 ### 启动 Java 与 Vue
 
-在终端一从仓库根目录启动 Java。以下使用专用演练文件库，Flyway 初始化 V1–V29。H2 驱动由 Maven 测试依赖提供，所以演练命令显式加载该类路径。
+在终端一从仓库根目录启动 Java。以下使用专用演练文件库，Flyway 初始化 V1–V31。H2 驱动由 Maven 测试依赖提供，所以演练命令显式加载该类路径。
 
 ```powershell
 Set-Location backend
@@ -75,13 +75,15 @@ npm.cmd ci
 npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
-本机演练账号为 `doctor`、`researcher`、`admin` 和 `patient`，初始演练口令为 `DemoPass!2026`。医生可先建 `DEMO-` 档案并保存访视。初始患者账号可能尚未绑定档案，可通过患者账号申请发放并登录新账号。演练账号仅用于回环环境。
+本机演练账号为 `doctor`、`researcher`、`admin` 和 `patient`，初始演练口令为 `DemoPass!2026`。医生在「我的患者 → 新建患者档案」使用普通编号，例如 `OP-001`。保存访视后可质控、登记评估申请、申请患者账号并安排随访。默认配置的普通评估申请显示「等待可用模型」。管理员发放账号后，使用该新账号查看对应档案的复诊。演练账号仅用于回环环境。
 
 MySQL 部署使用专用 schema 和数据库账号，配置方式见 [Java 后端](backend/README.md) 与 [MySQL 8 验收及恢复](docs/MySQL8_Acceptance.md)。
 
 ### 接入已训练模型
 
 模型保管方提供原始清单、同目录权重和可信 SHA-256。在终端三从仓库根目录启动动态研究宿主。初次配置 Java 时按 [后端模型身份配置](backend/README.md#本地研究任务联调) 核对 Java 使用的清单和摘要。
+
+要用普通编号的人工档案验证「医生提交 → 自动计算 → 报告复核」，从[隔离人工验收启动步骤](backend/README.md#普通档案自动预测的人工验收)启动专用内存库和宿主。仅克隆源码时可完成上面的业务流程，并运行下节的公开人工契约验收。读取训练模型还需要模型保管方提供的清单、权重及固定摘要。
 
 ```powershell
 python -m venv .venv
@@ -101,6 +103,9 @@ $env:RESEARCH_TABLE_TEST_TOKEN = Read-Host '研究宿主访问令牌' -MaskInput
 从仓库根目录运行以下命令。`verify` 使用独立 H2 测试库。Python HTTP 验证使用公开构造参数、独立测试库和环回端口，输出目录应为新目录。
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.lock
+
 Push-Location backend
 .\mvnw.cmd -B -ntp verify
 Pop-Location
@@ -110,8 +115,6 @@ npm.cmd ci
 npm.cmd run build
 Pop-Location
 
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.lock
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe -B -m research_runtime.examples.run_research_table_integration runtime/contract-demo --contract-test
 ```
