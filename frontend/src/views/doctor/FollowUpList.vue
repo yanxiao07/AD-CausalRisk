@@ -1,35 +1,33 @@
 <template>
   <div class="followup-page">
-    <PageHeader back title="随访计划" subtitle="按受试者查看随访，或汇总所有待办复诊。">
+    <PageHeader back title="随访计划" subtitle="按受试者查看随访，或汇总所有待办复诊。" :terms="['followup', 'reschedule']">
       <template #extra>
         <el-radio-group v-model="view" size="small" @change="onViewChange">
-          <el-radio-button label="BY_SUBJECT">按受试者</el-radio-button>
-          <el-radio-button label="ALL">全部待办</el-radio-button>
+          <el-radio-button value="BY_SUBJECT">按受试者</el-radio-button>
+          <el-radio-button value="ALL">全部待办</el-radio-button>
         </el-radio-group>
         <el-button :icon="Refresh" :loading="loading || allLoading" @click="reload">刷新</el-button>
-        <el-button :icon="Download" :disabled="!canExport" @click="exportCsv">
-          导出 CSV
-        </el-button>
+        <el-button :icon="Download" :disabled="!canExport" @click="exportCsv">导出 CSV</el-button>
         <el-button
           type="primary"
           :disabled="view !== 'BY_SUBJECT' || !subjectId"
-          @click="dialogOpen = true"
+          @click="openBooking()"
         >
           新建随访
         </el-button>
       </template>
     </PageHeader>
 
-    <!-- 视图一：全部待办（前端聚合：受试者列表 + 逐个查随访，契约没有跨受试者接口） -->
+    <!-- 视图一：全部待办（服务端分页：GET /api/follow-ups?status=PLANNED&due=...） -->
     <DataCard v-if="view === 'ALL'" padding="none">
       <div class="filter">
-        <span class="filter__count">
-          待办 {{ todos.length }} 条 · 已加载 {{ loadedSubjects }}/{{ totalSubjects }} 个受试者
-        </span>
-        <span v-if="failedSubjects" class="filter__hint">
-          {{ failedSubjects }} 个受试者的随访读取失败，可稍后刷新
-        </span>
-        <span v-else class="filter__hint">受试者超过 100 条时只汇总前 100 条</span>
+        <el-select v-model="due" class="filter__select" size="small" @change="loadAll(1)">
+          <el-option label="全部待办" value="" />
+          <el-option label="已逾期" value="overdue" />
+          <el-option label="今天" value="today" />
+          <el-option label="未来 7 天" value="next7" />
+        </el-select>
+        <span class="filter__count">共 {{ allTotal }} 条待办</span>
       </div>
 
       <el-skeleton v-if="allLoading && allItems.length === 0" :rows="4" animated />
@@ -40,26 +38,17 @@
         title="待办加载失败"
         :description="allError"
         action-text="重试"
-        @action="loadAllTodos"
+        @action="loadAll(todoPage)"
       />
 
       <EmptyState
-        v-else-if="failedSubjects > 0 && todos.length === 0"
-        :icon="WarningFilled"
-        title="暂时无法确认待办"
-        :description="`${failedSubjects} 个受试者的随访读取失败，已加载的部分没有待办。`"
-        action-text="重试"
-        @action="loadAllTodos"
-      />
-
-      <EmptyState
-        v-else-if="visibleTodos.length === 0"
+        v-else-if="allItems.length === 0"
         :icon="Timer"
         title="没有待处理的随访"
-        description="授权范围内没有计划中的随访；也可以切回「按受试者」单独查看。"
+        description="当前时间窗口内没有计划中的随访；可以换一个时间范围，或切回「按受试者」单独查看。"
       />
 
-      <el-table v-else :data="visibleTodos" class="table" row-key="id">
+      <el-table v-else :data="allItems" class="table" row-key="id">
         <el-table-column label="计划时间" width="200">
           <template #default="{ row }">
             <span :class="{ 'is-overdue': isOverdue(row) }">{{ formatTime(row.scheduledAt) }}</span>
@@ -72,8 +61,18 @@
           </template>
         </el-table-column>
         <el-table-column prop="purpose" label="目的" min-width="200" show-overflow-tooltip />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="患者回执" min-width="160">
           <template #default="{ row }">
+            {{ responseLabel(row.responseStatus) }}
+            <p v-if="row.responseStatus === 'RESCHEDULE_REQUESTED' && row.responseNote">{{ row.responseNote }}</p>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="245" fixed="right">
+          <template #default="{ row }">
+            <el-button text type="primary" @click="openBooking(row)">修改安排</el-button>
+            <el-button v-if="row.responseStatus === 'RESCHEDULE_REQUESTED'" text @click="keepBooking(row)">
+              保留原安排
+            </el-button>
             <el-button
               text
               type="primary"
@@ -94,13 +93,14 @@
         </el-table-column>
       </el-table>
 
-      <div v-if="todos.length > todoPageSize" class="pager">
+      <div v-if="allTotal > todoPageSize" class="pager">
         <el-pagination
           v-model:current-page="todoPage"
           :page-size="todoPageSize"
-          :total="todos.length"
+          :total="allTotal"
           layout="total, prev, pager, next"
           background
+          @current-change="loadAll"
         />
       </div>
     </DataCard>
@@ -127,7 +127,10 @@
             />
           </el-select>
           <span class="picker__hint">
-            契约里随访接口按受试者查询，所以先选人再看计划；跨受试者的待办看「全部待办」。
+            {{
+              subjectsError ||
+              '契约里随访按受试者查询，所以先选人再看计划；跨受试者的待办看「全部待办」。'
+            }}
           </span>
         </div>
       </DataCard>
@@ -166,13 +169,22 @@
             </template>
           </el-table-column>
           <el-table-column prop="purpose" label="目的" min-width="220" show-overflow-tooltip />
+          <el-table-column label="患者回执" min-width="160">
+            <template #default="{ row }">
+              {{ responseLabel(row.responseStatus) }}
+              <p v-if="row.responseStatus === 'RESCHEDULE_REQUESTED' && row.responseNote">{{ row.responseNote }}</p>
+            </template>
+          </el-table-column>
           <el-table-column label="状态" width="120">
             <template #default="{ row }">
               <StatusTag :type="row.status" />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" min-width="245" fixed="right">
             <template #default="{ row }">
+              <el-button v-if="row.status === 'PLANNED'" text type="primary" @click="openBooking(row)">修改安排</el-button>
+              <el-button v-if="row.status === 'PLANNED' && row.responseStatus === 'RESCHEDULE_REQUESTED'" text
+                @click="keepBooking(row)">保留原安排</el-button>
               <el-button
                 text
                 type="primary"
@@ -198,16 +210,17 @@
     </template>
 
     <FollowUpDialog
-      v-if="subjectId"
+      v-if="subjectId || editingPlan"
       v-model="dialogOpen"
-      :subject-id="subjectId"
-      @created="loadFollowUps"
+      :subject-id="editingPlan?.subjectId || subjectId"
+      :initial-plan="editingPlan"
+      @created="refreshBookings"
     />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Refresh, Timer, User, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -216,11 +229,8 @@ import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import FollowUpDialog from '@/components/followup/FollowUpDialog.vue'
 import { listSubjects } from '@/api/subjects.js'
-import { listFollowUps, updateFollowUp } from '@/api/followups.js'
+import { declineReschedule, listFollowUps, listFollowUpsPaged, updateFollowUp } from '@/api/followups.js'
 import { downloadCsv } from '@/utils/csv.js'
-
-/** 全部待办的并发上限：100 个受试者串行会明显卡，限 5 路并发足够快也不打爆后端 */
-const FETCH_CONCURRENCY = 5
 
 const view = ref('BY_SUBJECT')
 
@@ -236,14 +246,39 @@ const loading = ref(false)
 const error = ref('')
 const updating = ref(null)
 const dialogOpen = ref(false)
+const editingPlan = ref(null)
 
-// ---- 全部待办（前端聚合）----
+function responseLabel(status) {
+  return { CONFIRMED: '患者已确认', RESCHEDULE_REQUESTED: '待处理改期',
+    RESCHEDULE_DECLINED: '已回执保留原安排' }[status] || '等患者确认'
+}
+
+function openBooking(plan = null) {
+  editingPlan.value = plan
+  dialogOpen.value = true
+}
+
+function refreshBookings() {
+  if (view.value === 'ALL') return loadAll(todoPage.value)
+  return loadFollowUps()
+}
+
+async function keepBooking(plan) {
+  try {
+    await ElMessageBox.confirm('保留原复诊时间，患者会看到改期未获安排的回执。', '处理改期申请', {
+      confirmButtonText: '保留原安排', cancelButtonText: '返回'
+    })
+    await declineReschedule(plan.id, plan.appointmentRevision)
+    await refreshBookings()
+  } catch { /* request.js displays API errors */ }
+}
+
+// ---- 全部待办（服务端分页）----
 const allItems = ref([])
+const allTotal = ref(0)
 const allLoading = ref(false)
 const allError = ref('')
-const totalSubjects = ref(0)
-const loadedSubjects = ref(0)
-const failedSubjects = ref(0)
+const due = ref('')
 const todoPage = ref(1)
 const todoPageSize = ref(20)
 
@@ -271,17 +306,6 @@ function isOverdue(row) {
   return !Number.isNaN(date.getTime()) && date.getTime() < Date.now()
 }
 
-const todos = computed(() => allItems.value.filter((item) => item.status === 'PLANNED'))
-
-// 标记完成后待办变少时，当前页可能越界，回退到最后一个有效页
-watch(todos, () => {
-  const maxPage = Math.max(1, Math.ceil(todos.value.length / todoPageSize.value))
-  if (todoPage.value > maxPage) todoPage.value = maxPage
-})
-
-/** 导出当前视图的数据：全部待办 → 待办列表；按受试者 → 该受试者的全部随访。 */
-const exportRows = computed(() => (view.value === 'ALL' ? todos.value : items.value))
-
 /** 已加载数据所属的档案（不是下拉框当前选择），导出文案用它。 */
 const loadedSubject = computed(
   () => subjects.value.find((item) => item.id === loadedSubjectId.value) || null
@@ -289,11 +313,11 @@ const loadedSubject = computed(
 
 /**
  * 导出可用条件：
- *  - 全部待办：不在加载中、且确实有待办；
+ *  - 全部待办：不在加载中、且确实有数据；
  *  - 按受试者：不在加载中，且已加载数据就是当前选中档案（切换期间禁用，避免串人）。
  */
 const canExport = computed(() => {
-  if (view.value === 'ALL') return !allLoading.value && todos.value.length > 0
+  if (view.value === 'ALL') return !allLoading.value && allItems.value.length > 0
   return (
     !loading.value &&
     loadedSubjectId.value !== null &&
@@ -304,22 +328,28 @@ const canExport = computed(() => {
 
 function exportCsv() {
   if (!canExport.value) return
-  const rows = exportRows.value.map((item) => {
-    const alias = view.value === 'ALL' ? item.subjectAlias || '' : loadedSubject.value?.alias || ''
-    const code =
-      view.value === 'ALL' ? item.subjectCode || '' : loadedSubject.value?.subjectCode || ''
-    return [alias, code, formatTime(item.scheduledAt), item.purpose || '', item.status]
-  })
+  const rows =
+    view.value === 'ALL'
+      ? allItems.value.map((item) => [
+          item.subjectAlias || '',
+          item.subjectCode || '',
+          formatTime(item.scheduledAt),
+          item.purpose || '',
+          item.status
+        ])
+      : items.value.map((item) => [
+          loadedSubject.value?.alias || '',
+          loadedSubject.value?.subjectCode || '',
+          formatTime(item.scheduledAt),
+          item.purpose || '',
+          item.status
+        ])
   downloadCsv(
     `随访计划-${new Date().toISOString().slice(0, 10)}.csv`,
     ['受试者', '档案编号', '计划时间', '目的', '状态'],
     rows
   )
 }
-const visibleTodos = computed(() => {
-  const start = (todoPage.value - 1) * todoPageSize.value
-  return todos.value.slice(start, start + todoPageSize.value)
-})
 
 async function loadSubjects() {
   subjectsLoading.value = true
@@ -327,10 +357,8 @@ async function loadSubjects() {
   try {
     const data = await listSubjects({ page: 1, pageSize: 100 })
     subjects.value = Array.isArray(data?.items) ? data.items : []
-    totalSubjects.value = subjects.value.length
   } catch (problem) {
     subjects.value = []
-    totalSubjects.value = 0
     subjectsError.value = problem?.message || '档案列表加载失败'
   } finally {
     subjectsLoading.value = false
@@ -367,67 +395,31 @@ async function loadFollowUps() {
   }
 }
 
-/** 有上限的并发映射：不引入依赖，也不一次性打 100 个请求。 */
-async function mapWithConcurrency(list, limit, worker) {
-  let cursor = 0
-  const runners = Array.from({ length: Math.min(limit, list.length) }, async () => {
-    while (cursor < list.length) {
-      const index = cursor
-      cursor += 1
-      await worker(list[index], index)
-    }
-  })
-  await Promise.all(runners)
-}
-
-async function loadAllTodos() {
+async function loadAll(target = 1) {
   const seq = ++allSeq
   allLoading.value = true
   allError.value = ''
-  allItems.value = []
-  failedSubjects.value = 0
-  loadedSubjects.value = 0
-  todoPage.value = 1
-
   try {
-    if (subjects.value.length === 0) await loadSubjects()
-    if (seq !== allSeq) return
-    // 档案接口本身就失败时，不能把"没有待办"当成结论
-    if (subjectsError.value) {
-      allError.value = `档案列表加载失败：${subjectsError.value}`
-      return
-    }
-    const list = subjects.value
-    totalSubjects.value = list.length
-
-    const collected = []
-    await mapWithConcurrency(list, FETCH_CONCURRENCY, async (subject) => {
-      if (seq !== allSeq) return
-      try {
-        const followUps = await listFollowUps(subject.id)
-        if (seq !== allSeq) return
-        for (const item of Array.isArray(followUps) ? followUps : []) {
-          collected.push({
-            ...item,
-            subjectAlias: subject.alias,
-            subjectCode: subject.subjectCode
-          })
-        }
-      } catch {
-        if (seq === allSeq) failedSubjects.value += 1
-      } finally {
-        if (seq === allSeq) loadedSubjects.value += 1
-      }
+    const data = await listFollowUpsPaged({
+      page: target,
+      pageSize: todoPageSize.value,
+      status: 'PLANNED',
+      due: due.value,
     })
-
     if (seq !== allSeq) return
-    allItems.value = collected.sort(
-      (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)
-    )
+    allItems.value = Array.isArray(data?.items) ? data.items : []
+    allTotal.value = Number(data?.total ?? allItems.value.length)
+    todoPage.value = Number(data?.page ?? target)
+    if (allItems.value.length === 0 && allTotal.value > 0 && todoPage.value > 1) {
+      todoPage.value -= 1
+      await loadAll(todoPage.value)
+    }
   } catch (problem) {
     if (seq !== allSeq) return
     allItems.value = []
-    allError.value = problem?.message || '请稍后重试'
+    allTotal.value = 0
+    allError.value =
+      problem?.code === 403 ? '当前账号无权查看跨受试者待办' : problem?.message || '请稍后重试'
   } finally {
     if (seq === allSeq) allLoading.value = false
   }
@@ -455,6 +447,8 @@ async function changeStatus(row, status) {
     merge(items.value)
     merge(allItems.value)
     ElMessage.success(status === 'COMPLETED' ? '已标记完成' : '已取消')
+    // 全部待办按 PLANNED 过滤，标记完成/取消后应从当前页移除并保持分页正确
+    if (view.value === 'ALL') await loadAll(todoPage.value)
   } catch {
     // request.js 已提示（例如已取消的随访不可再变更）
   } finally {
@@ -463,16 +457,18 @@ async function changeStatus(row, status) {
 }
 
 function onViewChange(next) {
-  if (next === 'ALL' && allItems.value.length === 0 && !allLoading.value) loadAllTodos()
+  if (next === 'ALL' && allItems.value.length === 0 && !allLoading.value) loadAll(1)
 }
 
 function reload() {
-  if (view.value === 'ALL') loadAllTodos()
+  if (view.value === 'ALL') loadAll(todoPage.value)
   else if (subjectId.value) loadFollowUps()
   else loadSubjects()
 }
 
-onMounted(loadSubjects)
+onMounted(async () => {
+  await loadSubjects()
+})
 </script>
 
 <style scoped>
@@ -514,14 +510,13 @@ onMounted(loadSubjects)
   border-bottom: 1px solid var(--line);
 }
 
+.filter__select {
+  width: 160px;
+}
+
 .filter__count {
   font-size: 12px;
   color: var(--muted);
-}
-
-.filter__hint {
-  font-size: 12px;
-  color: var(--soft);
 }
 
 .table {

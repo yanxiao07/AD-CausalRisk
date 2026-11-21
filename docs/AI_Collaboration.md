@@ -34,7 +34,7 @@ AI可以协助理解代码、设计接口、实现功能、定位失败和检查
 ## 3. 后端首次任务模板
 
 ```text
-我负责backend。请阅读AGENTS.md、backend/README.md、课程需求、
+我负责backend。请阅读AGENTS.md、backend/README.md、历史需求、
 Design_Guide和Java目标OpenAPI。
 
 本次只建立Spring Boot工程、数据库迁移与档案创建/分页查询。
@@ -56,7 +56,7 @@ Design_Guide和Java目标OpenAPI。
 ## 4. 前端首次任务模板
 
 ```text
-我负责frontend。请阅读AGENTS.md、frontend/README.md、课程需求、
+我负责frontend。请阅读AGENTS.md、frontend/README.md、历史需求、
 Design_Guide和Java目标OpenAPI。
 
 本次只完成前端工程、路由、集中API客户端、登录页和档案列表。

@@ -3,11 +3,13 @@ package com.adcausalrisk.backend.migration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,7 +44,8 @@ class SchemaMigrationTest {
 
     /**
      * Application tables. Starts from the 15 baseline tables (Design_Guide.md section 3) and grows
-     * as follow-up migrations land new domains. V7 added {@code qc_audit_record}.
+     * as follow-up migrations land new domains. V7 added {@code qc_audit_record}; V14 added
+     * {@code system_setting}; V21 added {@code model_release}.
      */
     private static final List<String> BASELINE_TABLES =
             List.of(
@@ -64,7 +67,17 @@ class SchemaMigrationTest {
                     "qc_audit_record",
                     "task_input_snapshot",
                     "user_preferences",
-                    "model_configuration");
+                    "model_configuration",
+                    "research_table_snapshot",
+                    "research_table_task",
+                    "system_setting",
+                    "model_release",
+                    "patient_account_request",
+                    "research_supplement_request",
+                    "controlled_assessment_request",
+                    "care_assessment_request",
+                    "follow_up_response", "patient_research_publication",
+                    "validation_cohort_enrollment", "validation_follow_up", "validation_cohort_report");
 
     /** Flyway's own bookkeeping table; created by Flyway, not by V1. */
     private static final String FLYWAY_HISTORY_TABLE = "flyway_schema_history";
@@ -88,7 +101,9 @@ class SchemaMigrationTest {
         // Every new migration file must be appended here; the list is deliberately explicit so a
         // gap, a re-ordering or a forgotten migration fails loudly instead of silently passing.
         assertThat(versions)
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+                .containsExactly(
+                        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17",
+                        "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33");
     }
 
     /**
@@ -189,12 +204,46 @@ class SchemaMigrationTest {
 
     @Test
     void baselineDefinesExactlyTheExpectedTables() throws SQLException {
-        assertThat(BASELINE_TABLES).hasSize(19).doesNotHaveDuplicates();
+        assertThat(BASELINE_TABLES).hasSize(32).doesNotHaveDuplicates();
 
         assertThat(applicationTables())
                 .containsExactlyInAnyOrderElementsOf(
                         Stream.concat(BASELINE_TABLES.stream(), Stream.of(FLYWAY_HISTORY_TABLE))
                                 .toList());
+    }
+
+    @Test
+    void upgradesAV26DatabaseWithoutChangingItsExistingArchive() {
+        var source = new DriverManagerDataSource("jdbc:h2:mem:assessment_v26_upgrade;MODE=MySQL;"
+                + "DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1", "sa", "");
+        Flyway.configure().dataSource(source).target("26").load().migrate();
+        var existing = new JdbcTemplate(source);
+        existing.update("""
+                INSERT INTO subject(subject_code,alias,status,data_version,created_at)
+                VALUES('DEMO-PRE27','Original archive','ACTIVE','demo-pre27',CURRENT_TIMESTAMP)
+                """);
+        assertThat(Flyway.configure().dataSource(source).target("27").load().migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(existing.queryForObject("SELECT alias FROM subject WHERE subject_code='DEMO-PRE27'", String.class))
+                .isEqualTo("Original archive");
+        assertThat(existing.queryForObject("SELECT COUNT(*) FROM controlled_assessment_request", Integer.class))
+                .isZero();
+    }
+
+    @Test
+    void upgradesAV31DatabaseWithoutAutomaticallyEnrollingCareArchives() {
+        var source = new DriverManagerDataSource("jdbc:h2:mem:validation_v31_upgrade;MODE=MySQL;"
+                + "DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1", "sa", "");
+        Flyway.configure().dataSource(source).target("31").load().migrate();
+        var existing = new JdbcTemplate(source);
+        existing.update("""
+                INSERT INTO subject(subject_code,alias,status,data_version,created_at)
+                VALUES('OP-PRE32','Original care archive','ACTIVE','care-pre32',CURRENT_TIMESTAMP)
+                """);
+        assertThat(Flyway.configure().dataSource(source).target("32").load().migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(existing.queryForObject("SELECT data_version FROM subject WHERE subject_code='OP-PRE32'", String.class))
+                .isEqualTo("care-pre32");
+        assertThat(existing.queryForObject("SELECT COUNT(*) FROM validation_cohort_enrollment", Integer.class)).isZero();
+        assertThat(existing.queryForObject("SELECT COUNT(*) FROM validation_follow_up", Integer.class)).isZero();
     }
 
     @Test
@@ -224,6 +273,24 @@ class SchemaMigrationTest {
                         "patient:PATIENT",
                         "research_doctor:RESEARCHER",
                         "research_doctor:DOCTOR");
+    }
+
+    @Test
+    void seededPatientUsesAssignedDataScope() {
+        String scope =
+                jdbc.queryForObject(
+                        """
+                        SELECT u.data_scope
+                        FROM sys_user u
+                        JOIN user_role ur ON ur.user_id = u.id
+                        JOIN sys_role r ON r.id = ur.role_id
+                        WHERE u.username = 'patient' AND r.role_code = 'PATIENT'
+                        """,
+                        String.class);
+
+        assertThat(scope)
+                .as("patients only read their own summary, never the full cohort")
+                .isEqualTo("ASSIGNED");
     }
 
     @Test

@@ -1,157 +1,63 @@
 # AD-CausalRisk 前端
 
-Vue 3 + Vite + Element Plus 的单页应用，对接 Java 业务 API（Python 由 Java 的 `AgentClient` 调用，
-浏览器不直接访问 Python）。
+Vue 3、Vite 和 Element Plus 应用。浏览器通过同源 `/api` 调用 Java；Python 计算由 Java 调用。
 
-## 环境与命令
+## 本地运行
 
-- Node.js ≥ 18（本地验证版本 v24.22.1，npm 11.19.1）
-- 安装：`npm install`
-- 开发：`npm run dev`（默认 http://localhost:5173，`/api` 代理到 http://localhost:8080）
-- 构建：`npm run build`（产物在 `dist/`）
-- 预览：`npm run preview`
+使用 Node.js 22.12 或更新的 22.x，在 `frontend/` 执行：
 
-后端未启动时页面会提示“无法连接服务器”，不再使用本地 Mock 数据。
-
-## 目录结构
-
-```
-src/
-├─ api/                 # 契约映射层：request.js 是唯一 Axios 实例
-│   ├─ request.js       # Envelope 脱壳、401/403 处理、60s 超时
-│   ├─ auth.js          # login / logout / fetchCurrentUser
-│   ├─ subjects.js      # GET /api/subjects（page / pageSize）
-│   └─ imports.js       # POST /api/import-jobs（multipart + Idempotency-Key）/ commit
-├─ layouts/             # AppShell + 4 种布局 + 菜单注册表
-│   ├─ AppShell.vue     # 按 route.meta.layout 选布局，统一页面过渡
-│   ├─ BlankLayout.vue  # 登录 / 异常页
-│   ├─ SidebarLayout.vue# 医生、研究员（侧边栏 + 顶栏）
-│   ├─ PatientLayout.vue# 患者（无侧栏、单列、大字号）
-│   ├─ ScreenLayout.vue # 管理员数据大屏（深色、无侧栏）
-│   └─ menuRegistry.js  # 后端 menus key -> 文案/图标/路径
-├─ components/
-│   ├─ common/          # 原子组件：PageHeader / DataCard / StatusTag / EmptyState
-│   ├─ BrainCanvas.vue  # 3D 登录页 Three.js 场景（保留原有逻辑）
-│   └─ LoginCard.vue    # 身份选择 + 账号表单
-├─ data/                # 角色元信息与 3D 场景文案
-├─ directives/          # v-permission（按 roles/permissions 控制元素）
-├─ router/              # 路由表 + 守卫（登录态、meta.roles）
-├─ stores/              # Pinia：user（roles / menus / permissions，持久化）
-├─ styles/
-│   ├─ tokens.css       # 设计令牌（唯一真源）
-│   ├─ element-overrides.css  # Element Plus 主题覆盖
-│   └─ login-3d.css     # 3D 登录页专属样式，仅该路由加载
-└─ views/
-    ├─ doctor/ researcher/ admin/ patient/   # 四角色首页
-    └─ exception/       # 401 / 404 / 500（共用 ExceptionPage）
+```sh
+npm ci
+npm run dev
+npm run build
 ```
 
-## 布局与菜单
+默认开发地址为 `http://localhost:5173`，Vite 把 `/api` 转发到 Java 的 `http://localhost:8080`。Java 启动及数据库配置见[后端 README](../backend/README.md)。后端不可用时显示请求错误。
 
-- 路由用 `meta.layout` 决定外壳：`blank`（登录/异常）、`sidebar`（医生、研究员）、
-  `patient`（患者，**不挂载侧边栏**）、`screen`（管理员大屏）。
-- 侧边栏菜单 = 固定「工作台」+ 后端 `/api/me` 下发的 `menus`（`menuRegistry` 负责文案与图标）。
-  后端没给的 key 不渲染；尚未交付的页面渲染成禁用项并标「待建」。
-- 路由守卫：未登录 → `/login?redirect=…`；角色不匹配 → `/401`；已登录访问 `/login` → 回到工作台。
+## 当前界面与接入规则
 
-## 请求层约定
+- 登录和当前用户信息来自 Java。菜单按 `/api/me` 返回的角色和菜单生成；对象权限由 Java 校验。
+- 医生侧栏提供「我的患者」「报告复核」「评估报告」和「随访计划」，贡献图随档案或报告进入。研究员侧栏提供导入、研究档案、质控、任务、报告、图谱和「模型验证与更新」。管理员侧栏提供「验证资料授权」，同页支持单笔、批量和失败重试。患者页通过 `GET /api/patients/me/research-summary` 读取本人评估进度及医生发布的说明。
+- 「获授权病例」「研究工具」「证据与模型版本」始终作为标签可达。验证版本选项由服务端提供，适用于该账号全部受权病例。切换标签或刷新可读取现有版本资料和已保存的报告。
+- 医生的「结果与依据」优先显示访视日期、来源核对、缺项和下一步。完成复核后医生可发布和撤回患者说明。患者首页优先显示下次复诊，也可查看其他安排和近期回执。有可用号码时提供拨号入口。
+- 「导入测试资料」提供档案、访视、特征及七变量模型模板。前三类可映射列名并预检入库。七变量模板与同日已质控访视合成测试快照，再单独提交研究评估。授权研究资料继续走宿主来源核验。
+- 已获授权的历史研究报告可以继续发起补件。研究员在「评估任务 → 补件待办」核对资料并回传新报告，医生从原报告链接查看办理状态。
+- 医生在档案的「患者账号开通」查看当前质控、申请、资料更新及绑定状态。管理员在「账号管理 → 患者账号申请」核对后发放，并可为待发放或已发放的申请办理责任医生交接。患者的联系信息从绑定关系读取。
+- 医生在「患者档案 → 概览与操作」录入访视量表、补录检验和影像结果，并查看预测评估的办理条件。补录时按报告选择指标、填写结果、日期和报告来源。保存后在「就诊与随访记录」回看，需要继续办理时重新质控。
+- 医生的「我的患者 → 新建患者档案」可集中录入院内档案编号、本次访视和已有 APOE ε4、海马影像报告。「保存并质控」在本次资料保存完成后执行。表单显示每项回执，保留未保存的输入供更正。已保存内容可进档案回看。
+- 初次建档及后续录入访视时可同步填写访视时年龄、受教育年限、CDR 全局评分、ADAS-Cog 13 和 FAQ 总分。已有访视从「查看已保存访视 → 补录或更正」填写。访视列表中的「补充资料」可展开查看原值。
+- 有档案管理权限的医生可在普通档案的「预测评估」提交当前质控版本的申请。提交前提示普通档案的预测尚未开放。登记后显示「申请已登记，等待可用模型」，可打开该档案的评估结果或继续安排随访。
+- 在隔离人工验收配置中，原评估按钮从当前已质控的访视直接读取七项资料。缺项时可跳回已保存的访视，齐备时点击「提交预测评估」即进入自动执行流程。结果在档案的「评估结果」查看并复核。
+- 研究员的任务、报告和评估贡献图默认使用受控研究范围。「查看测试样例」切到构造资料。图谱先选档案再读取最近一次评估。同日同刻以任务编号排序。阻断和失败保留原状态，完成且有同次解释时绘制模型贡献。
+- 医生从「患者档案 → 评估结果」打开该档案的贡献图和报告，报告的「打开档案」返回同一档案的评估结果。图谱的资料范围切换由研究员使用。档案列表按 24 个月窗口标明模型风险估计。
+- `src/api/request.js` 是共用请求层，成功业务响应返回 Envelope 的 `data`。二进制附件需按 OpenAPI 的媒体类型处理。状态、提示和视觉样式沿用现有页面与设计令牌。
 
-所有后端响应都是统一 Envelope `{ code, message, data, errorCode, traceId, timestamp }`：
+## 风险评估接入
 
-- `code === 0`：拦截器直接返回 `data`，业务代码不再解包；
-- `code !== 0` 或非 2xx：统一 `ElMessage` 提示并 reject `{ code, errorCode, message }`；
-- `401`：清理登录态并跳回 `/login?redirect=...`（登录接口自身的 401 除外，交由表单内联提示）；
-- `403`：提示无权限，不跳转；
-- 超时 60s（评估任务需要等待 Python 计算完成）；
-- **不发送 `X-Allow-OOR`**：越界值必须由后端正常拦截。
+按[后端说明](../backend/README.md#本地研究任务联调)启动 Java 和训练模型宿主。把你本地前端开发代理的 `/api` 目标改为 `handoff.json` 的 `javaBaseUrl`，保留原会话配置。用其中的 `owner` 登录，打开 `DEMO-RESEARCH-TABLE` 档案。页面实现由前端团队维护。
 
-## 设计令牌
+1. 用当前档案 `subjectId` 请求 `GET /api/research/table-assessment-tasks/snapshots?subjectId={subjectId}`。每条返回 `snapshotId` 和可空的 `taskId`。
+2. 没有任务时，`POST /api/research/table-assessment-tasks`，请求体为 `{"snapshotId": 1}`（替换为列表实际值），并传入 `Idempotency-Key`。同一提交沿用原键。
+3. 有 `taskId` 时，通过 `GET /api/research/table-assessment-tasks/{taskId}` 读取。网络异常后先重查快照与原任务，按原键恢复未确认的提交。
+4. `COMPLETED` 时展示 `result.model.artifactSha256`（可截短显示）、`result.prediction.adCif24m`、`result.prediction.otherDementiaCif24m` 和 `result.explanation`。标注已训练的七变量逻辑回归、24 个月及人工样例。分别展示 `BLOCKED`、`FAILED` 和 `OUTCOME_UNKNOWN`。
 
-颜色、圆角、阴影、字体、动效曲线全部定义在 `styles/tokens.css`，组件里不写死色值：
-主色 `--brand-600: #0a73ad`、深色 `--brand-700`、浅底 `--brand-50`、页面底 `--bg`，
-圆角 10/14/20/32，阴影用双层环境阴影（不用纯黑），动效统一
-`cubic-bezier(.22,1,.36,1)`，并尊重 `prefers-reduced-motion`。
+旧 `POST /api/assessment-tasks` 和 `/submit` 已退出新评估。已有历史报告链接继续打开原报告，训练模型的结果按冻结快照回读。请求与响应字段以 [Java OpenAPI](../contracts/java-business.target.openapi.json) 为准。
 
-Element Plus 通过 `styles/element-overrides.css` 覆盖：主色、12px 圆角、
-大按钮 56px 高、卡片 20px 圆角。
+研究证据页的「研究表格评估」使用 `ResearchBatchAssessment`：按同步状态筛选、多选快照、批量提交并持久化任务历史；未同步快照会被阻止并提示。列表或提交返回 503 时提示“当前未配置研究宿主，请联系管理员配置研究宿主。”。旧批量评估和异步提交入口已移除，纯 DOCTOR 账号不再显示研究评估表单。
 
-## 当前进度
+## 浏览器检查
 
-- **P0（已完成）**：依赖切换（移除 Arco / antd / bw-pro-table / vueuse / dayjs / unocss，
-  引入 element-plus 与 icons）、唯一请求实例、Vite 代理与 `@` 别名、路由守卫、Pinia 用户态。
-- **P0.5（已完成）**：设计令牌、Element Plus 主题、四个原子组件、
-  3D 登录页样式拆分（`tokens.css` + `login-3d.css`）。
-- **P1（已完成）**：五种布局（AppShell + Blank/Sidebar/Patient/Screen）、
-  由 `menus` 驱动的菜单、四角色首页骨架、Element Plus 按需引入、
-  `meta.roles` 守卫；主 chunk 1.07 MB → 381 KB。
-- **P2（已完成）**：医生「受试者档案」（分页表格 + 骨架屏 + 空/错态 + 抽屉）
-  与研究员「数据导入」（拖拽上传 + Idempotency-Key + 预检面板 + 错误明细 + 确认入库）。
-- **P3（已完成）**：抽屉内「发起风险预测」→ 2s 轮询任务 → 结果面板
-  （riskScore / riskLevel / explanations / warnings）→ ECharts 力导向因果网络图
-  → 人工复核（确认复核 / 要求补充数据）→ 历史访视表格。
-- **P4（已完成）**：管理员数据大屏（档案总数 / 质控待审 / 质控拦截 / 审计事件 +
-  近 7 天建档折线 + 档案状态环图 + 实时审计流，60 秒自动刷新）与独立审计页；
-  患者端三卡适老化首页（等待复核结论 / 下次复诊 / 联系医生），
-  未绑定、403、网络失败三种情况都有降级文案。
-- **P5（已完成）**：随访计划（抽屉内新建 + 独立随访页，PATCH 状态流转）、
-  批量评估（多选 + 全局进度面板 + 轮询）、待办复核（按评估 ID 载入 + 复核抽屉）、
-  账号管理骨架页。
-- **P6（已完成）**：评估报告页（可打印，含因果图与免责声明）、
-  因果图谱独立大屏（沉浸模式 + 画布高度自适应力参数）、
-  「因果图谱 / 评估报告」菜单点亮，复核页可跳转报告。
-- **P7（收尾）**：系统设置页（前端构建 / Java 连通性探测 / Python 算法常量 / OpenAPI 契约版本，全部只读，版本号由 vite.config.js 在构建期从 package.json 与契约文件注入）；另外补齐了研究员的「数据质控」（真实 /api/qc/list + 通过/驳回）与「评估任务」（按任务 ID 查阶段耗时）；现在四个角色的侧边栏都没有「待建」项。
-  近 7 天建档折线 + 档案状态环图 + 实时审计流，60 秒自动刷新）与独立审计页；
-  患者端三卡适老化首页（等待复核结论 / 下次复诊 / 联系医生），
-  未绑定、403、网络失败三种情况都有降级文案。
+先在 5199 启动 Vite，再按需要运行以下检查。角色和任务脚本默认使用本地 Chrome，图谱脚本默认使用 Edge；可用 `E2E_CHROME` 指定浏览器。
 
-## 已知限制（P4）
-
-- 大屏的图表数据来自 `GET /api/subjects` 的前 100 条（契约 `pageSize` 上限），
-  档案超过 100 条时趋势与状态分布只是前 100 条的分布，页面底部已注明口径。
-- 患者端没有已实现的摘要端点（`GET /api/assessments/{id}` 对 PATIENT 返回 403），
-  因此状态卡固定显示"您的报告正在等待医生复核"；档案绑定信息与复诊日期来自真实接口。
-- "联系医生"目前只有引导弹窗：契约里没有患者联系方式字段。
-
-## 已知限制（P3）
-
-图谱使用 ECharts 原生节点拖拽、画布平移和滚轮缩放，缩放范围为 0.6–3 倍，双击画布复位。
-边标签依赖连线的局部坐标，不为 graph 系列配置全局 `labelLayout`。ECharts 6.1.0 中
-`hideOverlap` 会改变边标签的坐标归属，导致缩放和力布局时文字偏离连线。
-图谱交互回归使用合成接口运行。开发服务器启动后执行
-`node scripts/e2e-graph-interaction.mjs`，可用 `E2E_BASE` 和 `E2E_CHROME` 指定地址与浏览器。
-
-- 契约里 `graph.edges` 只有 `note` 与 `direction: CONDITIONAL`，**没有权重**，
-  因此图是"结构 + 证据等级"的展示，不画粗细/权重；界面明确标注"条件性关联，非病因证明"。
-- 复核采用「同一评估只能复核一次」的后端语义：`reviewStatus !== PENDING` 时前端隐藏按钮。
-- `GET /api/subjects` 不返回评估/复核状态，所以列表页没有"最近复核"列；
-  复核成功后刷新列表，状态在抽屉内体现。
-
-## 已知限制（P2）
-
-- `GET /api/subjects` 的冻结契约只有 `page` / `pageSize`，**没有 keyword**，
-  因此列表页的搜索框只过滤当前页，界面文案已注明；服务端检索需要契约新增参数。
-- 档案抽屉只展示列表已有字段；访视、评估与因果图待 P3 接入 `GET /api/subjects/{subjectId}`。
-
-## 端到端冒烟（可选）
-
-`scripts/e2e-roles.mjs` 用无头 Chrome 跑四种角色：登录 → 落地页 → 布局 → 菜单 → 守卫，
-不依赖后端（拦截 `/api/auth/login` 与 `/api/me`）。`puppeteer-core` 已在 `devDependencies` 中声明，
-`npm install` 后即可运行：
-
-```bash
-npm install
-npm run dev -- --port 5199      # 另开终端
-node scripts/e2e-roles.mjs      # 截图输出到 .shots/（已 gitignore）
-```
-
-### 「评估任务」页的渲染回归
-
-`scripts/e2e-task-list.mjs`（`npm run test:task-page`）覆盖三种渲染状态：初始空态、
-**查询失败态**（后端 400 时只渲染错误提示、绝不渲染任务卡）与成功态。它锁的是一个真实
-缺陷：任务卡的 `v-else` 曾经挂在空态的 `v-if` 上，失败时 `task` 为 `null` 仍进卡片分支，
-渲染期抛错导致白屏。改动该模板结构后请重跑这条测试（需 dev server 运行在 5199）：
-
-```bash
+```sh
 npm run dev -- --port 5199
+```
+
+```sh
+node scripts/e2e-roles.mjs
 npm run test:task-page
 ```
+
+图谱检查默认访问 5204；若沿用 5199，设置 `E2E_BASE=http://127.0.0.1:5199` 后运行 `node scripts/e2e-graph-interaction.mjs`。
+
+角色、任务渲染和图谱交互脚本使用构造接口数据；`scripts/e2e-live.mjs` 保留原规则评估的历史回归场景。当前模型演示走上面的评估页流程。

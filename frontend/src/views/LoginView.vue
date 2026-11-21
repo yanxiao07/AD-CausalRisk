@@ -1,4 +1,5 @@
 <template>
+  <div class="login-shell">
   <div
     class="screen"
     :data-active-role="currentRole"
@@ -196,6 +197,7 @@
       </div>
     </div>
   </dialog>
+  </div>
 </template>
 
 <script setup>

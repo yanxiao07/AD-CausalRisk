@@ -3,7 +3,9 @@ package com.adcausalrisk.backend.visit.dto;
 import java.math.BigDecimal;
 
 import com.adcausalrisk.backend.validation.ContractGroup;
+import com.adcausalrisk.backend.visit.entity.VisitModelInputs;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -61,5 +63,9 @@ public record VisitCreateRequest(
         @DecimalMin("0") @DecimalMax(value = "30", groups = ContractGroup.class)
         @Digits(integer = 2, fraction = 61) BigDecimal moca,
         @DecimalMin("0") @DecimalMax(value = "18", groups = ContractGroup.class)
-        @Digits(integer = 2, fraction = 61) BigDecimal cdrSb) {
+        @Digits(integer = 2, fraction = 61) BigDecimal cdrSb,
+        @Valid VisitModelInputs modelInputs) {
+    public VisitCreateRequest(String visitCode, String visitDate, BigDecimal mmse, BigDecimal moca, BigDecimal cdrSb) {
+        this(visitCode, visitDate, mmse, moca, cdrSb, null);
+    }
 }

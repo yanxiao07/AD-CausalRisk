@@ -1,8 +1,11 @@
 package com.adcausalrisk.backend.visit;
 
+import java.util.List;
 import java.util.Set;
 
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,10 +17,13 @@ import com.adcausalrisk.backend.common.Envelope;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.dto.VisitResultView;
 import com.adcausalrisk.backend.validation.ContractGroup;
+import com.adcausalrisk.backend.visit.dto.VisitCorrectionRequest;
 import com.adcausalrisk.backend.visit.dto.VisitCreateRequest;
+import com.adcausalrisk.backend.visit.dto.VisitVersionView;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Valid;
 import jakarta.validation.Validator;
 import jakarta.validation.groups.Default;
 
@@ -55,10 +61,15 @@ import jakarta.validation.groups.Default;
 public class VisitController {
 
     private final VisitService visitService;
+    private final VisitCorrectionService correctionService;
     private final Validator validator;
 
-    public VisitController(VisitService visitService, Validator validator) {
+    public VisitController(
+            VisitService visitService,
+            VisitCorrectionService correctionService,
+            Validator validator) {
         this.visitService = visitService;
+        this.correctionService = correctionService;
         this.validator = validator;
     }
 
@@ -78,6 +89,30 @@ public class VisitController {
 
         AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
         return Envelope.success(visitService.createVisit(subjectId, request, principal));
+    }
+
+    /**
+     * {@code PATCH /api/subjects/{subjectId}/visits/{visitId}} - append a corrected version.
+     *
+     * <p>The previous row stays in the table with its original values; only its
+     * {@code is_current} flag is cleared. The response is the new effective version.
+     */
+    @PatchMapping("/{visitId}")
+    public Envelope<VisitResultView> correct(@PathVariable Long subjectId,
+                                             @PathVariable Long visitId,
+                                             @Valid @RequestBody VisitCorrectionRequest request,
+                                             Authentication authentication) {
+        AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
+        return Envelope.success(correctionService.correct(subjectId, visitId, request, principal));
+    }
+
+    /** {@code GET .../visits/{visitId}/history} - original plus every appended correction. */
+    @GetMapping("/{visitId}/history")
+    public Envelope<List<VisitVersionView>> history(@PathVariable Long subjectId,
+                                                    @PathVariable Long visitId,
+                                                    Authentication authentication) {
+        AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
+        return Envelope.success(correctionService.history(subjectId, visitId, principal));
     }
 
     /**

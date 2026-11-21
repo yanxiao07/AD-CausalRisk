@@ -93,12 +93,11 @@
       <artifactId>spring-security-test</artifactId>
       <scope>test</scope>
     </dependency>
-    <!-- Validates real responses against contracts/java-business.target.openapi.json. -->
+    <!-- The research client validates the published candidate wire schema before semantic checks. -->
     <dependency>
       <groupId>com.networknt</groupId>
       <artifactId>json-schema-validator</artifactId>
       <version>${json-schema-validator.version}</version>
-      <scope>test</scope>
     </dependency>
     <!-- Declared explicitly (not left to transitivity via spring-boot-starter-test)
          because Surefire loads this exact jar as a Java agent; see the build
@@ -113,6 +112,11 @@
   <build>
     <resources>
       <resource><directory>src/main/resources</directory></resource>
+      <resource>
+        <directory>${project.basedir}/../docs/contracts</directory>
+        <targetPath>research-contract</targetPath>
+        <includes><include>research-table-agent.draft.openapi.json</include></includes>
+      </resource>
       <resource><directory>${project.basedir}/../docs</directory><targetPath>research-evidence</targetPath><includes><include>Training_Perturbation_Results.md</include><include>Graph_Training_Perturbation_Results.md</include><include>Graph_Modality_Strata_Results.md</include><include>Graph_Explanation_Results.md</include><include>Table_Grouped_XAI_Results.md</include><include>Causal_Identification_Results.md</include><include>Research_Host_Evidence_Admission.md</include><include>Feature_Drift_Monitoring.md</include><include>Performance_Monitoring.md</include><include>Lifecycle_Monitoring.md</include></includes></resource>
     </resources>
     <plugins>

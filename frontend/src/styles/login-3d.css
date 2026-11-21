@@ -7,6 +7,9 @@
  * ============================================================ */
 
   button{cursor:pointer}
+  /* 登录页根节点必须是单元素，<Transition> 才能做页面切换动画；
+     display:contents 让它不产生额外盒子，原布局不受影响。 */
+  .login-shell{display:contents}
   .screen{
     position:relative;min-height:100vh;min-height:100svh;overflow:hidden;display:flex;flex-direction:column;
     --role-accent:#0a73ad;
@@ -153,7 +156,7 @@
     transition:color .2s;
   }
   .form-head p{margin:8px 0 0;font-size:13px;line-height:1.7;color:#5c7484;min-height:22px}
-  form{margin-top:27px;width:100%;max-width:398px}
+  :where(.login-shell) form{margin-top:27px;width:100%;max-width:398px}
   .field{margin-bottom:16px}
   .field-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .field label{display:block;font-size:12.5px;font-weight:600;letter-spacing:.3px;color:#416174}
@@ -314,13 +317,13 @@
 
   .form-pane{padding:46px clamp(36px,4.3vw,60px) 33px;align-items:center}
   .login-view{width:100%;max-width:400px}
-  .form-head,form,.success-view,.form-sep,.trust-row{width:100%;max-width:400px}
+  .form-head,:where(.login-shell) form,.success-view,.form-sep,.trust-row{width:100%;max-width:400px}
   .form-sep{margin-left:auto;margin-right:auto}
   .trust-row{margin-left:auto;margin-right:auto;justify-content:flex-start}
   .form-head{animation:contentIn .4s .12s cubic-bezier(.22,.8,.25,1) backwards}
   .form-head h2{font-size:28px;letter-spacing:-.7px;text-wrap:balance}
   .form-head p{font-size:13.5px;line-height:1.7;color:#58707f;min-height:23px;text-wrap:pretty}
-  form{margin-top:26px;max-width:400px;animation:contentIn .42s .18s cubic-bezier(.22,.8,.25,1) backwards}
+  :where(.login-shell) form{margin-top:26px;max-width:400px;animation:contentIn .42s .18s cubic-bezier(.22,.8,.25,1) backwards}
   .field{margin-bottom:17px}
   .field-head{margin-bottom:7px}
   .field label{font-size:13px;color:#35596c;transition:color .2s}
@@ -337,13 +340,13 @@
   .forgot{border:0;border-bottom:1px solid rgba(48,111,144,.28);background:transparent;padding:5px 0 2px;font:inherit;font-size:13px;color:#306f90;cursor:pointer}
   .forgot:hover{color:var(--role-accent);border-bottom-color:currentColor}
 
-  .field-error{
+  :where(.login-shell) .field-error{
     display:flex;align-items:flex-start;gap:8px;margin:-2px 0 17px;padding:10px 12px;
     border-radius:10px;background:var(--danger-soft);color:#a43840;font-size:13px;line-height:1.6;
     animation:errorIn .24s cubic-bezier(.22,.8,.25,1) both;
   }
-  .field-error[hidden]{display:none}
-  .field-error svg{flex:0 0 auto;margin-top:1px}
+  :where(.login-shell) .field-error[hidden]{display:none}
+  :where(.login-shell) .field-error svg{flex:0 0 auto;margin-top:1px}
   /* 角色不符且会话未确认退出时的重试入口：贴着错误提示下方，样式克制以免喧宾夺主 */
   .session-retry{
     display:inline-flex;align-items:center;justify-content:center;gap:6px;
@@ -505,7 +508,7 @@
     .form-pane::before{display:none}
     .form-head h2{font-size:22px}
     .form-head p{font-size:12px;min-height:0}
-    form{margin-top:20px}
+    :where(.login-shell) form{margin-top:20px}
     .field{margin-bottom:13px}
     .input-wrap{height:47px;border-radius:11px}
     .form-options{margin:2px 0 17px}
@@ -559,7 +562,7 @@
     .form-pane{padding:24px 20px 22px}
     .form-head h2{font-size:23px}
     .form-head p{font-size:13px;min-height:0}
-    form{margin-top:19px}
+    :where(.login-shell) form{margin-top:19px}
     .field{margin-bottom:14px}
     .field-head{margin-bottom:6px}
     .input-wrap{height:48px;padding-left:13px}
@@ -593,7 +596,7 @@
     .identity-note{padding:8px 2px 0;font-size:11px;line-height:1.5}
     .form-pane{padding:16px 16px 14px}
     .form-head h2{font-size:21px}
-    form{margin-top:14px}
+    :where(.login-shell) form{margin-top:14px}
     .field{margin-bottom:11px}
     .form-options{margin:9px 0 13px}
     .submit{height:48px;min-height:48px}

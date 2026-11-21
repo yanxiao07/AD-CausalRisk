@@ -1,0 +1,109 @@
+{
+  "contractVersion": "research-table-agent-v1",
+  "runId": "run-constructed-research-wire",
+  "modelKey": "constructed-seven-logistic",
+  "subjectCode": "CONSTRUCTED-001",
+  "dataVersion": "constructed-snapshot-v1",
+  "indexDate": "2020-01-02",
+  "availabilityPolicy": "RETROSPECTIVE_SNAPSHOT",
+  "predictionWindowMonths": 24,
+  "dataScope": "CONSTRUCTED_VALIDATION",
+  "status": "BLOCKED",
+  "model": {
+    "family": "logistic",
+    "specification": "seven",
+    "role": "FULL_COHORT_SEVEN_VARIABLE_RESEARCH_MODEL",
+    "features": [
+      "age_years",
+      "education_years",
+      "mmse",
+      "cdr_sb",
+      "cdr_global",
+      "adas__total13",
+      "faq__faqtotal"
+    ],
+    "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "trainingPlanSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "runtimeSourceSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "softwareLockSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "sourceMappingSha256": "2be25c0e3176806765a4350185191640144a2370d6951d62c66a4fdcdfac488f",
+    "graphProtocolSha256": null,
+    "predictionPolicy": "raw_uncalibrated_24month_CIF"
+  },
+  "admission": {
+    "schemaVersion": "research-input-admission-result-v1",
+    "status": "BLOCKED",
+    "recordCount": 1,
+    "blockedRecordCount": 1,
+    "featureOrder": [
+      "age_years",
+      "education_years",
+      "mmse",
+      "cdr_sb",
+      "cdr_global",
+      "adas__total13",
+      "faq__faqtotal"
+    ],
+    "missingFeatureCounts": {
+      "age_years": 0,
+      "education_years": 0,
+      "mmse": 0,
+      "cdr_sb": 0,
+      "cdr_global": 0,
+      "adas__total13": 0,
+      "faq__faqtotal": 0
+    },
+    "availabilityPolicy": "RETROSPECTIVE_SNAPSHOT",
+    "model": {
+      "family": "logistic",
+      "specification": "seven",
+      "role": "FULL_COHORT_SEVEN_VARIABLE_RESEARCH_MODEL",
+      "features": [
+        "age_years",
+        "education_years",
+        "mmse",
+        "cdr_sb",
+        "cdr_global",
+        "adas__total13",
+        "faq__faqtotal"
+      ],
+      "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "trainingPlanSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "runtimeSourceSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "softwareLockSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "sourceMappingSha256": "2be25c0e3176806765a4350185191640144a2370d6951d62c66a4fdcdfac488f",
+      "graphProtocolSha256": null,
+      "predictionPolicy": "raw_uncalibrated_24month_CIF"
+    },
+    "issues": [
+      {
+        "code": "QC_UNKNOWN",
+        "severity": "BLOCK",
+        "feature": "mmse",
+        "count": 1
+      }
+    ],
+    "predictionAllowed": false,
+    "clinicalUse": false,
+    "sourceAuthenticityCertified": false,
+    "historicalAvailabilityCertified": false,
+    "individualCausalEffectIdentified": false
+  },
+  "prediction": null,
+  "explanation": null,
+  "binding": null,
+  "requestSha256": "6ecf5e0d20411f9f2f60042a6f72a9c43f73aef7b95cee70564846db9ff24546",
+  "computation": {
+    "directCifCalls": 0,
+    "explanationCifCalls": 0
+  },
+  "synchronousExecution": true,
+  "persistentRunStore": false,
+  "clinicalUse": false,
+  "sourceAuthenticityCertified": false,
+  "historicalAvailabilityCertified": false,
+  "individualCausalEffectIdentified": false,
+  "defaultModelChanged": false
+}

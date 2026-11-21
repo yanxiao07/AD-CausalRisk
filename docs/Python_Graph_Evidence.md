@@ -1,6 +1,6 @@
 # Python先验图模板与来源路径
 
-本模块提供FR08/09的课程合成工程子集。默认五节点/四方向仍为原`synthetic-prior-v1`，ACTIVE表示输入资格，不表示学习出的边、因果效应或稳定性。真实研究医学图模板、完整人口学/生物标志物节点及临床证据仍须单独协议和验收。
+本模块提供FR08/09的合成验证工程子集。默认五节点/四方向仍为原`synthetic-prior-v1`，ACTIVE表示输入资格，不表示学习出的边、因果效应或稳定性。真实研究医学图模板、完整人口学/生物标志物节点及临床证据仍须单独协议和验收。
 
 ## 查看与检查模板
 
@@ -32,7 +32,7 @@ candidate_view = inspect_course_graph(request, template=checked)
 ```python
 from python_service.course_path_evidence import build_course_path_evidence
 
-# request/result均为调用方已持有的原课程对象；这里不会执行评分或请求HTTP。
+# request/result均为调用方已持有的原研究对象；这里不会执行评分或请求HTTP。
 evidence = build_course_path_evidence(request, result)
 ```
 

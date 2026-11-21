@@ -22,8 +22,18 @@ public class BusinessQueries {
     }
 
     public String scope(String subjectColumn, AppUserPrincipal user, boolean raw) {
+        String careBoundary = "";
+        if (!user.roleCodes().contains("PATIENT") && (raw || !user.roleCodes().contains("ADMIN"))) {
+            String nonCare = "NOT EXISTS (SELECT 1 FROM subject care WHERE care.id=" + subjectColumn
+                    + " AND care.data_version LIKE 'care-%')";
+            careBoundary = user.roleCodes().contains("DOCTOR")
+                    ? " AND (" + nonCare + " OR EXISTS (SELECT 1 FROM subject_permission care_grant WHERE care_grant.subject_id="
+                        + subjectColumn + " AND care_grant.user_id=" + user.userId()
+                        + " AND care_grant.permission_type IN ('VIEW','MANAGE')))"
+                    : " AND " + nonCare;
+        }
         if (raw && policy.hasFullRawScoreVisibility(user) || !raw && policy.hasFullVisibility(user))
-            return "1=1";
+            return "1=1" + careBoundary;
         Set<Long> ids =
                 raw ? policy.rawScoreVisibleSubjectIds(user) : policy.grantedSubjectIds(user);
         if (ids.isEmpty()) return "1=0";
@@ -33,7 +43,7 @@ public class BusinessQueries {
                         .sorted()
                         .map(String::valueOf)
                         .collect(java.util.stream.Collectors.joining(","))
-                + ")";
+                + ")" + careBoundary;
     }
 
     public static void admin(AppUserPrincipal user) {
@@ -91,6 +101,12 @@ public class BusinessQueries {
                         Object value = rs.getObject(i);
                         if (value instanceof Timestamp timestamp)
                             value = timestamp.toInstant().toString();
+                        else if (value instanceof LocalDateTime localDateTime)
+                            // MySQL Connector/J can surface DATETIME columns as LocalDateTime.
+                            // The JDBC URL uses connectionTimeZone=UTC, so attach UTC explicitly;
+                            // otherwise the JSON string loses its offset and browsers read it as
+                            // local time (eight hours early in Asia/Shanghai).
+                            value = localDateTime.toInstant(ZoneOffset.UTC).toString();
                         else if (value instanceof java.sql.Date date)
                             value = date.toLocalDate().toString();
                         else if (value instanceof Clob clob)
@@ -148,6 +164,13 @@ public class BusinessQueries {
                 id = "s.id";
                 date = "s.created_at";
                 where = scope(id, user, false);
+                where += switch (text(filter, "dataScope")) {
+                    case "" -> "";
+                    case "CONTROLLED_RESEARCH" -> " AND s.data_version LIKE 'adni-%'";
+                    case "CONSTRUCTED_VALIDATION" -> " AND s.data_version LIKE 'demo-%'";
+                    case "CARE_WORKFLOW" -> managedCareScope(user, args);
+                    default -> throw new BusinessException(ErrorCode.VALIDATION_ERROR, "无效的档案资料范围");
+                };
                 order = "s.id DESC";
             }
             case "assessments" -> {
@@ -179,12 +202,18 @@ public class BusinessQueries {
                     throw new BusinessException(ErrorCode.ACCESS_DENIED, "请使用本人摘要查看随访安排");
                 from =
                         "follow_up_plan f JOIN subject s ON s.id=f.subject_id JOIN sys_user u ON"
-                                + " u.id=f.owner_id";
-                select = "f.*,s.subject_code,s.alias subject_alias,u.username owner_name";
+                                + " u.id=f.owner_id LEFT JOIN follow_up_response booking"
+                                + " ON booking.follow_up_id=f.id AND booking.appointment_revision=f.appointment_revision";
+                boolean clinicalRole = user.roleCodes().contains("DOCTOR") || user.roleCodes().contains("ADMIN");
+                select = "f.*,s.subject_code,s.alias subject_alias,u.username owner_name,booking.response_status,"
+                        + (clinicalRole ? "booking.response_note" : "NULL AS response_note");
                 id = "f.subject_id";
                 date = "f.scheduled_at";
                 where = scope(id, user, true);
                 order = "f.scheduled_at,f.id";
+                if ("CARE_WORKFLOW".equals(text(filter, "dataScope"))) {
+                    where += managedCareScope(user, args);
+                }
             }
             case "quality" -> {
                 from = "quality_check q JOIN subject s ON s.id=q.subject_id";
@@ -357,11 +386,20 @@ public class BusinessQueries {
                 "manage",
                 policy.canManage(user, id),
                 "record",
-                policy.canCreate(user) && policy.canManage(user, id),
+                policy.canCreateArchive(user) && policy.canManage(user, id),
                 "writeClinical",
                 policy.canWriteClinical(user, id),
                 "requestAssessment",
                 policy.canRequestAssessment(user, id));
+    }
+
+    private static String managedCareScope(AppUserPrincipal user, List<Object> args) {
+        if (!user.roleCodes().contains("DOCTOR") || user.roleCodes().contains("PATIENT")) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "仅医生可查询负责的患者档案");
+        }
+        args.add(user.userId());
+        return " AND s.data_version LIKE 'care-%' AND EXISTS (SELECT 1 FROM subject_permission p"
+                + " WHERE p.subject_id=s.id AND p.user_id=? AND p.permission_type='MANAGE')";
     }
 
     public Map<String, Object> dashboard(AppUserPrincipal user) {

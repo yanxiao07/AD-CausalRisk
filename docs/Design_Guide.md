@@ -6,12 +6,14 @@
 
 | 角色 | 主要功能 | 必须检查的边界 |
 | --- | --- | --- |
-| ADMIN | 用户/角色、模型配置、系统状态、审计 | 管理操作留审计，不能任意改写已保存评估结果 |
+| ADMIN | 用户/角色、患者账号发放和责任医生交接、模型配置、系统状态、审计 | 核对当前质控及发放绑定，管理操作留审计，不能任意改写已保存评估结果 |
 | RESEARCHER | 档案、访视、特征、导入、质控、评估、报告 | 只能操作获授权的数据范围 |
-| DOCTOR | 获授权档案、结果、人工复核、随访、报告 | 检查档案授权及复核/随访权限 |
-| PATIENT | 本人摘要和随访 | 仅本人档案；不返回排序数值、图权重或内部阶段轨迹 |
+| DOCTOR | 获授权档案、账号和评估申请、复核、患者说明发布与撤回、随访 | 检查档案授权及复核、发布和随访权限 |
+| PATIENT | 本人评估进度、医生已发布说明、复诊确认和改期 | 仅本人档案。接口使用白名单，原始分数、图权重和内部执行轨迹留在工作台 |
 
 菜单与按钮可根据角色显示，但所有权限必须在后端再验证。列表、详情、任务、结果、随访和导出都执行对象级检查。即使修改URL中的数字ID，也不能访问未授权档案。
+
+医生主要从「我的患者」进入诊疗资料，从「报告复核」处理待办，从「评估报告」回看结果，从「随访计划」安排或处理复诊。贡献图从对应档案或报告进入。研究员工作台显示获授权病例数、质控待办和近期评估任务。侧栏可直达「模型验证与更新」、数据导入、研究档案、质控、评估任务、报告和贡献图。「模型验证与更新」默认显示获授权病例，研究档案则读取另行登记的受控研究资料和测试样例。管理员从侧栏或工作台进入验证资料授权。患者从本人首页查看复诊、医院联系方式和医生已发布的说明。
 
 ## 2. 后端分层
 
@@ -33,12 +35,13 @@ AgentClient：Python调用、超时/重试、契约与返回值校验
 | --- | --- | --- |
 | sys_user | id, username, password_hash, status, created_at | username唯一，密码哈希保存 |
 | sys_role / user_role | id, role_code / user_id, role_id | 四种角色，明确多角色处理规则 |
-| subject | id, subject_code, alias, status, data_version, created_at | subject_code唯一，DEMO编号映射数字主键 |
+| subject | id, subject_code, alias, status, data_version, created_at | 档案编号唯一。服务端分配资料版本，区分普通档案与既有研究记录 |
 | subject_permission | subject_id, user_id, permission_type | 档案与访问范围授权 |
 | visit | id, subject_id, visit_code, visit_date, mmse, moca, cdr_sb | 同档案visit_code唯一，保留日期与缺失 |
 | subject_feature | id, subject_id, feature_name, feature_value, recorded_at, unit | 保留来源时间、单位和版本，识别重复/冲突 |
 | data_import_job | id, created_by, status, data_version, total_rows, valid_rows, invalid_rows | 预览、确认入库与失败分开 |
 | quality_check | id, subject_id, quality_status, issues, checked_at, rule_version | 保存检查，不只临时计算页面值 |
+| care_assessment_request | subject_id, quality_check_id, requested_by, requested_at | 同档案同一次质控最多一份普通评估申请，复开页面可追溯 |
 | assessment_task | id, subject_id, status, run_id, request_digest, created_at, updated_at | 任务持久化及错误恢复 |
 | idempotency_record | user_id, operation, idempotency_key, request_digest, result_id | 用户+操作+键唯一，防止重复创建 |
 | risk_assessment | id, subject_id, task_id, agent_result_json, review_status, created_at | 保存返回版本、图、解释和限制 |
@@ -56,7 +59,23 @@ AgentClient：Python调用、超时/重试、契约与返回值校验
 
 使用fixtures的档案、访视和特征CSV分别验证。错误响应应能定位行号与字段；同一文件/幂等请求不会重复增加记录。
 
+七变量测试模板补充当前访视的五项模型输入。从档案读取已经保存的 MMSE、CDR-SB，并验证访视日期、权限和当前质控。确认后登记冻结快照，显式提交才发起预测。
+
 ### 评估
+
+普通档案按医生显式授权列入「我的患者」。当前资料通过质控后可提交 `CARE_WORKFLOW` 申请，当前状态为 `WAITING_FOR_VALIDATED_MODEL`。继续录入访视或更正资料后，重新质控才能为新资料提交。管理员办理账号核对，患者读取本人复诊。普通档案不会进入研究员的档案名单或研究执行队列。
+
+隔离人工验收中，`CARE_WORKFLOW` 自动从通过质控的同一次访视绑定 MMSE、CDR-SB 和五项补充资料。医生现有提交按钮复用任务持久化、执行租约与报告复核。人工数据的存储和计算运行在各自独立的本机服务内，研究员无逐单审批事项。
+
+新模型发布前，研究员与合作医院分别核验两年风险的院外表现和评分所触发行动的收益。更新须使用已获授权的数据离线进行，并保留验证记录及可回退版本。随访由医生确认，患者端显示具体安排。
+
+管理员可在「验证资料授权」输入批准的项目编号、病例编号、研究员账号和授权依据，也可撤销同一组合。负责医生在原档案的记录页登记有据可查的首次结局日期或最后一次确认日期。研究员可读取本人获授权的病例和关联的首次成功预测，包括冻结的七项输入、模型产物摘要和 24 个月结局。队列用验证编号标识病例，并保留必要的日期和测量明细，按项目授权管理。原档案编号和结局来源编号由诊疗端保管。早于 24 个月结束且无事件的随访显示「结局待确认」。
+
+同一项目、研究员及授权依据下的多份档案可点击「批量登记授权」，粘贴编号列表。页面合并重复编号，按档案提交并显示结果。管理员可重试失败项，或将这些编号填回表单更正。
+
+「运行 24 个月验证」按项目和固定模型摘要取当前账号获授权的全批病例。Java 固定本次快照和授权范围，将人工演练中已保存的概率和结局发给 Python，随后保存报告以供回读。重复运行同一快照返回原报告。任一非空结局与风险分组少于 5 例时抑制指标。通过该门槛的人工演练可以核对已知结局 AUC、Brier 及未知结局的可达范围。完整版本复评需要经核准的独立队列及两版同批预测。
+
+已有研究评估沿用相应的权限与快照流程。
 
 检查权限与档案 → 执行/读取质量检查 → 幂等创建PENDING任务 → RUNNING调用Python → 校验版本、runId和结果 → 保存COMPLETED/BLOCKED/FAILED及审计。
 
@@ -66,11 +85,15 @@ Python响应是AgentResult，Java响应是Envelope，两种格式分别处理。
 
 查看授权结果 → 保存复核decision/comment和操作者 → 根据需要创建随访 → 完成或取消计划并保留记录。随访表和复核表关联档案、任务或评估，避免页面重新加载后丢失。
 
+医生确认复核后，可另行发布患者说明。撤回新增记录。医生登记时间、地点和准备事项，患者可确认或提交改期，原日期在医院处理前继续有效。患者可回看其他安排及近期回执。
+
 ### 报告与审计
 
 报告读取已保存的评估及版本，加入生成时间、用途说明和复核信息。执行导出权限检查，并保存审计事件。日志记录摘要和traceId，不写密码、令牌或完整请求体。
 
 ## 5. 页面与交互
+
+四个角色的关键步骤、资料缺项和下一步直接写在相关控件附近。医护和管理页面在「本页术语」提供可展开的解释。正文中带点状下划线的词可以悬停、聚焦或点击查看简短说明，也可以用 Esc 关闭。患者端用日常语言呈现就诊安排及医生说明。新增词语复用前端词表，页面只引入该任务相关的词。[NHS 内容指南](https://service-manual.nhs.uk/content/how-we-write) · [GOV.UK 展开说明](https://design-system.service.gov.uk/components/details/) · [USWDS 简短提示](https://designsystem.digital.gov/components/tooltip/) · [W3C 悬停和焦点要求](https://www.w3.org/WAI/WCAG22/Understanding/content-on-hover-or-focus.html)
 
 | 页面 | 主要内容 | 重点状态 |
 | --- | --- | --- |

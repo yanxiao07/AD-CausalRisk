@@ -19,6 +19,7 @@ const PRESETS = {
   RUNNING: { label: '计算中', tone: 'info' },
   COMPLETED: { label: '已完成', tone: 'success' },
   FAILED: { label: '失败', tone: 'danger' },
+  OUTCOME_UNKNOWN: { label: '结果未知', tone: 'warning' },
   // 导入任务
   PREVIEW_READY: { label: '预检完成', tone: 'info' },
   COMMITTED: { label: '已入库', tone: 'success' },
@@ -32,6 +33,8 @@ const PRESETS = {
   // 档案
   ACTIVE: { label: '在组', tone: 'success' },
   ARCHIVED: { label: '已归档', tone: 'neutral' },
+  // 账号状态（sys_user.status）
+  DISABLED: { label: '已停用', tone: 'neutral' },
   // 风险等级
   HIGH: { label: '高风险', tone: 'danger' },
   MEDIUM: { label: '中风险', tone: 'warning' },

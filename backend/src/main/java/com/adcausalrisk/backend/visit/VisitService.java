@@ -84,7 +84,7 @@ public class VisitService {
     @Transactional
     public VisitResultView createVisit(
             Long subjectId, VisitCreateRequest request, AppUserPrincipal principal) {
-        if (!accessPolicy.canCreate(principal) || !accessPolicy.canManage(principal, subjectId)) {
+        if (!accessPolicy.canCreateArchive(principal) || !accessPolicy.canManage(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权创建访视");
         }
 

@@ -51,8 +51,13 @@ class WorkflowTests(unittest.TestCase):
     def test_compact_date_rejected_at_workflow_boundary(self):
         body=fixture();body['features'][0]['recordedAt']='20250101'
         with self.assertRaises(AgentContractError):run_workflow(body,score_java_synthetic_payload)
-    def test_original_example_is_reproduced(self):
+    def test_original_example_is_reproduced_except_documented_cdr_copy(self):
         expected=json.loads((ROOT/'contracts/examples/deepagent-v1.response.example.json').read_text(encoding='utf-8'))
+        # Keep the pinned historical example; the only allowed content delta
+        # is this explicitly reviewed CDR message. Compare every other field.
+        cdr=next(row for row in expected['explanations'] if row['feature']=='CDR_SB')
+        self.assertEqual(cdr['message'],'CDR-SB 信号在当前演示排序中贡献上移')
+        cdr['message']='CDR-SB 信号在当前排序中贡献上移'
         actual=run_workflow(fixture(),score_java_synthetic_payload)
         for row in actual['stages']:row['durationMs']=0
         self.assertEqual(actual,expected)

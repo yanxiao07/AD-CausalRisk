@@ -1,6 +1,6 @@
-# 合成三表到课程结果报告的批处理
+# 合成三表到研究结果报告的批处理
 
-`course_batch.py`把现有三表预检、原课程客户端、结果校验和报告工具接成显式操作的Python流程，对应FR-DATA/QUALITY/AGENT、FR-WARN-02和FR-REPORT-01的合成联调辅助。它只使用原课程合成数据与加性规则，不调用研究模型、不导入Java数据库、不管理用户或业务任务。
+`course_batch.py`把现有三表预检、原验证客户端、结果校验和报告工具接成显式操作的Python流程，对应FR-DATA/QUALITY/AGENT、FR-WARN-02和FR-REPORT-01的合成联调辅助。它只使用原合成验证数据与加性规则，不调用研究模型、不导入Java数据库、不管理用户或业务任务。
 
 ## 准备、执行、检查
 
@@ -12,7 +12,7 @@ python -B -m python_service.course_batch prepare --input python_service/examples
 
 prepare仅解析/核对原三表和质量门槛，不启动服务、不发HTTP、不评分。`previewInput`沿用原三表输入；`runIds`必须精确覆盖本批档案，且每个runId合法、唯一，不能使用CSV预检占位值。真实调用时由调用方分配并保存业务runId；示例固定runId只用于受控合成联调，不能被当作通用编号生成器。
 
-在另一个终端启动原课程服务，然后显式执行计划：
+在另一个终端启动原合成验证服务，然后显式执行计划：
 
 ```powershell
 python -B -m python_service.server --port 8091
@@ -20,7 +20,7 @@ python -B -m python_service.course_batch execute --plan course-batch-plan.json -
 python -B -m python_service.course_batch inspect --directory course-batch-run
 ```
 
-execute会主动向指定本机课程服务逐个POST合成请求；不替代Java业务授权。inspect只读本机文件，不发HTTP、不提交。准备文件和执行目录均必须全新；已有文件/目录拒绝覆盖，不能通过相同输出路径静默续跑。退出码0=计划准备完成或整批结果/报告已就绪，2=HALTED/INCOMPLETE，1=输入/文件错误，130=人工中断。
+execute会主动向指定本机合成验证服务逐个POST合成请求；不替代Java业务授权。inspect只读本机文件，不发HTTP、不提交。准备文件和执行目录均必须全新；已有文件/目录拒绝覆盖，不能通过相同输出路径静默续跑。退出码0=计划准备完成或整批结果/报告已就绪，2=HALTED/INCOMPLETE，1=输入/文件错误，130=人工中断。
 
 ## 执行与停止规则
 

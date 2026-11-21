@@ -1,127 +1,640 @@
 <template>
-  <div class="settings-page">
+  <div class="console-page">
     <PageHeader
       back
       title="系统设置"
-      subtitle="只读的系统信息与契约版本。修改类配置尚无接口，本页不提供任何写入操作。"
+      subtitle="检查服务是否在线，管理评估服务和审计日志保留时间。"
+      :terms="['host', 'manifest', 'artifact', 'checksum']"
     >
       <template #extra>
-        <StatusTag :type="probe.ok ? 'COMPLETED' : 'FAILED'" :label="probe.ok ? '后端在线' : '后端不可达'" />
-        <el-button :icon="Refresh" :loading="probing" @click="probeBackend">重新探测</el-button>
+        <span class="health-pill" :class="probe.ok ? 'health-pill--ok' : 'health-pill--bad'">
+          <span class="health-pill__dot" />
+          {{ probing ? '探测中' : probe.ok ? '后端在线' : '后端不可达' }}
+        </span>
+        <el-button :icon="Refresh" :loading="loading" @click="loadAll">刷新全部</el-button>
       </template>
     </PageHeader>
 
-    <div class="grid">
-      <article class="panel">
-        <h2 class="panel__title">前端构建</h2>
-        <dl class="kv">
-          <div><dt>版本</dt><dd>{{ appVersion }}</dd></div>
-          <div><dt>构建时间</dt><dd>{{ buildTime }}</dd></div>
-          <div><dt>运行模式</dt><dd>{{ mode }}</dd></div>
-          <div><dt>框架</dt><dd>Vue 3 + Vite + Element Plus</dd></div>
-        </dl>
-      </article>
-
-      <article class="panel">
-        <h2 class="panel__title">Java 后端</h2>
-        <dl class="kv">
-          <div>
-            <dt>连通性</dt>
-            <dd>{{ probing ? '探测中…' : probe.ok ? '在线' : probe.message }}</dd>
-          </div>
-          <div>
-            <dt>探测耗时</dt>
-            <dd>{{ probe.latencyMs === null ? '—' : `${probe.latencyMs} ms` }}</dd>
-          </div>
-          <div class="kv__wide">
-            <dt>版本</dt>
-            <dd>接口未提供：契约里没有 /actuator/info 或版本端点，无法读取</dd>
-          </div>
-        </dl>
-      </article>
-
-      <article class="panel">
-        <h2 class="panel__title">Python 算法版本</h2>
-        <p class="panel__hint">以下三个常量取自 OpenAPI 契约的 <code>const</code> 声明，运行期由 Java 透传。</p>
-        <dl class="kv">
-          <div><dt>模型版本</dt><dd>{{ modelVersion }}</dd></div>
-          <div><dt>Agent 契约</dt><dd>{{ agentContractVersion }}</dd></div>
-          <div><dt>工作流版本</dt><dd>{{ workflowVersion }}</dd></div>
-          <div><dt>实际运行的 runId</dt><dd>每份评估各自记录（见报告页）</dd></div>
-        </dl>
-      </article>
-
-      <article class="panel">
-        <h2 class="panel__title">OpenAPI 契约</h2>
-        <dl class="kv">
-          <div><dt>版本</dt><dd>{{ contractVersion }}</dd></div>
-          <div><dt>操作数</dt><dd>{{ contractOps }}</dd></div>
-          <div><dt>路径数</dt><dd>{{ contractPaths }}</dd></div>
-          <div class="kv__wide"><dt>来源</dt><dd>contracts/java-business.target.openapi.json</dd></div>
-        </dl>
-      </article>
-
+    <div class="console-grid">
+      <!-- 1. 系统健康 -->
       <article class="panel panel--wide">
-        <h2 class="panel__title">固定的业务规则</h2>
-        <ul class="rules">
-          <li><strong>预测窗口</strong>6–60 个月，默认 24 个月；超出范围直接 400。</li>
-          <li><strong>BLOCKED</strong> 表示 <code>riskScore = null</code>、<code>riskLevel = UNAVAILABLE</code>，绝不用 0 或插值补分。</li>
-          <li><strong>患者端</strong>只接收通俗摘要，不包含原始分数、图权重与内部轨迹。</li>
-          <li><strong>审计日志</strong>仅 ADMIN 可读；写入走独立事务，失败不阻断业务。</li>
-          <li><strong>评估复核</strong>同一评估只允许一次决策，重复提交返回 400。</li>
-          <li><strong>幂等</strong>导入与评估任务都按 <code>Idempotency-Key</code> + 请求摘要去重。</li>
+        <header class="panel__head">
+          <div>
+            <h2 class="panel__title">系统健康</h2>
+          </div>
+          <el-button text :icon="Refresh" :loading="probing" @click="probeBackend">重新探测</el-button>
+        </header>
+
+        <div class="health-grid">
+          <div class="health-tile">
+            <span class="health-tile__label">业务服务</span>
+            <strong class="health-tile__value" :class="probe.ok ? 'is-ok' : 'is-bad'">
+              {{ probing ? '探测中…' : probe.ok ? '在线' : probe.message }}
+            </strong>
+            <span class="health-tile__meta">
+              {{ probe.latencyMs === null ? '—' : `${probe.latencyMs} ms` }} ·
+              {{ info?.appVersion || '—' }} · Java {{ info?.javaVersion || '—' }}
+            </span>
+          </div>
+
+          <div class="health-tile">
+            <span class="health-tile__label">评估服务</span>
+            <strong class="health-tile__value" :class="hostState.ok ? 'is-ok' : 'is-bad'">
+              {{ hostState.label }}
+            </strong>
+            <span class="health-tile__meta">{{ host?.baseUrl || '尚未配置服务地址' }}</span>
+            <span class="health-tile__meta">
+              {{ hostHealth?.available
+                ? `响应 ${hostHealth.latencyMs ?? '—'} 毫秒`
+                : '请检查评估服务地址和运行状态' }}
+            </span>
+          </div>
+
+        </div>
+      </article>
+
+      <!-- 2. 模型仓库与通道 -->
+      <details class="panel panel--wide">
+        <summary>高级设置 · 模型版本库</summary>
+        <header class="panel__head">
+          <div>
+            <h2 class="panel__title">模型仓库</h2>
+            <p class="panel__hint">
+              上传模型清单和模型文件，核对 <TermHelp name="checksum" label="SHA-256" />。启用、停用及回滚均记录在审计日志里。
+              登记后，还需由评估服务加载对应的模型文件。
+            </p>
+          </div>
+          <div class="panel__actions">
+            <el-button text :icon="Refresh" :loading="modelLoading" @click="loadModels">
+              刷新仓库
+            </el-button>
+            <el-button type="primary" :icon="Upload" @click="openUpload">上传模型</el-button>
+          </div>
+        </header>
+
+        <p role="status">{{ loadedModelNote }}</p>
+        <ul v-if="loadedModels.length">
+          <li v-for="model in loadedModels" :key="model.specification + '/' + model.family">
+            {{ model.specification }} / {{ model.family }} · {{ shortSha(model.artifactSha256) }}
+          </li>
         </ul>
+
+        <el-skeleton v-if="modelLoading && models.length === 0" :rows="3" animated />
+        <el-empty
+          v-else-if="!models.length"
+          :description="modelError || '没有已安装的模型版本'"
+          :image-size="64"
+        />
+        <el-table v-else :data="models" size="small" class="model-table">
+          <el-table-column label="模型版本" min-width="230">
+            <template #default="{ row }">
+              <span class="model-version">{{ row.modelVersion }}</span>
+              <span class="model-origin" :class="row.registered ? 'model-origin--uploaded' : ''">
+                {{ row.registered ? '已上传' : '内置' }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="仓库状态" width="108">
+            <template #default="{ row }">
+              <el-tag v-if="isEnabled(row)" type="success" effect="light" size="small">
+                已启用
+              </el-tag>
+              <el-tag v-else type="info" effect="plain" size="small">停用</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="研究宿主" min-width="130">
+            <template #default="{ row }">{{ releaseHostState(row) }}</template>
+          </el-table-column>
+          <el-table-column label="Artifact SHA-256" min-width="190">
+            <template #default="{ row }">
+              <span v-if="row.artifactSha256" class="mono">{{ shortSha(row.artifactSha256) }}</span>
+              <span v-else class="state state--off">内置 · 未上传</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="更新时间" width="170">
+            <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="240">
+            <template #default="{ row }">
+              <div class="model-actions">
+                <el-switch
+                  :model-value="isEnabled(row)"
+                  :loading="togglingVersion === row.modelVersion"
+                  @change="(value) => toggleModel(row, value)"
+                />
+                <el-button
+                  v-if="!isEnabled(row)"
+                  link
+                  type="primary"
+                  size="small"
+                  :icon="RefreshLeft"
+                  :loading="rollbackVersion === row.modelVersion"
+                  @click="rollbackTo(row)"
+                >
+                  回滚到此版本
+                </el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+
+      </details>
+
+      <!-- 3. 研究宿主 -->
+      <article class="panel">
+        <header class="panel__head">
+          <div>
+            <h2 class="panel__title">评估服务配置</h2>
+            <p class="panel__hint">配置执行评估的服务地址和访问令牌。</p>
+          </div>
+          <span class="state" :class="host?.configured ? 'state--on' : 'state--off'">
+            {{ host?.configured ? '已配置' : '未配置' }}
+          </span>
+        </header>
+
+        <el-form label-position="top" class="host-form" @submit.prevent>
+          <el-form-item label="服务地址">
+            <el-input
+              v-model="hostForm.baseUrl"
+              placeholder="https://research.example.org 或 http://127.0.0.1:8091"
+              clearable
+            />
+            <p class="field-hint">远程必须 HTTPS；HTTP 仅允许 127.0.0.1 / localhost。不能带路径与查询参数。</p>
+          </el-form-item>
+
+          <el-form-item label="Bearer Token">
+            <el-input
+              v-model="hostForm.bearerToken"
+              type="password"
+              show-password
+              autocomplete="new-password"
+              :placeholder="host?.bearerTokenConfigured ? '已配置，留空保持不变' : '尚未配置，首次保存必填'"
+            />
+          </el-form-item>
+
+          <div class="form-row">
+            <el-form-item label="读取超时（秒）">
+              <el-input-number v-model="hostForm.readTimeoutSeconds" :min="1" :max="600" controls-position="right" />
+            </el-form-item>
+            <el-form-item label="启用状态">
+              <el-switch v-model="hostForm.enabled" active-text="启用" inactive-text="停用" />
+            </el-form-item>
+          </div>
+
+          <div class="form-actions">
+            <el-button type="primary" :loading="hostSaving" @click="saveHost">保存评估服务配置</el-button>
+            <el-button :disabled="hostSaving" @click="resetHostForm">还原</el-button>
+            <span v-if="host?.updatedAt" class="meta">上次变更 {{ formatTime(host.updatedAt) }}</span>
+          </div>
+        </el-form>
+      </article>
+
+      <!-- 4. 账号与保留策略 -->
+      <article class="panel">
+        <h2 class="panel__title">账号与保留策略</h2>
+
+        <div class="account-summary">
+          <div>
+            <span class="account-summary__label">账号总数</span>
+            <strong class="account-summary__value">{{ accountsTotal ?? '—' }}</strong>
+          </div>
+          <el-button text type="primary" @click="goUsers">前往账号管理 →</el-button>
+        </div>
+
+        <ul class="role-matrix">
+          <li><span class="role role--admin">管理员</span>发放账号、管理授权、查看日志</li>
+          <li><span class="role role--research">研究员</span>整理资料、发起评估</li>
+          <li><span class="role role--doctor">医生</span>管理授权档案、复核报告、安排随访</li>
+          <li><span class="role role--patient">患者</span>查看本人摘要和随访</li>
+        </ul>
+
+        <div class="retention-block">
+          <div class="retention-block__head">
+            <strong>审计日志保留</strong>
+            <span class="meta">仅清理 <code>audit_log</code>；临床评估与报告永不自动删除。</span>
+          </div>
+          <div class="retention-block__control">
+            <el-input-number v-model="retentionDraft" :min="30" :max="3650" :step="30" controls-position="right" />
+            <span class="unit">天</span>
+            <el-button type="primary" :loading="retentionSaving" @click="saveRetention">保存策略</el-button>
+          </div>
+          <span v-if="retention?.updatedAt" class="meta">上次变更 {{ formatTime(retention.updatedAt) }}</span>
+        </div>
       </article>
     </div>
 
-    <p class="settings-foot">
-      配置项只读：契约的 22 个操作里没有系统设置/参数管理接口，因此本页不提供保存按钮。
-      需要可配置项时，先在后端补 <code>GET/PATCH /api/system/settings</code> 再扩展本页。
+    <el-dialog
+      v-model="uploadOpen"
+      title="上传模型版本"
+      width="560px"
+      :close-on-click-modal="false"
+      @closed="resetUpload"
+    >
+      <el-form label-position="top" class="upload-form" @submit.prevent>
+        <el-form-item label="Manifest（JSON）">
+          <input
+            ref="manifestInput"
+            type="file"
+            accept=".json,application/json"
+            class="file-input"
+            @change="onManifestSelected"
+          />
+          <p class="field-hint">
+            Manifest 必须包含 <code>modelVersion</code>；当前识别：
+            <strong>{{ manifestVersion || '尚未选择或缺少 modelVersion' }}</strong>
+          </p>
+        </el-form-item>
+
+        <el-form-item label="Artifact（模型文件）">
+          <input
+            ref="artifactInput"
+            type="file"
+            class="file-input"
+            @change="onArtifactSelected"
+          />
+          <p class="field-hint">
+            {{ artifactName || '尚未选择' }}
+            <template v-if="artifactSize"> · {{ formatBytes(artifactSize) }}</template>
+            · 上限 10 MB
+          </p>
+        </el-form-item>
+
+        <div class="hash-box">
+          <div>
+            <span>Artifact SHA-256</span>
+            <code>{{ hashComputing ? '计算中…' : artifactSha || '选择文件后由浏览器计算' }}</code>
+          </div>
+          <p>后端会重新计算并与此值比对；不一致直接拒绝，不会写入仓库。</p>
+        </div>
+      </el-form>
+
+      <template #footer>
+        <el-button :disabled="uploading" @click="uploadOpen = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="uploading"
+          :disabled="!canUpload"
+          @click="submitUpload"
+        >
+          校验并上传
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <p class="console-foot">
+      控制台写入均需 ADMIN，并记录 <code>SYSTEM_*</code> 审计事件；模型开关仍走
+      <code>PATCH /api/system/models/{version}</code>。
     </p>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { Refresh } from '@element-plus/icons-vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { getLoadedResearchModels } from '@/api/system.js'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, RefreshLeft, Upload } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
-import StatusTag from '@/components/common/StatusTag.vue'
+import TermHelp from '@/components/common/TermHelp.vue'
 import request from '@/api/request.js'
+import {
+  getModelRepository,
+  getResearchHost,
+  getRetentionPolicy,
+  getSystemInfo,
+  rollbackModel,
+  saveResearchHost,
+  saveRetentionPolicy,
+  updateModelConfig,
+  uploadModelRelease
+} from '@/api/system.js'
+import { listUsers } from '@/api/users.js'
+
+const router = useRouter()
 
 const timeFormatter = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
   hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit'
+  minute: '2-digit'
 })
 
 function formatTime(value) {
+  if (!value) return '—'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '—' : timeFormatter.format(date)
 }
-/**
- * 构建期注入的常量（见 vite.config.js 的 define）。
- * 用 typeof 保护，避免在未注入的环境（例如单测）里报 ReferenceError。
- */
-const appVersion = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev'
-const buildTime = typeof __BUILD_TIME__ === 'string' ? formatTime(__BUILD_TIME__) : '—'
-const contractVersion = typeof __CONTRACT_VERSION__ === 'string' ? __CONTRACT_VERSION__ : '—'
-const contractOps = typeof __CONTRACT_OPS__ === 'number' ? __CONTRACT_OPS__ : '—'
-const contractPaths = typeof __CONTRACT_PATHS__ === 'number' ? __CONTRACT_PATHS__ : '—'
-const modelVersion = typeof __MODEL_VERSION__ === 'string' ? __MODEL_VERSION__ : '—'
-const agentContractVersion =
-  typeof __AGENT_CONTRACT_VERSION__ === 'string' ? __AGENT_CONTRACT_VERSION__ : '—'
-const workflowVersion = typeof __WORKFLOW_VERSION__ === 'string' ? __WORKFLOW_VERSION__ : '—'
-const mode = import.meta.env.MODE
 
+
+const loading = ref(false)
 const probing = ref(false)
 const probe = ref({ ok: false, latencyMs: null, message: '未探测' })
 
+const info = ref(null)
+const infoLoading = ref(false)
+const infoError = ref('')
+const models = ref([])
+const modelLoading = ref(false)
+const modelError = ref('')
+const togglingVersion = ref('')
+const rollbackVersion = ref('')
+
+const uploadOpen = ref(false)
+const manifestInput = ref(null)
+const artifactInput = ref(null)
+const manifestFile = ref(null)
+const artifactFile = ref(null)
+const manifestVersion = ref('')
+const artifactName = ref('')
+const artifactSize = ref(0)
+const artifactSha = ref('')
+const hashComputing = ref(false)
+const uploading = ref(false)
+const canUpload = computed(
+  () =>
+    Boolean(manifestFile.value && artifactFile.value && manifestVersion.value && artifactSha.value) &&
+    !hashComputing.value &&
+    !uploading.value
+)
 
 
-/** 真实探测：/api/me 需要登录态，能返回就说明后端与安全链都活着。 */
+const host = ref(null)
+const loadedStatus = ref('UNKNOWN')
+const loadedModels = ref([])
+const loadedModelNote = computed(() => ({
+  REPORTED: `研究宿主报告已加载 ${loadedModels.value.length} 个模型。下表按清单和模型文件摘要逐条比对。`,
+  UNSUPPORTED: '当前研究宿主未提供已加载模型清单，请以部署回执为准。',
+  NOT_CONFIGURED: '评估服务未配置或已停用，暂无法核对模型。',
+  INVALID: '评估服务返回的模型清单无效。',
+  UNAVAILABLE: '暂时无法读取评估服务的模型清单。'
+})[loadedStatus.value] || '正在核对评估服务的模型清单…')
+
+function releaseHostState(row) {
+  if (!row.artifactSha256 || !row.manifestSha256) return '无发布物可比对'
+  if (loadedStatus.value !== 'REPORTED') return '待核对'
+  return loadedModels.value.some(model => model.artifactSha256 === row.artifactSha256
+    && model.manifestSha256 === row.manifestSha256) ? '已加载同一发布物' : '宿主未加载'
+}
+
+async function loadResearchModels() {
+  loadedStatus.value = 'UNKNOWN'
+  loadedModels.value = []
+  try {
+    const data = await getLoadedResearchModels()
+    loadedStatus.value = data.status
+    loadedModels.value = data.models
+  } catch {
+    loadedStatus.value = 'UNAVAILABLE'
+  }
+}
+const hostSaving = ref(false)
+const hostHealth = computed(() => info.value?.researchHost || null)
+const hostState = computed(() => {
+  if (!host.value) return { ok: false, label: '未配置' }
+  if (!host.value.enabled) return { ok: false, label: '已停用' }
+  if (!host.value.configured) return { ok: false, label: '待补全' }
+  const health = hostHealth.value
+  if (!health) return { ok: true, label: '已配置' }
+  if (health.available) {
+    const latency = Number(health.latencyMs)
+    return { ok: true, label: Number.isFinite(latency) ? `在线 · ${latency} ms` : '在线' }
+  }
+  return { ok: false, label: health.message || '不可达' }
+})
+const hostForm = reactive({
+  baseUrl: '',
+  bearerToken: '',
+  readTimeoutSeconds: 120,
+  enabled: true
+})
+
+const retention = ref(null)
+const retentionDraft = ref(365)
+const retentionSaving = ref(false)
+const accountsTotal = ref(null)
+
+function isEnabled(row) {
+  const value = row?.enabled
+  return value === true || value === 1 || value === '1'
+}
+
+function shortSha(value) {
+  return value ? `${value.slice(0, 12)}…${value.slice(-6)}` : '—'
+}
+
+function formatBytes(value) {
+  const bytes = Number(value) || 0
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
+async function sha256Hex(buffer) {
+  if (!window.crypto?.subtle) throw new Error('当前浏览器不支持 Web Crypto，无法校验 SHA-256')
+  const digest = await window.crypto.subtle.digest('SHA-256', buffer)
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function openUpload() {
+  resetUpload()
+  uploadOpen.value = true
+}
+
+function resetUpload() {
+  manifestFile.value = null
+  artifactFile.value = null
+  manifestVersion.value = ''
+  artifactName.value = ''
+  artifactSize.value = 0
+  artifactSha.value = ''
+  hashComputing.value = false
+  uploading.value = false
+  if (manifestInput.value) manifestInput.value.value = ''
+  if (artifactInput.value) artifactInput.value.value = ''
+}
+
+async function onManifestSelected(event) {
+  const file = event.target.files?.[0]
+  manifestFile.value = file || null
+  manifestVersion.value = ''
+  if (!file) return
+  try {
+    const parsed = JSON.parse(await file.text())
+    manifestVersion.value = String(parsed?.modelVersion || parsed?.version || '').trim()
+    if (!manifestVersion.value) ElMessage.warning('Manifest 缺少 modelVersion')
+  } catch {
+    ElMessage.error('Manifest 不是合法 JSON')
+  }
+}
+
+async function onArtifactSelected(event) {
+  const file = event.target.files?.[0]
+  artifactFile.value = file || null
+  artifactName.value = file?.name || ''
+  artifactSize.value = file?.size || 0
+  artifactSha.value = ''
+  if (!file) return
+  hashComputing.value = true
+  try {
+    const buffer = await file.arrayBuffer()
+    artifactSha.value = await sha256Hex(buffer)
+  } catch (problem) {
+    ElMessage.error(problem?.message || '无法计算 Artifact SHA-256')
+  } finally {
+    hashComputing.value = false
+  }
+}
+
+async function submitUpload() {
+  if (!canUpload.value) return
+  uploading.value = true
+  try {
+    const created = await uploadModelRelease({
+      manifest: manifestFile.value,
+      artifact: artifactFile.value,
+      artifactSha256: artifactSha.value
+    })
+    ElMessage.success(`模型 ${created?.modelVersion || manifestVersion.value} 已登记`)
+    uploadOpen.value = false
+    await loadModels()
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function loadModels() {
+  void loadResearchModels()
+  modelLoading.value = true
+  modelError.value = ''
+  try {
+    const data = await getModelRepository()
+    models.value = Array.isArray(data) ? data : []
+  } catch (problem) {
+    modelError.value = problem?.message || '模型仓库读取失败（需要管理员权限）'
+  } finally {
+    modelLoading.value = false
+  }
+}
+
+async function loadInfo() {
+  infoLoading.value = true
+  infoError.value = ''
+  try {
+    info.value = await getSystemInfo()
+  } catch (problem) {
+    infoError.value = problem?.message || '系统信息读取失败（需要管理员权限）'
+  } finally {
+    infoLoading.value = false
+  }
+}
+
+async function loadHost() {
+  try {
+    const data = await getResearchHost()
+    host.value = data
+    resetHostForm()
+  } catch {
+    // 保持空表单
+  }
+}
+
+async function loadRetention() {
+  try {
+    const data = await getRetentionPolicy()
+    retention.value = data
+    retentionDraft.value = Number(data?.auditLogDays) || 365
+  } catch {
+    // 保持默认
+  }
+}
+
+async function loadAccountTotal() {
+  try {
+    const page = await listUsers({ page: 1, pageSize: 1 })
+    accountsTotal.value = Number(page?.total) || 0
+  } catch {
+    accountsTotal.value = null
+  }
+}
+
+function resetHostForm() {
+  hostForm.baseUrl = host.value?.baseUrl || ''
+  hostForm.bearerToken = ''
+  hostForm.readTimeoutSeconds = Number(host.value?.readTimeoutSeconds) || 120
+  hostForm.enabled = host.value?.enabled !== false
+}
+
+async function saveHost() {
+  if (hostForm.enabled && !hostForm.baseUrl.trim()) {
+    ElMessage.warning('启用评估服务前请填写服务地址')
+    return
+  }
+  hostSaving.value = true
+  try {
+    const saved = await saveResearchHost({
+      baseUrl: hostForm.baseUrl.trim(),
+      bearerToken: hostForm.bearerToken,
+      readTimeoutSeconds: hostForm.readTimeoutSeconds,
+      enabled: hostForm.enabled
+    })
+    host.value = saved
+    hostForm.bearerToken = ''
+    hostForm.baseUrl = saved?.baseUrl || ''
+    ElMessage.success('评估服务配置已保存')
+    await loadInfo()
+  } finally {
+    hostSaving.value = false
+  }
+}
+
+async function saveRetention() {
+  retentionSaving.value = true
+  try {
+    const saved = await saveRetentionPolicy(retentionDraft.value)
+    retention.value = saved
+    retentionDraft.value = Number(saved?.auditLogDays) || retentionDraft.value
+    ElMessage.success(`审计日志保留 ${retentionDraft.value} 天`)
+  } finally {
+    retentionSaving.value = false
+  }
+}
+
+async function toggleModel(row, value) {
+  const version = row?.modelVersion
+  if (!version) return
+  togglingVersion.value = version
+  try {
+    await updateModelConfig(version, value)
+    ElMessage.success(`已${value ? '启用' : '停用'} ${version}`)
+  } finally {
+    togglingVersion.value = ''
+    await loadModels()
+  }
+}
+
+async function rollbackTo(row) {
+  const version = row?.modelVersion
+  if (!version) return
+  try {
+    await ElMessageBox.confirm(
+      `将停用当前启用版本，并启用 ${version}。研究宿主必须已加载同一 Artifact，实际打分才会改变。`,
+      '确认回滚模型',
+      { confirmButtonText: '回滚到此版本', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  rollbackVersion.value = version
+  try {
+    await rollbackModel(version)
+    ElMessage.success(`已回滚到 ${version}`)
+    await loadModels()
+  } finally {
+    rollbackVersion.value = ''
+  }
+}
+
 async function probeBackend() {
   probing.value = true
   const startedAt = performance.now()
@@ -143,45 +656,39 @@ async function probeBackend() {
   }
 }
 
-onMounted(probeBackend)
+function goUsers() {
+  router.push('/admin/users')
+}
+
+async function loadAll() {
+  loading.value = true
+  try {
+    await Promise.all([
+      probeBackend(),
+      loadInfo(),
+      loadModels(),
+      loadHost(),
+      loadRetention(),
+      loadAccountTotal()
+    ])
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadAll)
 </script>
 
 <style scoped>
-.settings-page {
+.console-page {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.settings-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.settings-title {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.settings-sub {
-  margin: 6px 0 0;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.settings-head__right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.grid {
+.console-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -189,15 +696,24 @@ onMounted(probeBackend)
   padding: 18px 20px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: #ffffff;
+  background: #fff;
+  min-width: 0;
 }
 
 .panel--wide {
   grid-column: 1 / -1;
 }
 
+.panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 .panel__title {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.3px;
@@ -205,76 +721,351 @@ onMounted(probeBackend)
 }
 
 .panel__hint {
-  margin: 0 0 12px;
+  margin: 4px 0 0;
   font-size: 12px;
   line-height: 1.7;
   color: var(--muted);
 }
 
-.kv {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px 18px;
-  margin: 0;
+.health-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.kv > div {
+.health-pill--ok {
+  color: #2f6f5e;
+  background: rgba(63, 122, 118, 0.1);
+}
+
+.health-pill--bad {
+  color: #a33d3d;
+  background: rgba(163, 61, 61, 0.1);
+}
+
+.health-pill__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.health-tile {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f8fbfd 0%, #fff 100%);
 }
 
-.kv__wide {
-  grid-column: 1 / -1;
-}
-
-.kv dt {
+.health-tile__label {
   font-size: 11px;
   letter-spacing: 0.4px;
   text-transform: uppercase;
   color: var(--soft);
 }
 
-.kv dd {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
+.health-tile__value {
+  font-size: 18px;
+  font-weight: 700;
   color: var(--ink);
-  word-break: break-word;
 }
 
-.rules {
-  margin: 0;
-  padding-left: 18px;
+.health-tile__value.is-ok {
+  color: #2f6f5e;
+}
+
+.health-tile__value.is-bad {
+  color: #a33d3d;
+}
+
+.health-tile__meta {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.model-table {
+  margin-bottom: 4px;
+}
+
+.state {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.state--on {
+  color: #2f6f5e;
+}
+
+.state--off {
+  color: var(--soft);
+}
+
+
+
+
+
+.host-form {
+  margin-top: 4px;
+}
+
+.field-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--soft);
+}
+
+.form-row {
+  display: flex;
+  gap: 18px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--soft);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.account-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fbfd;
+}
+
+.account-summary__label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--soft);
+}
+
+.account-summary__value {
+  font-size: 24px;
+  color: var(--ink);
+}
+
+.role-matrix {
+  list-style: none;
+  margin: 14px 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.rules li {
+.role-matrix li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 13px;
-  line-height: 1.7;
-  color: #a8c4d6;
+  color: var(--muted);
 }
 
-.rules strong {
+.role {
+  min-width: 92px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.role--admin {
+  color: #7a4b1f;
+  background: rgba(196, 141, 74, 0.16);
+}
+
+.role--research {
+  color: #2b5f86;
+  background: rgba(79, 141, 196, 0.14);
+}
+
+.role--doctor {
+  color: #2f6f5e;
+  background: rgba(63, 122, 118, 0.14);
+}
+
+.role--patient {
+  color: #6b5a86;
+  background: rgba(128, 103, 168, 0.14);
+}
+
+.retention-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.retention-block__head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.retention-block__head strong {
   color: var(--ink);
-  margin-right: 4px;
+  font-size: 14px;
+}
+
+.retention-block__control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.unit {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.model-version {
+  display: block;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.model-origin {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(47, 111, 143, 0.07);
+}
+
+.model-origin--uploaded {
+  color: #2b5f86;
+  background: rgba(47, 111, 143, 0.12);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.model-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed rgba(47, 111, 143, 0.3);
+  border-radius: 8px;
+  background: rgba(47, 111, 143, 0.03);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.hash-box {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(47, 111, 143, 0.05);
+}
+
+.hash-box > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.hash-box code {
+  word-break: break-all;
+}
+
+.hash-box p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--soft);
+}
+
+.console-foot {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--soft);
 }
 
 code {
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(79, 195, 247, 0.12);
-  color: #9fd4f0;
+  background: rgba(47, 111, 143, 0.08);
+  color: #2b5f86;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
 }
 
-.settings-foot {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--soft);
+@media (max-width: 1100px) {
+  .console-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .health-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

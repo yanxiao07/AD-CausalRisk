@@ -72,6 +72,7 @@ class BusinessCloseoutTest {
         jdbc.update("DELETE FROM idempotency_record");
         jdbc.update("DELETE FROM qc_audit_record");
         jdbc.update("DELETE FROM quality_check");
+        jdbc.update("DELETE FROM follow_up_response");
         jdbc.update("DELETE FROM follow_up_plan");
         jdbc.update("DELETE FROM subject_feature");
         jdbc.update("DELETE FROM visit");
@@ -168,6 +169,12 @@ class BusinessCloseoutTest {
     }
 
     void grant(String name, String permission) throws Exception {
+        if ("patient".equals(name) && "SUMMARY_READ".equals(permission)) {
+            // Legacy patient binding fixture for unrelated read/workflow checks.
+            jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'SUMMARY_READ')",
+                    subject, user(name));
+            return;
+        }
         call(
                 post("/api/subjects/" + subject + "/permissions"),
                 admin,
@@ -644,6 +651,62 @@ class BusinessCloseoutTest {
         assertThat(Instant.parse(view.path("next").path("scheduledAt").asText()))
                 .isAfter(Instant.now());
         assertThat(view.toString()).doesNotContain("ownerId", "notes");
+    }
+
+    @Test
+    void appointmentRespondsAndReschedulesOnlyForCurrentRevisionAndAuthorizedActors() throws Exception {
+        grant("patient", "SUMMARY_READ");
+        var patient = login("patient", "DemoPass!2026");
+        var researcher = login("researcher", "DemoPass!2026");
+        var input = new HashMap<>(follow());
+        input.put("visitLocation", "演练门诊二楼");
+        input.put("preparation", "带上演练资料");
+        var original = data(call(post("/api/follow-ups"), admin, input, 200));
+        long id = original.path("id").asLong();
+        long revision = original.path("appointmentRevision").asLong();
+        var originalAppointmentTime = data(call(get("/api/patients/me/follow-up"), patient, null, 200))
+                .at("/next/scheduledAt");
+        String booking = "/api/follow-ups/" + id;
+        String response = "/api/patients/me/follow-up/" + id + "/response";
+        String decline = booking + "/decline-reschedule";
+        var confirm = Map.of("appointmentRevision", revision, "action", "CONFIRM");
+        var pending = Map.of("appointmentRevision", revision, "action", "REQUEST_RESCHEDULE", "note", "下周三上午");
+        call(post(response), researcher, confirm, 403);
+        call(post("/api/patients/me/follow-up/999999/response"), patient, confirm, 403);
+        var confirmed = data(call(post(response), patient, confirm, 200)).path("next");
+        assertThat(confirmed.path("responseStatus").asText()).isEqualTo("CONFIRMED");
+        assertThat(confirmed.path("visitLocation").asText()).isEqualTo("演练门诊二楼");
+        assertThat(confirmed.path("preparation").asText()).isEqualTo("带上演练资料");
+        var applied = data(call(post(response), patient, pending, 200)).path("next");
+        assertThat(applied.path("responseStatus").asText()).isEqualTo("RESCHEDULE_REQUESTED");
+        var nearer = data(call(post("/api/follow-ups"), admin, Map.of("subjectId", subject,
+                "scheduledAt", Instant.now().plusSeconds(3600).toString(), "purpose", "更近的复诊"), 200));
+        var multiple = data(call(get("/api/patients/me/follow-up"), patient, null, 200));
+        assertThat(multiple.at("/next/id").asLong()).isEqualTo(nearer.path("id").asLong());
+        assertThat(multiple.at("/appointments/1/responseStatus").asText()).isEqualTo("RESCHEDULE_REQUESTED");
+        call(patch(booking), admin, Map.of("scheduledAt", Instant.now().minusSeconds(900).toString(), "appointmentRevision", revision), 400);
+        call(patch("/api/follow-ups/" + nearer.path("id").asLong()), admin, Map.of("status", "CANCELLED"), 200);
+        assertThat(data(call(get("/api/patients/me/follow-up"), patient, null, 200))
+                .at("/appointments/1/status").asText()).isEqualTo("CANCELLED");
+        assertThat(applied.path("scheduledAt")).isEqualTo(originalAppointmentTime);
+        call(post(response), patient, pending, 200);
+        assertThat(count("follow_up_response WHERE follow_up_id=" + id)).isEqualTo(1);
+        call(patch(booking), admin, Map.of("visitLocation", "仅变更地点", "appointmentRevision", revision), 409);
+        call(post(decline), patient, Map.of("appointmentRevision", revision), 403);
+        call(post(decline), admin, Map.of("appointmentRevision", revision), 200);
+        assertThat(data(call(get("/api/patients/me/follow-up"), patient, null, 200))
+                .at("/next/responseStatus").asText()).isEqualTo("RESCHEDULE_DECLINED");
+        call(post(response), patient, pending, 200);
+        String newDate = Instant.now().plusSeconds(7 * 86400).toString();
+        var edit = data(call(patch(booking), admin,
+                Map.of("scheduledAt", newDate, "appointmentRevision", revision, "notes", "内部演练备注"), 200));
+        assertThat(edit.path("appointmentRevision").asLong()).isEqualTo(revision + 1);
+        call(post(response), patient, confirm, 409);
+        call(patch(booking), admin, Map.of("appointmentRevision", revision, "preparation", "已过期"), 409);
+        var next = data(call(get("/api/patients/me/follow-up"), patient, null, 200)).path("next");
+        assertThat(next.path("responseStatus").isNull()).isTrue();
+        assertThat(next.path("rescheduled").asBoolean()).isTrue();
+        assertThat(next.toString()).doesNotContain("内部演练备注", "下周三上午");
     }
 
     @Test

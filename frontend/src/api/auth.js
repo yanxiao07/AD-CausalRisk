@@ -1,4 +1,4 @@
-import request from './request.js'
+import request, { ensureCsrfToken, resetCsrfToken } from './request.js'
 import { useUserStore } from '../stores/user.js'
 
 /** 登录页身份卡的 key → 后端角色码。 */
@@ -55,6 +55,7 @@ export function closeSessionAndVerify() {
     }
     return probeSession()
   })().finally(() => {
+    resetCsrfToken()
     closingSession = null
   })
   return closingSession
@@ -84,7 +85,8 @@ export async function login(username, password, expectedRoleKey) {
   }
 
   const data = await request.post('/auth/login', { username, password }, {
-    skipAuthHandling: true
+    skipAuthHandling: true,
+    skipCsrf: true
   })
 
   const expected = ROLE_CODES[expectedRoleKey]
@@ -118,6 +120,9 @@ export async function login(username, password, expectedRoleKey) {
   }
 
   useUserStore().setUser(data)
+  // 登录会轮换会话与 CSRF token；先丢弃登录前的缓存，再换取新 token。
+  resetCsrfToken()
+  await ensureCsrfToken()
   return data
 }
 
@@ -128,11 +133,27 @@ export async function fetchCurrentUser() {
   return data
 }
 
+/** GET /api/me/profile —— 当前账号可维护的个人资料。 */
+export async function getMyProfile() {
+  return request.get('/me/profile')
+}
+
+/** PATCH /api/me/profile —— 只发送要修改的字段。 */
+export async function updateMyProfile(patch) {
+  return request.patch('/me/profile', patch)
+}
+
+/** POST /api/me/password —— 需要当前密码确认。 */
+export async function changeMyPassword({ currentPassword, newPassword }) {
+  return request.post('/me/password', { currentPassword, newPassword })
+}
+
 /** POST /api/auth/logout —— 无论后端是否成功，本地登录态都要清掉。 */
 export async function logout() {
   try {
     await request.post('/auth/logout')
   } finally {
+    resetCsrfToken()
     useUserStore().clear()
   }
 }

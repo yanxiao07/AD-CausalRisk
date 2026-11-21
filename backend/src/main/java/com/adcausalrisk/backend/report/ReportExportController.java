@@ -26,6 +26,7 @@ public class ReportExportController {
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + file.filename() + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .body(file.bytes());
     }
 }

@@ -1,5 +1,5 @@
 /**
- * P6 浏览器冒烟：评估报告（含打印）+ 因果图谱大屏。
+ * P6 浏览器冒烟：历史报告打印与当前评估图谱。
  * 接口用桩响应（不依赖 8080）。
  *
  *   node scripts/e2e-p6.mjs   （需先 npm run dev -- --port 5199）
@@ -84,14 +84,21 @@ const ASSESSMENT = {
   }
 }
 
+const REPORT = {
+  taskId: 14, subjectId: 2, subjectCode: 'RESEARCH-002', subjectAlias: '研究样本',
+  dataScope: 'CONTROLLED_RESEARCH', status: 'COMPLETED', createdAt: '2026-10-30T12:00:00Z',
+  result: {
+    dataScope: 'CONTROLLED_RESEARCH',
+    explanation: { groups: ['mmse'], contributions: [[[0.012, -0.002]]] }
+  }
+}
+
 const checks = []
 let failed = 0
 const check = (name, ok, detail) => {
   checks.push({ name, ok, detail })
   if (!ok) failed += 1
 }
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
@@ -114,8 +121,15 @@ try {
     if (path === '/api/auth/login' || path === '/api/me') return respond(DOCTOR)
     if (path === '/api/subjects') return respond({ items: [SUBJECT], page: 1, pageSize: 20, total: 1 })
     if (path === '/api/subjects/1') return respond({ subject: SUBJECT, visits: [], features: [] })
+    if (path === '/api/research/table-assessment-tasks/reports') return respond({ items: [REPORT], total: 1 })
     if (path === '/api/reports/99') return respond(ASSESSMENT)
     if (path === '/api/assessments/99') return respond(ASSESSMENT)
+    if (path === '/api/assessments/99/reviews') return respond([])
+    if (/^\/api\/assessment-tasks\/\d+\/input$/.test(path)) {
+      return respond({ request: { predictionWindowMonths: 24 } })
+    }
+    // 报告页/图谱页还会读一些辅助接口；未桩时给空信封，避免落到真实后端触发 401 跳登录。
+    if (path.startsWith('/api/')) return respond(null)
     return req.continue()
   })
 
@@ -144,6 +158,12 @@ try {
   check('关键解释渲染', reportText.includes('APOE ε4 携带'), '')
   check('免责声明存在', reportText.includes('不构成诊断'), '')
 
+  // 报告页是独立路由，ECharts 异步初始化，给它一点时间再数 canvas
+  await page
+    .waitForFunction(() => document.querySelectorAll('.sheet .causal-graph canvas').length === 1, {
+      timeout: 10000
+    })
+    .catch(() => {})
   const canvas = await page.evaluate(() => document.querySelectorAll('.sheet .causal-graph canvas').length)
   check('报告内嵌因果图', canvas === 1, `canvas=${canvas}`)
 
@@ -153,7 +173,7 @@ try {
     window.print = () => {
       called = true
     }
-    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('打印报告'))
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('打印'))
     btn?.click()
     window.print = original
     return called
@@ -161,31 +181,16 @@ try {
   check('打印按钮调用 window.print()', printCall === true, '')
   await page.screenshot({ path: join(shotDir, 'p6-report.png'), fullPage: true })
 
-  // ---------- 因果图谱 ----------
+  // 未选档案时只显示选择提示。从档案进入才显示该档案最近一次评估。
   await page.goto(`${BASE}/graph`, { waitUntil: 'domcontentloaded' })
-  await page.waitForSelector('.id-input input', { timeout: 15000 })
-  await page.type('.id-input input', '99')
-  await page.evaluate(() => {
-    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '载入图谱')
-    btn?.click()
-  })
-  await page.waitForSelector('.stage', { timeout: 20000 })
-  await page.waitForFunction(() => document.querySelectorAll('.stage .causal-graph canvas').length === 1, {
-    timeout: 20000
-  })
-  const stageText = await page.evaluate(() => document.querySelector('.stage').textContent.replace(/\s+/g, ' '))
-  check('图谱页显示节点/边统计', stageText.includes('4 个节点') && stageText.includes('3 条关联'), stageText.slice(0, 60))
-  check('图谱 canvas 渲染', true, 'canvas=1')
+  await page.waitForFunction(() => document.body.innerText.includes('请先选择档案'))
+  check('未选择档案时不展示他人评估', !await page.$('.result-head'), '')
+  await page.goto(`${BASE}/graph?subjectId=2`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('.graph-page .causal-graph canvas', { timeout: 20000 })
+  const graphText = await page.$eval('.graph-page', node => node.textContent)
+  check('最新图谱来自当前研究报告', graphText.includes('研究样本') && graphText.includes('提高模型估计'), '')
+  check('图谱无需录入历史评估号', !await page.$('.id-input'), '')
 
-  await page.evaluate(() => {
-    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('沉浸查看'))
-    btn?.click()
-  })
-  await sleep(600)
-  const immersive = await page.evaluate(() =>
-    document.querySelector('.stage')?.classList.contains('stage--immersive')
-  )
-  check('沉浸模式切换', immersive === true, '')
   await page.screenshot({ path: join(shotDir, 'p6-graph.png') })
 
   check('无页面异常', errors.length === 0, errors[0] || 'none')

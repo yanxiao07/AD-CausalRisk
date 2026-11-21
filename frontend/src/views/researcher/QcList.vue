@@ -1,18 +1,61 @@
 <template>
   <div class="qc-page">
-    <PageHeader back title="数据质控" subtitle="导入后的异常项由系统列出，研究员或管理员逐条通过/驳回。">
+    <PageHeader
+      back
+      title="数据质控"
+      subtitle="查看资料检查结果与缺项。被阻断时请补齐或更正，再重新检查。"
+      :terms="['quality', 'testSnapshot', 'dataVersion']"
+    >
       <template #extra>
         <el-radio-group v-model="status" size="small" @change="reload">
-          <el-radio-button label="PENDING">待审</el-radio-button>
-          <el-radio-button label="APPROVED">已通过</el-radio-button>
-          <el-radio-button label="REJECTED">已驳回</el-radio-button>
-          <el-radio-button label="">全部</el-radio-button>
+          <el-radio-button value="BLOCKED">被阻断</el-radio-button>
+          <el-radio-button value="WARN">需关注</el-radio-button>
+          <el-radio-button value="PASS">通过</el-radio-button>
+          <el-radio-button value="">全部</el-radio-button>
         </el-radio-group>
         <el-button :icon="Refresh" @click="reload">刷新</el-button>
       </template>
     </PageHeader>
 
     <DataCard padding="none">
+      <div class="filter">
+        <el-input
+          v-model="keyword"
+          class="filter__input"
+          size="small"
+          clearable
+          placeholder="档案编号 / 别名关键词"
+          @keyup.enter="reload"
+          @clear="reload"
+        />
+        <el-input
+          v-model="subjectFilter"
+          class="filter__input filter__input--narrow"
+          size="small"
+          clearable
+          placeholder="受试者 ID"
+          @keyup.enter="reload"
+          @clear="reload"
+        />
+        <el-button size="small" :icon="Search" @click="reload">查询</el-button>
+        <div class="batch-bar">
+          <span v-if="selectedRows.length" class="batch-bar__count">已选 {{ selectedRows.length }} 条</span>
+          <el-button
+            type="primary"
+            size="small"
+            :disabled="selectedRows.length === 0"
+            @click="openBatch"
+          >
+            生成测试快照
+          </el-button>
+        </div>
+      </div>
+
+      <p class="batch-hint">
+        批量生成只读取每条档案最新一次访视的 MMSE / CDR-SB，其余变量标记为
+        <code>NOT_COLLECTED</code>；BLOCKED 记录需先补录数据，不能直接生成。
+      </p>
+
       <el-skeleton v-if="loading" :rows="4" animated />
 
       <EmptyState
@@ -27,49 +70,48 @@
       <EmptyState
         v-else-if="items.length === 0"
         :icon="Checked"
-        :title="status === 'PENDING' ? '没有待审的质控记录' : '没有符合条件的质控记录'"
-        description="导入 CSV 后，发现异常的行会进入这里等待人工处理。"
+        title="没有符合条件的质控记录"
+        description="导入或补录数据后，系统会按规则自动生成检查结果；被阻断的记录会阻止发起评估。"
       />
 
       <template v-else>
-        <el-table :data="items" class="table" row-key="id">
+        <el-table
+          :data="items"
+          class="table"
+          row-key="id"
+          @selection-change="onSelectionChange"
+        >
+          <el-table-column type="selection" width="48" :selectable="canSelect" />
           <el-table-column label="受试者" min-width="180">
             <template #default="{ row }">
               <span class="subject">{{ row.subjectAlias || '—' }}</span>
               <span class="subject__code">{{ row.subjectCode || `#${row.subjectId}` }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="visitCode" label="访视" width="120" />
-          <el-table-column prop="abnormalItems" label="异常项" min-width="220" show-overflow-tooltip />
-          <el-table-column label="状态" width="110">
+          <el-table-column label="质控状态" width="120">
             <template #default="{ row }">
-              <StatusTag :type="row.status" />
+              <StatusTag :type="row.qualityStatus" />
             </template>
           </el-table-column>
-          <el-table-column label="提交时间" width="170">
-            <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="170" fixed="right">
+          <el-table-column label="问题明细" min-width="320">
             <template #default="{ row }">
-              <template v-if="row.status === 'PENDING'">
-                <el-button
-                  text
-                  type="primary"
-                  :loading="auditing === row.id"
-                  @click="audit(row, 'APPROVED')"
-                >
-                  通过
-                </el-button>
-                <el-button
-                  text
-                  type="danger"
-                  :loading="auditing === row.id"
-                  @click="audit(row, 'REJECTED')"
-                >
-                  驳回
-                </el-button>
-              </template>
-              <span v-else class="done">{{ row.auditorName || '已处理' }}</span>
+              <span v-if="issuesOf(row).length === 0" class="empty-cell">无异常</span>
+              <ul v-else class="issues">
+                <li v-for="(issue, index) in issuesOf(row)" :key="index">{{ issue }}</li>
+              </ul>
+            </template>
+          </el-table-column>
+          <el-table-column label="规则版本" width="140">
+            <template #default="{ row }">
+              <span class="mono">{{ row.ruleVersion || '—' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="检查时间" width="170">
+            <template #default="{ row }">{{ formatTime(row.checkedAt) }}</template>
+          </el-table-column>
+          <el-table-column label="数据版本" width="140">
+            <template #default="{ row }">
+              <span class="mono">{{ row.dataVersion || '—' }}</span>
             </template>
           </el-table-column>
         </el-table>
@@ -86,27 +128,92 @@
         </div>
       </template>
     </DataCard>
+
+    <el-dialog v-model="batchOpen" title="批量生成测试快照" width="640px" :close-on-click-modal="!batchRunning">
+      <div v-if="!batchResult" class="batch-confirm">
+        <p>
+          将从 {{ selectedRows.length }} 个受试者的最新访视生成快照。缺失变量会按
+          <code>NOT_COLLECTED</code> 记录，不会补 0 或均值。
+        </p>
+        <el-checkbox v-model="batchEvaluate">
+          生成后立即提交研究模型评估
+        </el-checkbox>
+        <p class="batch-confirm__hint">
+          提交后结果会写入研究任务历史，并可从研究档案的「模型验证结果」查看。
+        </p>
+      </div>
+
+      <div v-else class="batch-result">
+        <p class="batch-result__summary">
+          成功 {{ batchResult.succeeded ?? 0 }} 条，失败 {{ batchResult.failed ?? 0 }} 条。
+        </p>
+        <el-table :data="batchResult.items || []" size="small" max-height="360">
+          <el-table-column label="受试者" width="90">
+            <template #default="{ row }">#{{ row.subjectId }}</template>
+          </el-table-column>
+          <el-table-column label="快照" width="80">
+            <template #default="{ row }">{{ row.snapshotId ? `#${row.snapshotId}` : '—' }}</template>
+          </el-table-column>
+          <el-table-column label="同步" width="100">
+            <template #default="{ row }">
+              <el-tag v-if="row.hostSyncStatus" size="small" :type="row.hostSyncStatus === 'SYNCED' ? 'success' : 'warning'">
+                {{ row.hostSyncStatus === 'SYNCED' ? '已同步' : row.hostSyncStatus }}
+              </el-tag>
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="任务" width="90">
+            <template #default="{ row }">
+              <span v-if="row.taskId">#{{ row.taskId }}</span>
+              <StatusTag v-else-if="row.taskStatus" :type="row.taskStatus" />
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="说明" min-width="180">
+            <template #default="{ row }">{{ row.message || '—' }}</template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <template #footer>
+        <el-button v-if="batchResult" @click="closeBatch">关闭</el-button>
+        <el-button v-if="batchResult" type="primary" @click="reload">刷新列表</el-button>
+        <template v-else>
+          <el-button :disabled="batchRunning" @click="batchOpen = false">取消</el-button>
+          <el-button type="primary" :loading="batchRunning" @click="runBatch">
+            确认生成
+          </el-button>
+        </template>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Checked, Refresh, WarningFilled } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { Checked, Refresh, Search, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { listQcRecords, submitQcAudit } from '@/api/qc.js'
+import { listQualityChecks } from '@/api/qc.js'
+import { batchResearchSnapshots } from '@/api/research.js'
 
 const items = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
-const status = ref('PENDING')
+const status = ref('')
+const keyword = ref('')
+const subjectFilter = ref('')
 const loading = ref(true)
 const error = ref('')
-const auditing = ref(null)
+const selectedRows = ref([])
+const batchOpen = ref(false)
+const batchRunning = ref(false)
+const batchEvaluate = ref(false)
+const batchResult = ref(null)
 
 /** 请求序号守卫：翻页/切筛选时只认最后一次查询 */
 let requestSeq = 0
@@ -124,13 +231,73 @@ function formatTime(value) {
   return Number.isNaN(date.getTime()) ? '—' : timeFormatter.format(date)
 }
 
+/** issues 在库里是 JSON 字符串（如 ["缺失 MMSE"]），兼容已是数组的情况。 */
+function issuesOf(row) {
+  const raw = row?.issues
+  if (Array.isArray(raw)) return raw.filter(Boolean)
+  if (typeof raw !== 'string' || !raw.trim()) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [raw]
+  } catch {
+    return [raw]
+  }
+}
+
+function canSelect(row) {
+  return row?.qualityStatus !== 'BLOCKED'
+}
+
+function onSelectionChange(rows) {
+  selectedRows.value = Array.isArray(rows) ? rows : []
+}
+
+function openBatch() {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先选择需要生成快照的受试者')
+    return
+  }
+  batchResult.value = null
+  batchEvaluate.value = false
+  batchOpen.value = true
+}
+
+async function runBatch() {
+  batchRunning.value = true
+  try {
+    const subjectIds = selectedRows.value.map((row) => row.subjectId).filter(Boolean)
+    const data = await batchResearchSnapshots({ subjectIds, evaluate: batchEvaluate.value })
+    batchResult.value = data || { items: [], succeeded: 0, failed: 0 }
+    if ((data?.failed ?? 0) === 0) {
+      ElMessage.success('快照已生成')
+    } else {
+      ElMessage.warning(`有 ${data.failed} 条生成失败，请查看明细`)
+    }
+  } catch (problem) {
+    ElMessage.error(problem?.message || '批量生成失败，请稍后重试')
+  } finally {
+    batchRunning.value = false
+  }
+}
+
+function closeBatch() {
+  batchOpen.value = false
+  batchResult.value = null
+}
+
 async function load() {
   // 请求序号：翻页/切筛选很快时，旧页面的响应不能覆盖当前页
   const seq = ++requestSeq
   loading.value = true
   error.value = ''
   try {
-    const data = await listQcRecords({ status: status.value || undefined, page: page.value, pageSize: pageSize.value })
+    const data = await listQualityChecks({
+      status: status.value || undefined,
+      keyword: keyword.value.trim() || undefined,
+      subjectId: subjectFilter.value.trim() || undefined,
+      page: page.value,
+      pageSize: pageSize.value
+    })
     if (seq !== requestSeq) return
     items.value = Array.isArray(data?.items) ? data.items : []
     total.value = Number(data?.total ?? items.value.length)
@@ -149,53 +316,6 @@ function reload() {
   load()
 }
 
-async function audit(row, decision) {
-  const label = decision === 'APPROVED' ? '通过' : '驳回'
-  let comment = ''
-  try {
-    const result = await ElMessageBox.prompt(
-      `确定${label}这条质控记录吗？可填写说明（可留空）。`,
-      `${label}质控`,
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        inputType: 'textarea',
-        inputPlaceholder: decision === 'REJECTED' ? '请写明驳回原因（必填）' : '请填写审核意见（必填）',
-        // 后端 QcSubmitRequest.auditComment 是 @NotBlank：空提交会 400，这里必须拦住
-        inputValidator: (value) => {
-          const text = (value || '').trim()
-          if (!text) return '复核意见不能为空（后端要求每次决定都有人类说明）'
-          if (text.length > 500) return '不能超过 500 字'
-          return true
-        }
-      }
-    )
-    comment = (result.value || '').trim()
-  } catch {
-    return
-  }
-
-  auditing.value = row.id
-  try {
-    const updated = await submitQcAudit(row.id, {
-      status: decision,
-      auditComment: comment,
-      abnormalItems: row.abnormalItems || undefined
-    })
-    const index = items.value.findIndex((item) => item.id === row.id)
-    if (index >= 0) {
-      // 当前筛选是"待审"时，处理完就从列表里移除
-      if (status.value === 'PENDING') items.value.splice(index, 1)
-      else items.value[index] = { ...items.value[index], ...updated }
-    }
-    ElMessage.success(`已${label}`)
-  } catch {
-    // request.js 已提示（例如记录不是 PENDING）
-  } finally {
-    auditing.value = null
-  }
-}
-
 onMounted(load)
 </script>
 
@@ -204,6 +324,23 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.filter__input {
+  width: 220px;
+}
+
+.filter__input--narrow {
+  width: 130px;
 }
 
 .table {
@@ -222,9 +359,72 @@ onMounted(load)
   font-family: var(--font-display);
 }
 
-.done {
+.issues {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.empty-cell {
+  font-size: 13px;
+  color: var(--soft);
+}
+
+.mono {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.batch-bar__count {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.batch-hint {
+  margin: 0;
+  padding: 0 18px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--soft);
+}
+
+.batch-hint code,
+.batch-confirm code {
+  font-family: var(--font-display);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--brand-50);
+  color: var(--brand-700);
+}
+
+.batch-confirm p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.batch-confirm__hint {
+  margin: 12px 0 0;
   font-size: 12px;
   color: var(--soft);
+}
+
+.batch-result__summary {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--ink);
 }
 
 .pager {

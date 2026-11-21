@@ -7,11 +7,16 @@
     />
 
     <div class="causal-graph__legend">
-      <span class="legend__item"><i class="dot dot--prior" />先验证据（PRIOR）</span>
-      <span class="legend__item"><i class="dot dot--model" />模型证据（MODEL）</span>
-      <span class="legend__item"><i class="dot dot--missing" />缺失数据</span>
+      <span v-if="!attribution" class="legend__item"><i class="dot dot--prior" />先验证据（PRIOR）</span>
+      <template v-if="attribution">
+        <span class="legend__item"><i class="dot dot--increase" />提高模型估计</span>
+        <span class="legend__item"><i class="dot dot--model" />降低模型估计</span>
+        <span class="legend__item"><i class="dot dot--neutral" />零贡献</span>
+      </template>
+      <span v-else class="legend__item"><i class="dot dot--model" />模型证据（MODEL）</span>
+      <span v-if="!attribution" class="legend__item"><i class="dot dot--missing" />缺失数据</span>
     </div>
-    <p class="causal-graph__note">
+    <p v-if="!attribution" class="causal-graph__note">
       连线表示<strong>条件性关联</strong>（direction = CONDITIONAL），不是病因证明；
       箭头方向用于解释模型输入，不代表临床因果结论。滚轮缩放、拖动查看，悬停连线看类型，
       <strong>双击复位</strong>。
@@ -33,6 +38,7 @@ const props = defineProps({
    * AgentResult.graph：{ nodes: [{id,label,status,evidenceLevel,observedAt}], edges: [{from,to,note,status,evidenceLevel,direction}] }
    */
   graph: { type: Object, default: null },
+  attribution: { type: Boolean, default: false },
   height: { type: Number, default: 380 }
 })
 
@@ -43,6 +49,7 @@ let observer = null
 const PRIOR = '#0a73ad'
 const MODEL = '#0e806e'
 const MUTED = '#9db4c2'
+const INCREASE = '#a44c2e'
 
 function nodeStyle(node) {
   const missing = node.status === 'MISSING'
@@ -84,22 +91,30 @@ function layoutScaleOf(height) {
 }
 
 function buildOption(graph) {
+  const attribution = props.attribution
   const layoutScale = layoutScaleOf(props.height)
   const rawEdges = graph?.edges ?? []
+  const nodeNames = new Map((graph?.nodes ?? []).map(node => [node.id, node.label || node.id]))
   // 边多的时候先不铺边标签，避免整张图被文字淹没；悬停仍能看到完整说明
   const showEdgeLabels = rawEdges.length <= 12
 
   const nodes = (graph?.nodes ?? []).map((node) => ({
     id: node.id,
     name: node.label || node.id,
-    symbolSize: node.status === 'MISSING' ? 34 : 46,
+    symbolSize: attribution ? (node.outcome ? 46 : 32)
+      : node.status === 'MISSING' ? 34 : 46,
     ...nodeStyle(node),
+    ...(attribution && node.outcome ? {
+      itemStyle: { color: '#163b62', borderColor: '#163b62', shadowBlur: 12, shadowColor: 'rgba(22,59,98,.25)' }
+    } : {}),
     // tooltip 用
     value: node
   }))
 
   const edges = rawEdges.map((edge) => {
     const missing = edge.status === 'MISSING'
+    let color = missing ? MUTED : 'rgba(10,115,173,0.55)'
+    if (attribution) color = edge.contribution > 0 ? INCREASE : edge.contribution < 0 ? MODEL : MUTED
     return {
       source: edge.from,
       target: edge.to,
@@ -107,7 +122,7 @@ function buildOption(graph) {
       value: shortNote(edge.note),
       note: edge.note || '',
       lineStyle: {
-        color: missing ? MUTED : 'rgba(10,115,173,0.55)',
+        color,
         width: missing ? 1 : 1.5,
         type: missing ? 'dashed' : 'solid',
         curveness: 0.1,
@@ -117,13 +132,22 @@ function buildOption(graph) {
   })
 
   return {
+    animation: !attribution,
     backgroundColor: 'transparent',
     tooltip: {
+      ...(attribution ? { renderMode: 'richText' } : {}),
       confine: true,
       backgroundColor: 'rgba(255,255,255,0.96)',
       borderColor: '#dbe9f1',
       textStyle: { color: '#11344b', fontSize: 12 },
       formatter: (params) => {
+        if (attribution) {
+          if (params.dataType === 'edge') {
+            const { source, target, note } = params.data
+            return `${nodeNames.get(source)} → ${nodeNames.get(target)}\n${note}`
+          }
+          return params.name
+        }
         if (params.dataType === 'edge') {
           const note = params.data.note || '无备注'
           return `<b>${params.data.source} → ${params.data.target}</b><br/>${note}<br/><span style="color:#637f91">条件性关联 · 非病因证明</span>`
@@ -329,6 +353,9 @@ onBeforeUnmount(() => {
 .dot--model {
   background: #0e806e;
 }
+
+.dot--increase { background: #a44c2e; }
+.dot--neutral { background: #9db4c2; }
 
 .dot--missing {
   background: #fff;

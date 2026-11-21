@@ -160,16 +160,18 @@ class SubjectApiTest {
     }
 
     @Test
-    void doctorCannotCreateSubject() throws Exception {
+    void doctorCanCreateSubjectAndReadTheirArchive() throws Exception {
         MockHttpSession doctor = login("doctor");
 
         JsonNode body =
                 bodyOf(
                         mockMvc.perform(createRequest("DEMO-DOCTOR1", "医生创建").session(doctor))
-                                .andExpect(status().isForbidden())
+                                .andExpect(status().isOk())
                                 .andReturn());
 
-        assertThat(body.get("errorCode").asText()).isEqualTo("ACCESS_DENIED");
+        long id = body.path("data").path("id").asLong();
+        assertThat(id).isPositive();
+        mockMvc.perform(get("/api/subjects/" + id).session(doctor)).andExpect(status().isOk());
     }
 
     @Test
@@ -188,6 +190,46 @@ class SubjectApiTest {
     // ===================================================================
     // 2. GET /api/subjects - paged list
     // ===================================================================
+
+    @Test
+    void existingPatientViewGrantCountsAsAnAccountBinding() throws Exception {
+        seedSubjects("DEMO-PATIENT-BOUND");
+        long id = subjectRepository.findBySubjectCode("DEMO-PATIENT-BOUND").orElseThrow().getId();
+        grantPermission(id, "doctor", PermissionType.MANAGE);
+        grantPermission(id, "patient", PermissionType.VIEW);
+
+        mockMvc.perform(post("/api/patient-account-requests").session(login("doctor"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("subjectId", id))))
+                .andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM patient_account_request WHERE subject_id=?",
+                Integer.class, id)).isZero();
+    }
+
+    @Test
+    void filtersSubjectScopeAndPermissionsBeforePaging() throws Exception {
+        var doctor = login("doctor");
+        seedSubjects("DEMO-SCOPE-NEW");
+        var controlled = subjectRepository.saveAndFlush(new Subject(
+                "ADNI-REVIEW-SCOPE", "受控测试记录", Subject.Status.ACTIVE, "adni-scope-test", Instant.now()));
+        var hidden = subjectRepository.saveAndFlush(new Subject(
+                "ADNI-REVIEW-HIDDEN", "未授权记录", Subject.Status.ACTIVE, "adni-scope-test", Instant.now()));
+        long doctorId = jdbc.queryForObject("SELECT id FROM sys_user WHERE username='doctor'", Long.class);
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'VIEW')",
+                controlled.getId(), doctorId);
+        var demo = subjectRepository.findBySubjectCode("DEMO-SCOPE-NEW").orElseThrow();
+        jdbc.update("INSERT INTO subject_permission(subject_id,user_id,permission_type) VALUES(?,?,'VIEW')",
+                demo.getId(), doctorId);
+
+        JsonNode researchPage = bodyOf(mockMvc.perform(get("/api/subjects")
+                .param("dataScope", "CONTROLLED_RESEARCH").param("pageSize", "1").session(doctor))
+                .andExpect(status().isOk()).andReturn()).path("data");
+        assertThat(researchPage.path("total").asLong()).isEqualTo(1);
+        assertThat(researchPage.at("/items/0/id").asLong()).isEqualTo(controlled.getId());
+        assertThat(researchPage.toString()).doesNotContain(hidden.getSubjectCode(), demo.getSubjectCode());
+        mockMvc.perform(get("/api/subjects").param("dataScope", "OTHER").session(doctor))
+                .andExpect(status().isBadRequest());
+    }
 
     @Test
     void adminSeesEverySubjectInTheTable() throws Exception {
@@ -607,24 +649,15 @@ class SubjectApiTest {
     @Test
     void patientWhoIsAlsoResearcherCannotSeeRawVisitScores() throws Exception {
         MockHttpSession admin = login("admin");
-        jdbc.update(
-                """
-INSERT INTO sys_user (username, password_hash, status, created_at)
-SELECT ?, password_hash, status, created_at FROM sys_user WHERE username = 'patient'
-""",
-                "patient_researcher");
+        // Reuse a committed account instead of inserting an ephemeral one: audit rows are written
+        // in a separate transaction and cannot reference a user that is still uncommitted here.
         jdbc.update(
                 """
                 INSERT INTO user_role (user_id, role_id)
                 SELECT u.id, r.id FROM sys_user u, sys_role r
-                WHERE u.username = 'patient_researcher' AND r.role_code = 'PATIENT'
+                WHERE u.username = 'researcher' AND r.role_code = 'PATIENT'
                 """);
-        jdbc.update(
-                """
-                INSERT INTO user_role (user_id, role_id)
-                SELECT u.id, r.id FROM sys_user u, sys_role r
-                WHERE u.username = 'patient_researcher' AND r.role_code = 'RESEARCHER'
-                """);
+        MockHttpSession patientResearcher = login("researcher");
 
         Subject subject = seedSubjectWithCode("DEMO-PATIENT-RESEARCHER");
         visitRepository.save(
@@ -638,19 +671,17 @@ SELECT ?, password_hash, status, created_at FROM sys_user WHERE username = 'pati
 
         // RESEARCHER alone would grant full visibility, so no subject_permission row is needed;
         // the only thing standing between this account and the scores is the PATIENT gate.
-        mockMvc.perform(
-                        get("/api/subjects/" + subject.getId())
-                                .session(login("patient_researcher")))
+        mockMvc.perform(get("/api/subjects/" + subject.getId()).session(patientResearcher))
                 .andExpect(status().isForbidden());
         jdbc.update(
                 "INSERT INTO subject_permission (subject_id,user_id,permission_type) SELECT"
-                        + " ?,id,'SUMMARY_READ' FROM sys_user WHERE username='patient_researcher'",
+                        + " ?,id,'SUMMARY_READ' FROM sys_user WHERE username='researcher'",
                 subject.getId());
         JsonNode asPatientResearcher =
                 bodyOf(
                         mockMvc.perform(
                                         get("/api/subjects/" + subject.getId())
-                                                .session(login("patient_researcher")))
+                                                .session(patientResearcher))
                                 .andExpect(status().isOk())
                                 .andReturn());
 

@@ -14,8 +14,60 @@ const request = axios.create({
   withCredentials: true // 会话（JSESSIONID）必须随请求带过去
 })
 
+const MUTATING_METHODS = new Set(['post', 'put', 'patch', 'delete'])
+let csrfToken = ''
+let csrfHeader = 'X-CSRF-TOKEN'
+let csrfPending = null
+
+function isMutation(config) {
+  return MUTATING_METHODS.has(String(config?.method || 'get').toLowerCase())
+}
+
+/**
+ * 取得（或复用）CSRF token。
+ *
+ * 后端在 Cookie 之外还通过 GET /api/auth/csrf 返回原始 token；这里把 token 放在内存里，
+ * 由请求拦截器写到 X-CSRF-TOKEN。登录接口在后端豁免 CSRF，前端也显式 skipCsrf，
+ * 登录成功后再补取一次，避免把“登录前没有会话”误判成 CSRF 失败。
+ */
+export function resetCsrfToken() {
+  csrfToken = ''
+  csrfPending = null
+}
+
+export async function ensureCsrfToken() {
+  if (csrfToken) return csrfToken
+  if (csrfPending) return csrfPending
+  csrfPending = request
+    .get('/auth/csrf', { skipAuthHandling: true, skipCsrf: true, silent: true })
+    .then(data => {
+      if (data?.token) {
+        csrfToken = data.token
+        csrfHeader = data.headerName || csrfHeader
+      }
+      return csrfToken
+    })
+    .catch(() => '')
+    .finally(() => {
+      csrfPending = null
+    })
+  return csrfPending
+}
+
 request.interceptors.request.use(
-  config => config,
+  async config => {
+    if (isMutation(config) && !config.skipCsrf) {
+      const token = await ensureCsrfToken()
+      if (token) {
+        if (config.headers && typeof config.headers.set === 'function') {
+          config.headers.set(csrfHeader, token)
+        } else {
+          config.headers = { ...(config.headers || {}), [csrfHeader]: token }
+        }
+      }
+    }
+    return config
+  },
   error => Promise.reject(error)
 )
 
@@ -48,6 +100,11 @@ function isLoginRequest(config) {
   return String(config?.url || '').includes('/auth/login')
 }
 
+/** 静默请求：错误由页面自行渲染，拦截器不再弹全局消息（避免同一错误弹两次）。 */
+function isSilent(config) {
+  return Boolean(config?.silent)
+}
+
 request.interceptors.response.use(
   response => {
     const payload = response.data
@@ -70,7 +127,7 @@ request.interceptors.response.use(
       if (isLoginRequest(response.config)) {
         return Promise.reject({ ...failure, message: payload.message || '账号或密码错误' })
       }
-      ElMessage.error(failure.message)
+      if (!isSilent(response.config)) ElMessage.error(failure.message)
       return Promise.reject(failure)
     }
     // 非 Envelope（例如静态文件）原样返回
@@ -79,7 +136,7 @@ request.interceptors.response.use(
   async error => {
     if (!error.response) {
       // 登录/登出/会话复核这类"探测型"请求自己会解释失败，不再弹全局提示
-      if (!isLoginRequest(error.config)) {
+      if (!isLoginRequest(error.config) && !isSilent(error.config)) {
         ElMessage.error('无法连接服务器，请确认后端已启动（默认 http://localhost:8080）')
       }
       return Promise.reject({
@@ -105,7 +162,7 @@ request.interceptors.response.use(
         })
       }
       await redirectToLogin()
-      ElMessage.error(body.message || '登录已过期，请重新登录')
+      if (!isSilent(error.config)) ElMessage.error(body.message || '登录已过期，请重新登录')
       return Promise.reject({
         code: 401,
         errorCode: body.errorCode || 'UNAUTHENTICATED',
@@ -115,7 +172,7 @@ request.interceptors.response.use(
     }
 
     if (status === 403) {
-      if (!quiet) ElMessage.error(body.message || '无权限访问该资源')
+      if (!quiet && !isSilent(error.config)) ElMessage.error(body.message || '无权限访问该资源')
       return Promise.reject({
         code: 403,
         errorCode: body.errorCode || 'ACCESS_DENIED',
@@ -124,7 +181,7 @@ request.interceptors.response.use(
       })
     }
 
-    if (!quiet) ElMessage.error(body.message || error.message || '请求失败')
+    if (!quiet && !isSilent(error.config)) ElMessage.error(body.message || error.message || '请求失败')
     return Promise.reject({
       code: body.code || status,
       errorCode: body.errorCode,

@@ -156,7 +156,7 @@
           </button>
 
           <div class="form-options">
-            <label class="remember" title="只在本设备保留账号，不保存密码">
+            <label class="remember" title="仅在本设备浏览器保存账号与密码（非加密），公用电脑请勿勾选">
               <input type="checkbox" id="remember" v-model="remember" />
               <span class="checkbox-ui" aria-hidden="true">
                 <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
@@ -298,27 +298,60 @@ function selectRole(role) {
 
 function loadRememberedAccount() {
   try {
-    const stored = window.localStorage.getItem(REMEMBER_PREFIX + props.currentRole)
-    if (stored) {
-      username.value = stored
-      remember.value = true
-    } else {
+    const raw = window.localStorage.getItem(REMEMBER_PREFIX + props.currentRole)
+    if (!raw) {
       remember.value = false
+      return
     }
+    // 兼容旧版本：以前只存了用户名字符串
+    let stored = null
+    try {
+      stored = JSON.parse(raw)
+    } catch {
+      stored = raw
+    }
+    if (typeof stored === 'string') stored = { username: stored, password: '' }
+    username.value = stored?.username || ''
+    password.value = stored?.password ? decodePassword(stored.password) : ''
+    remember.value = Boolean(username.value)
   } catch {
     // 隐私模式/禁用存储时忽略：记住我只是便利功能。
+    remember.value = false
   }
 }
 
 function storeRememberedAccount() {
   try {
     if (remember.value) {
-      window.localStorage.setItem(REMEMBER_PREFIX + props.currentRole, username.value.trim())
+      window.localStorage.setItem(
+        REMEMBER_PREFIX + props.currentRole,
+        JSON.stringify({
+          username: username.value.trim(),
+          password: encodePassword(password.value)
+        })
+      )
     } else {
       window.localStorage.removeItem(REMEMBER_PREFIX + props.currentRole)
     }
   } catch {
     // 忽略存储失败。
+  }
+}
+
+/** 非加密混淆：只为避免明文直接出现在 DevTools 里，不能当作安全措施。 */
+function encodePassword(value) {
+  try {
+    return window.btoa(unescape(encodeURIComponent(value)))
+  } catch {
+    return ''
+  }
+}
+
+function decodePassword(value) {
+  try {
+    return decodeURIComponent(escape(window.atob(value)))
+  } catch {
+    return ''
   }
 }
 
@@ -442,6 +475,16 @@ watch(
   () => props.expanded,
   () => nextTick(() => syncOutline(false)),
 )
+
+// 取消勾选"记住我"时立即清掉本设备已保存的凭据，而不是等下一次登录成功
+watch(remember, (next) => {
+  if (next) return
+  try {
+    window.localStorage.removeItem(REMEMBER_PREFIX + props.currentRole)
+  } catch {
+    // 忽略存储失败
+  }
+})
 
 onMounted(() => {
   loadRememberedAccount()

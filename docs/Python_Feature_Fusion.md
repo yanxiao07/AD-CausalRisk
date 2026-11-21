@@ -1,6 +1,6 @@
 # Python多源选择与纵向特征
 
-本模块对应课程DATA_FUSION及研究FR-06/07的工程准备。当前范围仍是原AgentRequest中的DEMO合成记录、认知量表、APOE与normalized左右海马数值，不开放真实数据导入，也不改变原评分公式或模型输入。
+本模块对应研究DATA_FUSION及研究FR-06/07的工程准备。当前范围仍是原AgentRequest中的DEMO合成记录、认知量表、APOE与normalized左右海马数值，不开放真实数据导入，也不改变原评分公式或模型输入。
 
 ## 共享选择规则
 
@@ -39,7 +39,7 @@ MMSE、MoCA、CDR-SB和左右MRI各有5列，共25列：
 | endpointRatePerDay | change除以两个端点实际间隔天数；达到min_span_days | 原单位/day |
 | slopePerDay | 所有有效观测的中心化最小二乘斜率；达到min_span_days | 原单位/day |
 
-斜率为资料整理中的显式代数计算，不训练或更新预测模型。APOE仅增加1列latestObserved，不构造基因型变化率或斜率。MRI的normalized不当作mm³，CDR-SB不当Global CDR；原课程量表继续允许小数。
+斜率为资料整理中的显式代数计算，不训练或更新预测模型。APOE仅增加1列latestObserved，不构造基因型变化率或斜率。MRI的normalized不当作mm³，CDR-SB不当Global CDR；原研究量表继续允许小数。
 
 窗口闭区间为`[索引日-lookback_days, 索引日]`，lookback_days为1—3650整数，1≤min_span_days≤lookback_days。`firstObserved`只表示此窗口内首个实测值，不认证入组基线、MCI纳入或历史可获得时间。此整理窗口不改变原评分器的特征选择规则；矩阵明确`modelInputCompatible=false`，新列未接入任何现有模型。
 

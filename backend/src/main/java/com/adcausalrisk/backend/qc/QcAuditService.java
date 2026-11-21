@@ -12,6 +12,7 @@ import com.adcausalrisk.backend.qc.entity.QcAuditRecord.SourceType;
 import com.adcausalrisk.backend.qc.entity.QcAuditRecord.Status;
 import com.adcausalrisk.backend.qc.entity.QcAuditRecord.TargetType;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
+import com.adcausalrisk.backend.subject.InputVersions;
 import com.adcausalrisk.backend.subject.SubjectAccessPolicy;
 import com.adcausalrisk.backend.subject.SubjectRepository;
 import com.adcausalrisk.backend.visit.VisitCreatedEvent;
@@ -194,6 +195,11 @@ public class QcAuditService {
      * <p>Idempotent: if a PENDING row already exists for this visit, we skip insertion.
      */
     public void generateQcRecord(Visit visit, Long operatorId, Long qualityCheckId) {
+        // Ordinary patient visits are checked through the archive's own quality workflow.
+        if (subjectRepository.findById(visit.getSubjectId())
+                .filter(subject -> subject.getDataVersion().startsWith(InputVersions.CARE_PREFIX)).isPresent()) {
+            return;
+        }
         BigDecimal mmse = originalScoreOf(visit.getRawMmse(), visit.getMmse());
         BigDecimal moca = originalScoreOf(visit.getRawMoca(), visit.getMoca());
         BigDecimal cdrSb = originalScoreOf(visit.getRawCdrSb(), visit.getCdrSb());

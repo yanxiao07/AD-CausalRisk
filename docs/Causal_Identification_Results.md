@@ -52,6 +52,6 @@ python -I -S -B examples/causal_identification_audit.py
 
 脚本包含9项精确检查，覆盖上述观测/干预分布、16顶点与解析界限、两种联合分布，以及负概率和不归一概率的拒绝。成功状态为`EXACT_ABSTRACT_IDENTIFICATION_ARGUMENT_PASSED`、`checks_passed=9`、`abstract_not_clinical=true`、`fits=0`；任一检查失败会以非零状态退出。
 
-该示例与研究原语CI的标准库作业一起运行（Windows/Ubuntu × Python3.11/3.12），与原35项标准库单元检查分别计数。工程检查不替代独立科学评审、个人因果识别或临床验证。
+该示例与研究原语CI的标准库任务一起运行（Windows/Ubuntu × Python3.11/3.12），与原35项标准库单元检查分别计数。工程检查不替代独立科学评审、个人因果识别或临床验证。
 
 本次源码交付以示例可运行、结果与解析真值一致、CI纳入和文档可访问为终点。实际研究的策略行动、未邀约分母、首次可用历史及宿主独立资格仍依赖适用新证据；当前状态和唯一下一任务见[需求清单](Python_Requirement_Status.md)。不重复已关闭的读取、图比较或训练，不改变累计673次基础/36次校准拟合。

@@ -269,8 +269,12 @@ def bind_existing_model(model, *, verified_identity, state_token):
                 if not grid.equals(before):
                     _fail('PREDICTOR_MUTATED_GRID')
                 if (values.dtype.kind not in 'fi' or values.shape != (len(grid), 3)
-                        or not np.isfinite(values).all() or (values < 0).any() or (values > 1).any()
-                        or not np.allclose(values.sum(1), 1., atol=1e-12, rtol=0)):
+                        or not np.isfinite(values).all() or (values < 0).any() or (values > 1).any()):
+                    _fail('INVALID_THREE_CAUSE_HAZARDS')
+                # XGBoost returns float32 probabilities. Check row sums at the
+                # estimator precision and preserve its raw outputs for CIF and attribution.
+                tolerance = max(1e-12, 4 * np.finfo(values.dtype).eps) if values.dtype.kind == 'f' else 1e-12
+                if not np.allclose(values.sum(1, dtype=np.float64), 1., atol=tolerance, rtol=0):
                     _fail('INVALID_THREE_CAUSE_HAZARDS')
                 return values
 

@@ -1,85 +1,192 @@
 <template>
   <div class="doctor-home">
-    <PageHeader title="医生工作台" subtitle="今天需要你处理的事项，以及正在进行中的随访。">
+    <PageHeader title="医生工作台" subtitle="查看负责的患者、评估报告和今日随访。" :terms="['review', 'followup']">
       <template #extra>
-        <el-button :icon="Refresh" @click="refresh">刷新</el-button>
+        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>
     </PageHeader>
 
-    <!-- 今日待复核：本页最重要的动作，给最大视觉权重 -->
-    <DataCard class="review-hero" padding="lg">
-      <div class="review-hero__inner">
-        <div>
-          <p class="review-hero__eyebrow">今日待复核</p>
-          <p class="review-hero__count" :class="{ 'is-empty': pendingReview === null }" aria-live="polite">
-            {{ pendingReview ?? '待接入' }}
-          </p>
-          <p class="review-hero__hint">来自研究员的评估结果，需要医生确认后才会对患者可见。</p>
-        </div>
-        <div class="review-hero__actions">
-          <el-button type="primary" size="large" :disabled="!hasData" @click="goReviews">
-            去复核
-          </el-button>
-          <span class="review-hero__note">P2 接入真实数据后可用</span>
-        </div>
-      </div>
-    </DataCard>
+    <el-alert
+      v-if="loadError"
+      :title="loadError"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="load-alert"
+    />
 
-    <div class="metric-grid">
-      <DataCard v-for="metric in metrics" :key="metric.key" hover>
-        <div class="metric">
-          <div class="metric__head">
-            <el-icon class="metric__icon"><component :is="metric.icon" /></el-icon>
-            <span class="metric__label">{{ metric.label }}</span>
+    <div class="board">
+      <aside class="rail">
+        <button
+          v-for="metric in metrics"
+          :key="metric.key"
+          type="button"
+          class="metric-card"
+          :class="{ 'metric-card--primary': metric.primary }"
+          @click="metric.action"
+        >
+          <span class="metric-card__label">
+            <el-icon><component :is="metric.icon" /></el-icon>
+            {{ metric.label }}
+          </span>
+          <strong class="metric-card__value">{{ loading ? '…' : (metric.value ?? '—') }}</strong>
+          <span class="metric-card__hint">{{ metric.hint }}</span>
+          <el-icon class="metric-card__arrow"><ArrowRight /></el-icon>
+        </button>
+      </aside>
+
+      <main class="feed">
+        <section class="panel">
+          <header class="panel__head">
+            <div>
+              <h2>患者评估</h2>
+              <p>从患者档案查看资料是否齐备、提交评估申请或查看结果。</p>
+            </div>
+            <el-button text type="primary" @click="router.push('/subjects')">打开我的患者</el-button>
+          </header>
+          <div class="assessment-links">
+            <el-button @click="router.push('/reviews')">报告复核</el-button>
+            <el-button @click="router.push('/reports')">评估报告</el-button>
           </div>
-          <p class="metric__value" :class="{ 'is-empty': metric.value === null }">
-            {{ metric.value ?? '待接入' }}
-          </p>
-          <p class="metric__hint">{{ metric.hint }}</p>
-        </div>
-      </DataCard>
-    </div>
+        </section>
 
-    <DataCard title="今日随访" subtitle="按计划时间排列，逾期的会标红">
-      <EmptyState
-        title="还没有随访数据"
-        description="随访列表将在 P2 接入 GET /api/subjects/{subjectId}/follow-ups，并补充跨患者的日历视图。"
-        :icon="Timer"
-      />
-    </DataCard>
+        <section class="panel">
+          <header class="panel__head">
+            <div>
+              <h2>今日随访</h2>
+              <p>按计划时间排列；逾期的会标红。</p>
+            </div>
+            <el-button text type="primary" @click="goFollowUps">查看全部随访</el-button>
+          </header>
+
+          <p v-if="overdueTotal > 0" class="followup-warning">
+            另有 {{ overdueTotal }} 条随访已逾期，请尽快确认。
+          </p>
+
+          <div v-if="followups.length" class="followup-list">
+            <div v-for="item in followups" :key="item.id ?? `${item.subjectId}-${item.scheduledAt}`" class="followup-row">
+              <div class="followup-row__time">{{ formatTime(item.scheduledAt) }}</div>
+              <div class="followup-row__main">
+                <strong>{{ item.subjectAlias || item.subjectCode || `受试者 ${item.subjectId}` }}</strong>
+                <span>
+                  {{ item.subjectCode || '—' }}
+                  <template v-if="item.purpose"> · {{ item.purpose }}</template>
+                </span>
+              </div>
+              <el-tag size="small" :type="statusTag(item.status)" effect="plain">
+                {{ statusLabel(item.status) }}
+              </el-tag>
+            </div>
+          </div>
+
+          <EmptyState
+            v-else-if="!loading"
+            title="今天没有待处理随访"
+            description="随访计划为空或今日没有到期安排；可前往「随访计划」查看全部安排。"
+            :icon="Timer"
+          />
+          <el-skeleton v-else :rows="3" animated />
+        </section>
+      </main>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell, Refresh, Timer, User } from '@element-plus/icons-vue'
+import { ArrowRight, Refresh, Timer, User } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
-import DataCard from '@/components/common/DataCard.vue'
+import { CARE_WORKFLOW } from '@/utils/researchResults.js'
 import EmptyState from '@/components/common/EmptyState.vue'
+import { listFollowUpsPaged } from '@/api/followups.js'
+import { listSubjects } from '@/api/subjects.js'
+import { formatDateTime } from '@/utils/datetime.js'
 
 const router = useRouter()
+const loading = ref(true)
+const loadError = ref('')
+const followups = ref([])
+const todayTotal = ref(0)
+const overdueTotal = ref(0)
+const subjectTotal = ref(null)
 
-/**
- * P1 只搭骨架：这里不做任何假数据填充。
- * null 表示"尚未接入"，模板渲染成"待接入"而不是 0 或破折号，避免被误读成真实数值。
- */
-const hasData = ref(false)
-const pendingReview = ref(null)
+const metrics = computed(() => [
+  {
+    key: 'subjects',
+    label: '我的患者',
+    value: subjectTotal.value,
+    hint: '目前负责的档案',
+    icon: User,
+    primary: true,
+    action: () => router.push('/subjects')
+  },
+  {
+    key: 'followups',
+    label: '今日随访',
+    value: todayTotal.value,
+    hint: overdueTotal.value ? `另有 ${overdueTotal.value} 条逾期` : '今日到期',
+    icon: Timer,
+    action: goFollowUps
+  }
+])
 
-const metrics = [
-  { key: 'followups', label: '今日随访', value: null, hint: '含逾期未完成', icon: Timer },
-  { key: 'high-risk', label: '高危预警', value: null, hint: '高风险等级受试者', icon: Bell },
-  { key: 'subjects', label: '在管受试者', value: null, hint: '授权范围内的档案', icon: User }
-]
-
-function refresh() {
-  window.location.reload()
+const statusLabels = {
+  PLANNED: '计划中',
+  COMPLETED: '已完成',
+  CANCELLED: '已取消'
+}
+const statusTags = {
+  PLANNED: 'primary',
+  COMPLETED: 'success',
+  CANCELLED: 'info'
 }
 
-function goReviews() {
-  router.push('/reviews')
+function statusLabel(status) {
+  return statusLabels[status] || status || '—'
 }
+
+function statusTag(status) {
+  return statusTags[status] || 'info'
+}
+
+function formatTime(value) {
+  if (!value) return '时间待定'
+  return formatDateTime(value)
+}
+
+async function load() {
+  loading.value = true
+  loadError.value = ''
+  const [subjects, today, overdue] = await Promise.allSettled([
+    listSubjects({ page: 1, pageSize: 1, dataScope: CARE_WORKFLOW }),
+    listFollowUpsPaged({ page: 1, pageSize: 6, due: 'today' }),
+    listFollowUpsPaged({ page: 1, pageSize: 1, due: 'overdue' })
+  ])
+
+  const failed = [subjects, today, overdue].filter(
+    (item) => item.status === 'rejected'
+  )
+  if (failed.length === 3) {
+    loadError.value = '工作台数据读取失败，请稍后刷新重试。'
+  } else if (failed.length > 0) {
+    loadError.value = '部分数据读取失败，已展示可用的内容。'
+  }
+
+  if (subjects.status === 'fulfilled') subjectTotal.value = Number(subjects.value?.total ?? 0)
+  if (today.status === 'fulfilled') {
+    followups.value = Array.isArray(today.value?.items) ? today.value.items : []
+    todayTotal.value = Number(today.value?.total ?? followups.value.length)
+  }
+  if (overdue.status === 'fulfilled') overdueTotal.value = Number(overdue.value?.total ?? 0)
+  loading.value = false
+}
+
+function goFollowUps() {
+  router.push('/followups')
+}
+
+onMounted(load)
 </script>
 
 <style scoped>
@@ -89,95 +196,198 @@ function goReviews() {
   gap: 20px;
 }
 
-.review-hero {
-  border-color: rgba(10, 115, 173, 0.22);
-  background: linear-gradient(120deg, #ffffff 0%, #f2fbff 100%);
+.assessment-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.assessment-links .el-button { margin: 0; min-height: 44px; }
+
+.load-alert {
+  border-radius: var(--r-lg);
 }
 
-.review-hero__inner {
+.board {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 16px;
+}
+
+.metric-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out);
+}
+
+.metric-card:hover {
+  border-color: rgba(10, 115, 173, 0.3);
+  box-shadow: var(--shadow-hover);
+}
+
+.metric-card--primary {
+  border-color: rgba(10, 115, 173, 0.28);
+  background: linear-gradient(135deg, #ffffff 0%, #f1fbff 100%);
+}
+
+.metric-card__label {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
 }
 
-.review-hero__eyebrow {
-  margin: 0 0 6px;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  color: var(--brand-600);
-}
-
-.review-hero__count {
-  margin: 0;
+.metric-card__value {
   font-family: var(--font-display);
-  font-size: clamp(40px, 5vw, 56px);
+  font-size: 30px;
   line-height: 1.05;
   font-weight: 700;
   color: var(--ink);
 }
 
-.review-hero__count.is-empty {
-  font-size: 26px;
-  color: var(--muted);
-  letter-spacing: 0;
+.metric-card__hint {
+  font-size: 11px;
+  color: var(--soft);
 }
 
-.review-hero__hint {
-  margin: 8px 0 0;
-  font-size: 14px;
-  color: var(--muted);
-}
-
-.review-hero__actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.review-hero__note {
+.metric-card__arrow {
+  position: absolute;
+  right: 14px;
+  top: 16px;
   font-size: 12px;
   color: var(--soft);
 }
 
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-}
-
-.metric__head {
+.feed {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 
-.metric__icon {
-  color: var(--brand-600);
+.panel {
+  padding: 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
 }
 
-.metric__value {
-  margin: 10px 0 4px;
-  font-family: var(--font-display);
-  font-size: 32px;
+.panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.panel__head h2 {
+  margin: 0;
+  font-size: 16px;
   font-weight: 700;
   color: var(--ink);
 }
 
-.metric__value.is-empty {
-  font-size: 18px;
-  color: var(--soft);
+.panel__head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
 }
 
-.metric__hint {
-  margin: 0;
+.followup-warning {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: #fff7ed;
+  color: #b45309;
   font-size: 12px;
+}
+
+.followup-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.followup-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--line);
+}
+
+.followup-row:first-child {
+  border-top: 0;
+}
+
+.followup-row__time {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.followup-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.followup-row__main strong {
+  font-size: 13px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.followup-row__main span {
+  font-size: 11px;
   color: var(--soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 960px) {
+  .board {
+    grid-template-columns: 1fr;
+  }
+
+  .rail {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .rail {
+    grid-template-columns: 1fr;
+  }
+
+  .followup-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .followup-row__time {
+    grid-column: 1 / -1;
+  }
 }
 </style>

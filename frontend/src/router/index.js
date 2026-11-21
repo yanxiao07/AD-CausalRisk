@@ -47,7 +47,7 @@ const routes = [
     path: '/admin',
     name: 'AdminHome',
     component: () => import('../views/admin/AdminHome.vue'),
-    meta: { title: '数据大屏', layout: 'sidebar', roles: ['ADMIN'] }
+    meta: { title: '管理工作台', layout: 'sidebar', roles: ['ADMIN'] }
   },
   {
     path: '/admin/audit',
@@ -60,6 +60,13 @@ const routes = [
     name: 'PatientHome',
     component: () => import('../views/patient/PatientHome.vue'),
     meta: { title: '我的健康档案', layout: 'patient', roles: ['PATIENT'] }
+  },
+  {
+    // MenuCatalog 仍给患者下发 summary；这里落到同一个患者摘要页面，避免死菜单。
+    path: '/summary',
+    name: 'PatientSummary',
+    component: () => import('../views/patient/PatientHome.vue'),
+    meta: { title: '我的摘要', layout: 'patient', roles: ['PATIENT'] }
   },
   {
     path: '/subjects',
@@ -92,16 +99,50 @@ const routes = [
     meta: { title: '账号管理', layout: 'sidebar', roles: ['ADMIN'] }
   },
   {
+    path: '/admin/validation',
+    name: 'ValidationAuthorization',
+    component: () => import('../views/admin/ValidationAuthorization.vue'),
+    meta: { title: '验证资料授权', layout: 'sidebar', roles: ['ADMIN'] }
+  },
+  {
     path: '/reports',
     name: 'ReportList',
+    beforeEnter: to => {
+      const id = Number(to.query.assessmentId)
+      if (Number.isSafeInteger(id) && id > 0) return { name: 'ReportDetail', params: { assessmentId: id } }
+      if (useUserStore().primaryRole === 'ADMIN') return { name: 'AdminHome' }
+      if (to.query.tab) return { name: 'ReportList', query: { ...to.query, tab: undefined } }
+    },
     component: () => import('../views/doctor/ReportList.vue'),
-    meta: { title: '评估报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER'] }
+    meta: { title: '评估报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER', 'ADMIN'] }
+  },
+  {
+    path: '/reports/research/:taskId(\\d+)',
+    name: 'ResearchReportDetail',
+    component: () => import('../views/doctor/ResearchReportDetail.vue'),
+    meta: { title: '模型验证报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER'] }
+  },
+  {
+    path: '/reports/:assessmentId(\\d+)',
+    name: 'ReportDetail',
+    component: () => import('../views/doctor/ReportDetail.vue'),
+    meta: { title: '评估报告', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER', 'ADMIN'] }
+  },
+  {
+    path: '/settings/profile',
+    name: 'ProfileSettings',
+    component: () => import('../views/common/ProfileSettings.vue'),
+    meta: { title: '个人设置', layout: 'sidebar', roles: ['ADMIN', 'RESEARCHER', 'DOCTOR'] }
   },
   {
     path: '/graph',
     name: 'GraphView',
+    beforeEnter: to => {
+      const id = Number(to.query.assessmentId)
+      if (Number.isSafeInteger(id) && id > 0) return { name: 'ReportDetail', params: { assessmentId: id } }
+    },
     component: () => import('../views/doctor/GraphView.vue'),
-    meta: { title: '因果图谱', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER'] }
+    meta: { title: '评估贡献图', layout: 'sidebar', roles: ['DOCTOR', 'RESEARCHER'] }
   },
   {
     path: '/admin/system',
@@ -122,6 +163,12 @@ const routes = [
     meta: { title: '评估任务', layout: 'sidebar', roles: ['RESEARCHER', 'DOCTOR', 'ADMIN'] }
   },
   {
+    path: '/research',
+    name: 'ResearchEvidence',
+    component: () => import('../views/researcher/ResearchEvidence.vue'),
+    meta: { title: '模型验证与更新', layout: 'sidebar', roles: ['RESEARCHER', 'ADMIN'] }
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'Exception404',
     component: () => import('../views/exception/404.vue'),
@@ -132,7 +179,8 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior: () => ({ top: 0 })
+  // 浏览器后退时恢复原来的滚动位置；普通跳转回到顶部
+  scrollBehavior: (to, from, savedPosition) => savedPosition || { top: 0 }
 })
 
 router.beforeEach((to) => {

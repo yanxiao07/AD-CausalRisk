@@ -100,6 +100,21 @@ try {
         body: envelope({ subject: makeRows(1)[0], visits: [], features: [] })
       })
     }
+    // 360° 时间线会并发拉取评估历史、任务状态、随访与复核记录
+    if (path === '/api/assessments' || path === '/api/assessment-tasks') {
+      return req.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: envelope({ items: [], page: 1, pageSize: 100, total: 0 })
+      })
+    }
+    if (path === '/api/subjects/1/follow-ups' || path.startsWith('/api/') && path.endsWith('/reviews')) {
+      return req.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: envelope([])
+      })
+    }
     return req.continue()
   })
 
@@ -129,7 +144,10 @@ try {
   // 连点刷新 3 次，期间采样表格是否被卸载
   const clickRefresh = () =>
     page.evaluate(() => {
-      const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('刷新'))
+      // 只点页面头的刷新，避免命中文档后面抽屉里的"刷新"
+      const btn = [...document.querySelectorAll('.page-header button')].find((b) =>
+        b.textContent.includes('刷新')
+      )
       btn?.click()
     })
 

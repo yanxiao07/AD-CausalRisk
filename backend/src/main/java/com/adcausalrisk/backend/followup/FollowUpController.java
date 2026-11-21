@@ -37,7 +37,9 @@ public class FollowUpController {
             @NotNull @Min(1) Long subjectId,
             @NotNull Instant scheduledAt,
             @NotBlank @Size(max = 1000) String purpose,
-            String status) {}
+            String status,
+            String visitLocation,
+            String preparation) {}
 
     /**
      * {@code PATCH} body: any subset of the mutable fields. {@code subjectId} is accepted and
@@ -48,7 +50,12 @@ public class FollowUpController {
             Instant scheduledAt,
             @Size(max = 1000) String purpose,
             Long subjectId,
-            @Size(max = 1000) String notes) {}
+            @Size(max = 1000) String notes,
+            String visitLocation,
+            String preparation,
+            Long appointmentRevision) {}
+
+    record DeclineRequest(@NotNull @Min(0) Long appointmentRevision) {}
 
     /** {@code FollowUpResult}. */
     public record FollowUpResult(
@@ -58,7 +65,12 @@ public class FollowUpController {
             String purpose,
             String status,
             Long ownerId,
-            String notes) {}
+            String notes,
+            String visitLocation,
+            String preparation,
+            long appointmentRevision,
+            String responseStatus,
+            String responseNote) {}
 
     @PostMapping("/api/follow-ups")
     public Envelope<FollowUpResult> create(
@@ -70,6 +82,8 @@ public class FollowUpController {
                                 request.subjectId(),
                                 request.scheduledAt(),
                                 request.purpose(),
+                                request.visitLocation(),
+                                request.preparation(),
                                 principal)));
     }
 
@@ -87,7 +101,18 @@ public class FollowUpController {
                                 request.scheduledAt(),
                                 request.purpose(),
                                 request.notes(),
+                                request.visitLocation(),
+                                request.preparation(),
+                                request.appointmentRevision(),
                                 principal)));
+    }
+
+    @PostMapping("/api/follow-ups/{followUpId}/decline-reschedule")
+    public Envelope<Void> decline(@PathVariable long followUpId, @Valid @RequestBody DeclineRequest request,
+                                  Authentication authentication) {
+        followUpService.declineReschedule(followUpId, request.appointmentRevision(),
+                (AppUserPrincipal) authentication.getPrincipal());
+        return Envelope.success(null);
     }
 
     @GetMapping("/api/subjects/{subjectId}/follow-ups")
@@ -106,12 +131,23 @@ public class FollowUpController {
                                                         plan.getPurpose(),
                                                         plan.getStatus().name(),
                                                         null,
+                                                        null,
+                                                        plan.getVisitLocation(),
+                                                        plan.getPreparation(),
+                                                        plan.getAppointmentRevision(),
+                                                        null,
                                                         null)
-                                                : view(plan))
+                                                : view(plan, principal.roleCodes().contains("DOCTOR")
+                                                        || principal.roleCodes().contains("ADMIN")))
                         .toList());
     }
 
-    private static FollowUpResult view(FollowUpPlan plan) {
+    private FollowUpResult view(FollowUpPlan plan) {
+        return view(plan, true);
+    }
+
+    private FollowUpResult view(FollowUpPlan plan, boolean includeResponseNote) {
+        var response = followUpService.getBookingResponse(plan);
         return new FollowUpResult(
                 plan.getId(),
                 plan.getSubjectId(),
@@ -119,6 +155,11 @@ public class FollowUpController {
                 plan.getPurpose(),
                 plan.getStatus().name(),
                 plan.getOwnerId(),
-                plan.getNotes());
+                plan.getNotes(),
+                plan.getVisitLocation(),
+                plan.getPreparation(),
+                plan.getAppointmentRevision(),
+                response == null ? null : response.status(),
+                response == null || !includeResponseNote ? null : response.note());
     }
 }

@@ -9,6 +9,7 @@ import com.adcausalrisk.backend.assessment.entity.RiskAssessment;
 import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
 import com.adcausalrisk.backend.common.PageResult;
+import com.adcausalrisk.backend.config.SystemSettingService;
 import com.adcausalrisk.backend.importjob.IdempotencyRecordRepository;
 import com.adcausalrisk.backend.importjob.entity.IdempotencyRecord;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
@@ -74,6 +75,7 @@ public class AssessmentService {
     private final java.time.Clock clock;
     private final com.adcausalrisk.backend.audit.AuditService audit;
     private final com.adcausalrisk.backend.qualitycheck.QualityCheckService quality;
+    private final SystemSettingService settings;
     private final TransactionTemplate writeTransaction;
     private final java.util.concurrent.ThreadPoolExecutor executor =
             new java.util.concurrent.ThreadPoolExecutor(
@@ -101,7 +103,8 @@ public class AssessmentService {
             java.time.Clock clock,
             PlatformTransactionManager transactionManager,
             com.adcausalrisk.backend.qualitycheck.QualityCheckService quality,
-            com.adcausalrisk.backend.audit.AuditService audit) {
+            com.adcausalrisk.backend.audit.AuditService audit,
+            SystemSettingService settings) {
         this.taskRepository = taskRepository;
         this.assessmentRepository = assessmentRepository;
         this.subjectRepository = subjectRepository;
@@ -114,6 +117,7 @@ public class AssessmentService {
         this.clock = clock;
         this.quality = quality;
         this.audit = audit;
+        this.settings = settings;
         this.writeTransaction = new TransactionTemplate(transactionManager);
         // REQUIRES_NEW, not the default REQUIRED: if this service is ever called from a
         // transactional caller, joining that transaction would hold a pooled connection for the
@@ -206,6 +210,9 @@ public class AssessmentService {
                         principal.userId(), OPERATION, idempotencyKey);
         if (replay.isPresent()) {
             return replay(replay.get(), digest);
+        }
+        if (!settings.testRuleEnabled()) {
+            throw new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "新评估请使用已登记的研究模型快照");
         }
 
         var check = quality.check(subjectId, principal);
@@ -786,7 +793,9 @@ public class AssessmentService {
 
     private AgentRequest buildRequest(Subject subject, int predictionWindowMonths) {
         List<AgentRequest.Visit> visits =
-                visitRepository.findBySubjectIdOrderByVisitDateAscIdAsc(subject.getId()).stream()
+                visitRepository
+                        .findBySubjectIdAndCurrentTrueOrderByVisitDateAscIdAsc(subject.getId())
+                        .stream()
                         .map(
                                 visit ->
                                         new AgentRequest.Visit(

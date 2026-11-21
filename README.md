@@ -1,289 +1,171 @@
 # AD-CausalRisk
 
-面向阿尔茨海默病风险研究与课程协作的多源数据、条件图谱和可解释排序项目。
+[![Java backend](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/backend-build.yml/badge.svg)](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/backend-build.yml)
+[![Vue frontend](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/frontend-build.yml/badge.svg)](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/frontend-build.yml)
+[![Python contracts](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/python-base.yml/badge.svg)](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/python-base.yml)
+[![Research primitives](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/python-research-primitives.yml/badge.svg)](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/python-research-primitives.yml)
 
-[![Python CI — main](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/python-base.yml/badge.svg?branch=main)](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/python-base.yml?query=branch%3Amain)
-[![Java CI — main](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/backend-build.yml/badge.svg?branch=main)](https://github.com/yanxiao07/AD-CausalRisk/actions/workflows/backend-build.yml?query=branch%3Amain)
+AD-CausalRisk 是面向阿尔茨海默病研究的协作平台。它把受试者建档、访视录入、资料质控、研究模型评估、医生复核和患者随访接在同一个工作流中。四角色软件流程已用人工档案完成端到端验证。预测和解释用于研究验证，真实病例准入与临床有效性另有独立要求。
 
-[快速开始](#快速开始) · [项目状态](#项目状态) · [文档导航](#文档导航) · [参与贡献](#参与贡献) · [路线图](#路线图)
+[快速开始](#快速开始) · [角色流程](#角色流程) · [系统架构](#系统架构) · [验证与升级](#验证与升级) · [文档与贡献](#文档与贡献)
 
-AD-CausalRisk 将资料整理、质量检查、图谱、排序和解释组织为可追溯的工作流。Python 提供可独立运行的合成数据服务；Java 承担业务 API、权限与持久化；前端面向研究人员、医生和患者提供相应视图。
+## 角色流程
 
-研究主线固定为**多源数据融合 → 个体化因果图谱构建 → 因果引导的预警模型建立 → 个体化可解释性分析**。后续任务按[四环节研究与推进规范](docs/Research_Core_Principles.md)对应缺口、复用已有成果并设置验收终点；该目标不表示个体因果结构、图增益或临床用途已经成立。
-
-第2→3环节[固定三臂图预测研究](docs/Graph_Research_Execution.md)已完成54真实训练/模型交付，未确立固定先验增益；第4环节[图解释诊断](docs/Graph_Explanation_Results.md)已复用45外折模型完成数值重构/实际路径与敏感性验收。贡献顺序敏感，未建立严格个人因果或稳定/临床解释。
-
-**项目正在开发中。** 当前课程服务使用明确标记的合成数据与固定加性规则，输出用于教学和工程联调。排序分数不是经临床验证的个体患病概率，图谱箭头不代表已识别的因果或治疗效应。
-
-七变量三算法及固定遗传/横断MRI的离线训练与对照已有阶段交付；新模型尚未替换当前业务服务。研究完成范围、Git交付内容及Java如何取数调用Python，见[研究交付与接入说明](docs/Research_Progress_and_Integration.md)。
-
-可移植估计器、人月/CIF、已保存模型的离线合成验收，以及固定五外折/三内折训练与嵌套校准，见[研究模型Python接入准备](docs/Research_Model_Portability.md)与[运行说明](research_runtime/README.md)。该可选模块使用独立依赖，计算源码随本分支交付；历史队列构造、全部比较/解释流水线、新模型HTTP服务和Java业务联调继续单独验收。
-
-研究运行时已包含[分组Shapley/LIME及表格编排](docs/Table_Grouped_Study_Execution.md)、[输入声明一致性校验](docs/Real_Input_Admission.md)与[单次内存CIF调用](docs/InMemory_Research_Inference.md)。方法、构造验收和真实研究结论分别报告；不加入受控数据/权重，不改变共享HTTP或默认模型。
-
-七/十变量的[Python接入候选](docs/Research_Model_Integration_Candidate.md)补充六个表格组合、[模型身份到宿主上下文的映射](docs/Research_Model_Identity_Map.md)和[人工预测/解释绑定示例](docs/Prediction_Explanation_Binding_Candidate.md)。[宿主证据核对](docs/Research_Host_Evidence_Admission.md)保留已定位材料与剩余资格缺口，完整准入仍为NO_GO；人工示例通过不表示真实模型已接入业务。
-
-## 核心能力
-
-新增离线评价与监测见[研究运行说明](research_runtime/README.md)：自然模态分层、固定结构选择稳定性、未知结局分类/DCA补全界限及同一快照的漂移/性能联合报告。它们复用调用方内存，不改变当前合成业务服务或默认模型。固定图增益阴性、结构四折不可估和真实阈值报告整表抑制均保留；真实监控与临床用途未完成。
-
-- **资料与质量**：三表 CSV 预检、档案关联、日期与单位检查、缺失/重复/冲突定位，以及严重问题阻断。
-- **四阶段工作流**：`DATA_FUSION → CAUSAL_GRAPH → WARNING_MODEL → EXPLANATION`，保留原值、来源时间、版本、实际阶段与耗时。
-- **可追溯解释**：原图模板、图到评分输入的门控、逐项贡献与截断/舍入重构，以及说明文字的语义校验。
-- **联调与故障处理**：版本化 HTTP 契约、标准库客户端、易失缓存重放、故障案例、只读恢复和合成批处理。
-- **研究工程工具**：纵向特征矩阵、缺失输入敏感性、合成解释一致性和构造概率评估；各工具的适用范围见对应文档。
-
-## 项目状态
-
-以下为当前分支的实现范围；完整验收条件以[课程需求](docs/Course_SRS_V3_2.md)为准。顶部徽章展示 `main` 分支的 CI，功能分支的检查结果请查看对应提交或 PR。
-
-后端业务更新：2026-11-08，59个Java操作已实现并经合成本地验证，覆盖来源与质量历史、固定输入、异步任务、账号/授权、随访、报告附件和审计。逐项需求与验收见[后端验收](docs/Backend_Requirements_Acceptance.md)，G01–G23及研究接入边界见[业务状态](docs/Business_Feature_Status.md)。本次交付不包含本地候选前端、前端CI、临床数据或研究权重；前端同学可按契约继续接入和统一风格。以下既往版本描述保留原交付背景。
-
-核对日期：2026-11-04。本次Python分支基于main `57220d3`，已包含[PR #18](https://github.com/yanxiao07/AD-CausalRisk/pull/18)的Vue业务前端和Java互操作/失败持久化修复、[PR #19](https://github.com/yanxiao07/AD-CausalRisk/pull/19)的离线评价/监测原语及[PR #20](https://github.com/yanxiao07/AD-CausalRisk/pull/20)的分层研究CI。各模块已有实现、实际验收与研究模型接入分别记录。
-
-| 模块 | 已有实现 | 后续工作 |
-| --- | --- | --- |
-| Python | 合成四阶段服务、契约/身份校验、客户端；可选离线训练、解释、评价与联合监测计算 | 当前业务仍使用合成规则；研究模型服务、真实监控输入及临床验证单独验收 |
-| Java 后端 | 59个已记录的业务操作，含对象范围、来源、独立质量、输入快照、异步任务、用户管理、随访、报告和审计 | MySQL实际迁移及其他验收边界见[后端说明](backend/README.md)，接口实现不等于全面验收 |
-| Web 前端 | 保持main中已交付的Vue 3/Vite/Element Plus工程、真实会话与四角色业务页面；本次后端交付不修改frontend | 新增API的页面接入、统一视觉及移动端验收由前端继续；本地候选页面不随本次交付发布 |
-| 全链路 | 浏览器→Java→Python合成调用链已有实现；Java负责业务保存与权限 | MySQL、全场景故障/重启和浏览器端到端验收单独完成；离线研究模块不自动接入业务 |
-
-接口目标、数据库表或页面片段的存在不表示对应业务已完成。Python 工程测试也不替代 Java、MySQL 或浏览器端到端验收。
-
-## 快速开始
-
-先运行 Python 合成服务，完成一次请求与查询。该流程不需要 Java、数据库或研究数据。文档与运行源码应来自同一分支。
-
-### 环境要求
-
-| 模块 | 环境 |
+| 角色 | 工作台操作 |
 | --- | --- |
-| Python 服务 | Python 3.11 或 3.12；运行时仅使用标准库 |
-| Python 测试 | 同一解释器安装 `requirements-dev.lock` |
-| 可选离线研究模块 | 独立环境安装`research_runtime/requirements.lock`；原生图模块使用`requirements.graph.lock`，不与课程环境混装 |
-| Java 后端 | JDK 21、Maven Wrapper；目标数据库 MySQL 8，自动测试使用 H2 |
-| Web 前端 | Node.js 22.14/npm 10.9.2已构建验证；使用frontend/package-lock.json，安装/开发/构建命令见[前端说明](frontend/README.md) |
+| 医生 | 建立普通患者档案，保存并回看访视，对当前资料做质控，申请患者账号和评估，安排复诊。已获授权的历史报告仍可复核。 |
+| 研究员 | 查阅获授权病例的预测和结局，按项目及固定模型版本运行、回读 24 个月演练验证报告，在常驻「证据与模型版本」标签查看版本材料。 |
+| 管理员 | 核对身份后发放患者账号，办理责任医生交接，单笔或批量登记研究授权，管理审计并核对模型版本。 |
+| 患者 | 查看本人评估进度、医生已发布的说明、责任医生及联系渠道、下次和其他复诊。可以确认、申请改期并查看回执。 |
 
-```bash
-git clone https://github.com/yanxiao07/AD-CausalRisk.git
-cd AD-CausalRisk
-```
+医生保存访视并对当前资料质控后，可分别申请患者账号和预测评估。管理员发放账号时，再次核对质控、档案和责任医生。普通档案的评估申请保存在当前质控版本下。按默认业务配置启动时，页面显示「等待可用模型」。此状态表示申请已经登记，系统没有创建预测任务。要立即验证普通档案出报告，请用下文的隔离预测验收方式启动。医生可独立安排复诊。患者能查看本人就诊安排、确认或申请改期。等待改期期间原复诊继续有效，医院处理后患者可查看回执。
 
-完整系统另需按[后端说明](backend/README.md)显式配置数据库/profile并启动Java，再在`frontend/`运行`npm ci`与`npm run dev`。默认前端5173将`/api`代理到Java8080，Java再调用Python8091；缺少数据库配置不会自动回退为已接通环境。
+隔离人工验收配置支持普通编号档案的完整预测流程。医生提交后，系统从同一次已质控访视读取七项已保存资料，直接调用现有研究模型，报告回到原档案供医生复核。研究员无需逐单审批。配置与用途见[后端说明](backend/README.md#普通档案自动预测的人工验收)。
 
-### 启动 Python 服务
+**怎样做批次验证？** 医生登记有依据的结局，管理员从「验证资料授权」按项目登记研究员及档案，一次可粘贴多个编号。研究员按项目和模型版本运行验证，已保存报告可刷新回读。任一有人所在的风险与结局分组少于 5 例时保留报告并抑制指标。普通临床队列与候选模型晋升仍需独立验证材料。获授权明细保留访视日期和测量资料，按研究权限访问。
 
-Windows PowerShell：
+**医生从哪里开始录入？** 在「我的患者 → 新建患者档案」填写院内档案编号、访视量表和已有检验影像报告。可先保存已有资料，也可选择保存并质控。页面按项显示保存结果，已保存内容可在档案里回看。资料质控等术语可在相关页面展开查看。
 
-```powershell
-py -3.11 -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.txt
-.venv/Scripts/python.exe -m python_service.server --port 8091
-```
+**研究员 CSV 怎么用？** 档案、访视、特征模板服务于 `DEMO-` 档案入库与质控。七变量模型模板把同一次已质控访视的 MMSE、CDR-SB 与其余五项输入绑定，生成测试快照。提交模型评估是单独操作。独立队列验证和重新拟合在科研流程中办理。
 
-如果安装的是 Python 3.12，将第一行的 `-3.11` 改为 `-3.12`。可用 `py --list` 查看本机版本。
+**模型如何改进？** 医院与研究团队共同约定可使用的资料、目标人群和结局，先在独立数据中检验两年风险的区分度、校准及分组表现。用评分改变复核顺序或随访间隔的收益，需要结合实际执行记录单独评价。后续更新用获授权数据离线训练，新版本单独验证和审批，留存可复核的版本。医生建档不会自动把资料送入训练流程。
 
-Linux / macOS（先确认 `python3 --version` 为 3.11 或 3.12）：
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m python_service.server --port 8091
-```
-
-服务监听 `http://127.0.0.1:8091`。保持终端运行，另开终端执行下面的请求。
-
-### 提交并查询一个合成案例
-
-Windows PowerShell：
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8091/api/health
-
-$request = Get-Content contracts/examples/deepagent-v1.request.example.json -Raw -Encoding UTF8
-$body = [Text.Encoding]::UTF8.GetBytes($request)
-Invoke-RestMethod http://127.0.0.1:8091/api/agent/v1/runs -Method Post -ContentType application/json -Body $body
-
-Invoke-RestMethod http://127.0.0.1:8091/api/agent/v1/runs/run-demo-001
-```
-
-Linux / macOS：
-
-```bash
-curl --fail http://127.0.0.1:8091/api/health
-curl --fail -H 'Content-Type: application/json' --data-binary @contracts/examples/deepagent-v1.request.example.json http://127.0.0.1:8091/api/agent/v1/runs
-curl --fail http://127.0.0.1:8091/api/agent/v1/runs/run-demo-001
-```
-
-示例响应的关键字段如下；完整结果还包含图、解释、版本、限制和四阶段轨迹。`durationMs` 随实际执行变化。
-
-```json
-{
-  "status": "COMPLETED",
-  "qualityStatus": "PASS",
-  "riskScore": 0.8304,
-  "riskLevel": "HIGH",
-  "dataSource": "SYNTHETIC_DEMO",
-  "reviewRequired": true
-}
-```
-
-### 使用演示数据
-
-| 文件 | 内容 |
-| --- | --- |
-| [`fixtures/synthetic_subjects_100.json`](fixtures/synthetic_subjects_100.json) | 100 个单档案请求；每次提交一个 `subjects` 元素 |
-| [`fixtures/subjects.synthetic.csv`](fixtures/subjects.synthetic.csv) | 100 个合成档案 |
-| [`fixtures/visits.synthetic.csv`](fixtures/visits.synthetic.csv) | 200 条访视 |
-| [`fixtures/features.synthetic.csv`](fixtures/features.synthetic.csv) | 300 条特征观测 |
-| [`contracts/examples/`](contracts/examples/) | 请求、响应与跨语言字段示例 |
-
-档案使用 `DEMO-*` 编号，数据版本使用 `demo-*`。不要把整个 100 档案 JSON 直接提交给单档案接口。三表预检和批量调用见[CSV 预检](docs/Python_Csv_Preflight.md)与[合成批处理](docs/Python_Synthetic_Batches.md)。
-
-## 架构与契约
-
-当前合成业务调用关系如下；可选离线研究计算不在这条HTTP链路内：
+## 系统架构
 
 ```mermaid
 flowchart LR
-    Web["Vue Web 前端"] -->|业务 API| Java["Java 业务后端"]
-    Java --> DB["MySQL 8（目标）/ H2（测试）"]
-    Java -->|AgentClient| Python["Python 合成服务 :8091"]
-    Python --> Workflow["融合 → 图谱 → 排序 → 解释"]
+    Users[医生 · 研究员 · 管理员 · 患者] --> Vue[Vue 3 工作台]
+    Vue -->|同源 /api| Java[Spring Boot 业务服务]
+    Java -->|事务与审计| DB[(MySQL 8)]
+    Java -->|冻结快照 · Bearer| Python[Python 动态研究宿主]
+    Python -->|核验清单与权重| Models[模型发布物]
+    Python -->|评估及解释回执| Java
 ```
 
-| 接口 | 用途 | 契约 |
-| --- | --- | --- |
-| `GET /api/health` | 服务模式与版本 | [Python OpenAPI](contracts/python-agent.openapi.json) |
-| `POST /api/agent/v1/runs` | 同步执行一个合成请求 | 同上 |
-| `GET /api/agent/v1/runs/{runId}` | 查询进程内已有结果 | 同上 |
-| Java 业务 API | 会话、档案、任务、结果与业务管理 | [目标 OpenAPI](contracts/java-business.target.openapi.json)；逐项实现状态见后端说明 |
+Java 负责会话、对象授权、档案版本、任务与结果持久化。Python 负责核对输入和计算，执行状态以 Java 保存的实际回执为准。患者接口以白名单返回进度、医生说明和复诊安排。后台可按清单及权重摘要核对 Java 仓库和 Python 宿主，模型加载由宿主配置管理。
 
-接入时须保留以下语义：
+## 快速开始
 
-- 浏览器调用 Java，Java 调用 Python；用户权限、对象范围、业务任务和历史结果由 Java 管理。
-- Python 同步返回实际阶段与耗时，运行中不提供实时阶段推送。缓存仅存在于进程内，重启后清空。
-- 请求层接受 6–60 个月整数，当前规则只支持 24 个月。其他有效窗口或严重质量问题返回 `BLOCKED`，其分数必须为 `null`、等级为 `UNAVAILABLE`。
-- Java 的业务 `Idempotency-Key` 与 Python 的 `runId` 分别管理。同一 `runId`、同一请求重放返回原结果；同 ID 不同请求返回冲突。超时后先按原 ID 查询和核对，不自动换 ID 重发。
-- 模型、数据、工作流版本及日期、单位、缺失必须保留。患者摘要由 Java 过滤原始排序数值、图权重与内部轨迹。
-- 原生解释和图说明须符合固定规则；未知阶段 `summary` 字段、附加 `limitations` 及不符合原规则的说明会被语义校验拒绝，见[输出审查](docs/Python_Output_Review.md)。
-
-详细状态、错误映射及图到评分的关系见[联调约定](docs/Integration_Contract.md)。`python-demo-logistic-v1` 是保留的接口标识，实际课程计算为固定加性规则，不应据名称推断已训练逻辑回归。
-
-## 开发与测试
-
-### Python
-
-在仓库根目录安装测试依赖并运行：
+需要 JDK 21、Node.js 22.12+、Python 3.11/3.12 和 Git。目标数据库为 MySQL 8，本机演练使用 H2。
 
 ```powershell
-# Windows PowerShell
-.venv/Scripts/python.exe -m pip install -r requirements-dev.lock
-.venv/Scripts/python.exe -m unittest discover -s tests -v
+git clone https://github.com/yanxiao07/AD-CausalRisk.git
+Set-Location AD-CausalRisk
 ```
 
-```bash
-# Linux / macOS
-.venv/bin/python -m pip install -r requirements-dev.lock
-.venv/bin/python -m unittest discover -s tests -v
+### Windows 双击启动
+
+双击 `Start-AD-CausalRisk.cmd`。脚本准备 Java 和前端依赖，等待服务就绪，再打开登录页。项目已运行时，再次双击会打开同一个实例。日志和本机配置位于 `runtime/desktop/`。
+
+默认使用 `runtime/desktop/care.mv.db` 保存本机业务演练档案，医生的普通评估申请显示「等待可用模型」。如已取得研究模型交接材料，按下列字段一次性建立本机文件 `runtime/desktop/local.json`。路径可使用正斜杠，可信摘要由模型保管方提供。模型 Python 环境需先按下文安装运行依赖。
+
+```json
+{
+  "manifest": "C:/controlled-model/Model_Manifest.json",
+  "trustedManifestSha256": "<由模型保管方提供的 SHA-256>",
+  "modelPython": ".venv/Scripts/python.exe"
+}
 ```
 
-测试覆盖契约与 HTTP、阻断、版本、并发重放、缓存、融合来源、贡献重构、输出审查，以及合成研究工程工具的计算边界。测试不需要真实临床数据。
+配置在下次启动时生效，脚本会自动启动医生预测演练。演练使用独立的内存库和现有研究模型，仅供人工样例使用，进程退出后演练档案清空。报告保留研究用途标记。可以从终端运行 `Start-AD-CausalRisk.cmd --care-only` 启动持久化业务演练。以下为手动分开启动的开发步骤。
 
-### 可选离线研究模块
+已有 5173 演练实例在用时，可运行 `Start-AD-CausalRisk.cmd --validation-preview`，在 `http://localhost:5174` 另开独立的验证演练库。
 
-课程测试和可选研究测试使用不同环境。表格与图模块分别使用独立依赖，不能在仅安装表格依赖的环境中发现整个研究测试目录。按专题选择：
+### 启动 Java 与 Vue
+
+在终端一从仓库根目录启动 Java。以下使用专用演练文件库，Flyway 初始化 V1–V33。H2 驱动由 Maven 测试依赖提供，所以演练命令显式加载该类路径。
 
 ```powershell
-# 表格估计器、固定训练与嵌套校准
-py -3.11 -m venv .venv-research
-.venv-research/Scripts/python.exe -m pip install -r research_runtime/requirements.lock
-.venv-research/Scripts/python.exe -m unittest research_runtime.tests.test_runtime research_runtime.tests.test_training -v
-
-# 图模块另用独立CPU环境，保持原课程与表格环境
-py -3.11 -m venv .venv-research-graph
-.venv-research-graph/Scripts/python.exe -m pip install -r research_runtime/requirements.graph.lock
-.venv-research-graph/Scripts/python.exe -m unittest research_runtime.tests.test_graph research_runtime.tests.test_graph_native research_runtime.tests.test_graph_training research_runtime.tests.test_graph_explanation -v
+Set-Location backend
+.\mvnw.cmd -B -ntp compile dependency:build-classpath '-DincludeScope=test' '-Dmdep.outputFile=target/h2-demo-classpath.txt'
+New-Item -ItemType Directory -Force runtime | Out-Null
+$env:SPRING_DATASOURCE_URL = 'jdbc:h2:file:./runtime/adcr-demo;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE'
+$env:SPRING_DATASOURCE_USERNAME = 'sa'
+$env:SPRING_DATASOURCE_PASSWORD = ''
+$env:SPRING_DATASOURCE_DRIVER_CLASS_NAME = 'org.h2.Driver'
+$demoDependencies = (Get-Content target/h2-demo-classpath.txt -Raw).Trim()
+java -cp "target/classes;$demoDependencies" com.adcausalrisk.backend.BackendApplication --server.address=127.0.0.1
 ```
 
-上述研究测试包含人工数据构造拟合，不读取真实队列或权重。已有固定真实研究不因源码发布重训。课程Python CI只发现`tests/`；独立的研究原语CI显式选择35项标准库和139项NumPy人工检查，不发现整个研究测试目录，不执行预测拟合、模型加载或真实研究。最小依赖与对应命令见[研究运行说明](research_runtime/README.md#研究原语分层ci)。协议机器文件保留原始字节，阶段文档以交付状态说明区分历史与当前，最新完成项及唯一下一任务以[Python需求状态](docs/Python_Requirement_Status.md)为准。
+在终端二从仓库根目录启动 Vue，访问 [本机登录页](http://127.0.0.1:5173/login)。默认 Vue、Java 和研究宿主端口分别为 `5173`、`8080`、`16301`。
 
-### Java
+```powershell
+Set-Location frontend
+npm.cmd ci
+npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
 
-在 `backend/` 执行 `.\mvnw.cmd -B -ntp verify`（Windows PowerShell）或 `./mvnw -B -ntp verify`（Linux / macOS）。Linux 首次使用可先执行 `chmod +x mvnw`。启动所需 profile、数据库变量、迁移与未验证事项见[后端说明](backend/README.md)。H2 测试通过不代表 MySQL 8 部署已验收。
+本机演练账号为 `doctor`、`researcher`、`admin` 和 `patient`，初始演练口令为 `DemoPass!2026`。医生在「我的患者 → 新建患者档案」使用普通编号，例如 `OP-001`。保存访视后可质控、登记评估申请、申请患者账号并安排随访。默认配置的普通评估申请显示「等待可用模型」。管理员发放账号后，使用该新账号查看对应档案的复诊。演练账号仅用于回环环境。
 
-### 持续集成
+MySQL 部署使用专用 schema 和数据库账号，配置方式见 [Java 后端](backend/README.md) 与 [MySQL 8 验收及恢复](docs/MySQL8_Acceptance.md)。
 
-| 工作流 | 当前配置 |
+### 接入已训练模型
+
+模型保管方提供原始清单、同目录权重和可信 SHA-256。在终端三从仓库根目录启动动态研究宿主。初次配置 Java 时按 [后端模型身份配置](backend/README.md#本地研究任务联调) 核对 Java 使用的清单和摘要。
+
+要用普通编号的人工档案验证「医生提交 → 自动计算 → 报告复核」，从[隔离人工验收启动步骤](backend/README.md#普通档案自动预测的人工验收)启动专用内存库和宿主。仅克隆源码时可完成上面的业务流程，并运行下节的公开人工契约验收。读取训练模型还需要模型保管方提供的清单、权重及固定摘要。
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r research_runtime/requirements.lock
+$env:RESEARCH_TABLE_TEST_TOKEN = Read-Host '研究宿主访问令牌' -MaskInput
+.\.venv\Scripts\python.exe -B -m research_runtime.dynamic_host `
+  --port 16301 `
+  --manifest 'C:/controlled-model/Model_Manifest.json' `
+  --trusted-manifest-sha256 '<模型保管方提供的 SHA-256>' `
+  --snapshot-dir runtime/demo-snapshots
+```
+
+在管理员的「系统设置 → 评估服务配置」填写 `http://127.0.0.1:16301` 和同一令牌。打开「模型版本库」核对宿主的模型清单。研究员可从「导入测试资料」生成已质控的七变量测试快照，再到「研究证据」选择快照并提交预测。若暂时没有模型文件，可运行下节的合成 HTTP 验证。
+
+## 验证与升级
+
+从仓库根目录运行以下命令。`verify` 使用独立 H2 测试库。Python HTTP 验证使用公开构造参数、独立测试库和环回端口，输出目录应为新目录。
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.lock
+
+Push-Location backend
+.\mvnw.cmd -B -ntp verify
+Pop-Location
+
+Push-Location frontend
+npm.cmd ci
+npm.cmd run build
+Pop-Location
+
+.\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -B -m research_runtime.examples.run_research_table_integration runtime/contract-demo --contract-test
+```
+
+| 范围 | 交付状态 |
 | --- | --- |
-| [Python service and contract checks](.github/workflows/python-base.yml) | Python 3.11 / 3.12，固定测试依赖，`unittest` |
-| [Python research primitive checks](.github/workflows/python-research-primitives.yml) | Windows / Ubuntu × Python 3.11 / 3.12，标准库35项与仅NumPy139项分别运行 |
-| [Java backend build and tests](.github/workflows/backend-build.yml) | JDK 21，Maven `verify`，H2 测试 |
+| Java / Vue / Python | 115 个 Java API 操作。Java 全量回归、Vue 构建、Python 契约和动态宿主验证均已运行。远端 CI 结果见仓库 Actions。 |
+| 数据库与角色联调 | H2 和隔离 MySQL 8.0.46 验证过升级、查询和持久化。Edge 用人工档案走过账号交接、CSV、实际 Python 推理、报告、发布、撤回及复诊。 |
+| 科研 | 已有七变量和十变量表格基线。当前解释展示同一次预测的输入贡献及局限。个人因果识别、图引导的预测增益和独立队列有效性仍需科研证据。 |
+| 医院与患者应用 | 真实回顾性病例需取得同次访视的原始来源、量表完成、独立质控及使用和执行许可。老年用户真机试用、医院号源、HIS、消息通知和正式部署仍待对应验收。 |
 
-推送和 PR 会触发上述工作流；实际结果以 [GitHub Actions](https://github.com/yanxiao07/AD-CausalRisk/actions) 为准。前端已有安装、构建和测试脚本；本次后端交付不包含本地候选的前端专用CI工作流。
+已有数据库升级前应备份业务库、宿主快照目录及发布物配置。Flyway 只向前迁移。回退应用时应恢复与旧版本配套的备份副本。详细步骤见 [MySQL 8 验收](docs/MySQL8_Acceptance.md) 与 [备份恢复演练](docs/MySQL_Backup_Restore_Drill.md)。
 
-既有因果识别论证的[标准库精确示例](docs/Causal_Identification_Results.md)现随源码交付，运行 `python -I -S -B examples/causal_identification_audit.py` 可核对9项精确检查。该示例在研究CI标准库矩阵中单独运行；数学反例不构成本研究的因果效应或临床证据。
+## 文档与贡献
 
-## 文档导航
-
-| 主题 | 文档 |
+| 入口 | 内容 |
 | --- | --- |
-| 需求与责任 | [课程 SRS](docs/Course_SRS_V3_2.md) · [业务设计](docs/Design_Guide.md) · [Python覆盖与缺口](docs/Python_Requirement_Status.md) |
-| 联调与故障 | [联调约定](docs/Integration_Contract.md) · [接口阶段验收](docs/Python_Interface_Acceptance.md) · [并发与失败处理](docs/Python_Concurrent_Execution.md) · [故障与只读恢复](docs/Python_Interop_Recovery.md) |
-| 数据与质量 | [CSV 预检](docs/Python_Csv_Preflight.md) · [质量报告](docs/Python_Quality_Review.md) · [特征融合](docs/Python_Feature_Fusion.md) |
-| 图与解释 | [核心结果校验](docs/Python_Core_Validation.md) · [图谱证据](docs/Python_Graph_Evidence.md) · [解释一致性](docs/Python_Explanation_Consistency.md) · [输出审查](docs/Python_Output_Review.md) |
-| 评估与缺失 | [构造预测评估](docs/Python_Prediction_Evaluation.md) · [缺失输入敏感性](docs/Python_Missingness_Sensitivity.md) |
-| 合成报告与批处理 | [课程报告](docs/Python_Course_Reports.md) · [合成批处理](docs/Python_Synthetic_Batches.md) · [演示报告适配](docs/Synthetic_Reports.md) |
-| 可选受控研究接入 | [运行时集成](docs/Research_Runtime_Integration.md) · [受控客户端](docs/Controlled_Research_Client.md) · [研究基底与验收](docs/Research_Backend_Acceptance.md) · [模型与任务反馈](docs/Model_And_Task_Feedback.md) |
-| 团队开发 | [贡献指南](CONTRIBUTING.md) · [AI 协作指南](docs/AI_Collaboration.md) · [助手规则](AGENTS.md) |
-
-可选研究接入依赖独立授权环境，普通克隆不会获得受限数据或研究模型；不影响上面的课程合成服务快速开始。
-
-## 仓库结构
+| [业务状态](docs/Business_Feature_Status.md) · [设计指南](docs/Design_Guide.md) | 角色、工作流、权限和兼容说明 |
+| [Java 后端](backend/README.md) · [Vue 前端](frontend/README.md) · [研究运行时](research_runtime/README.md) | 各模块的启动、配置、构建和调试 |
+| [Java OpenAPI](contracts/java-business.target.openapi.json) · [研究宿主 OpenAPI](docs/contracts/research-table-agent.draft.openapi.json) · [集成契约](docs/Integration_Contract.md) | 接口、认证、数据范围和失败回执 |
+| [研究主线](docs/Research_Core_Principles.md) · [研究进展](docs/Research_Progress_and_Integration.md) · [受控资料准入](docs/Research_Host_Evidence_Admission.md) | 模型证据、适用边界和真实来源要求 |
+| [发布说明](docs/Release_Notes_v1.0.md) · [贡献指南](CONTRIBUTING.md) | 变更历史、分支和评审流程 |
 
 ```text
-.
-├── python_service/       # 四阶段服务、客户端与工程工具
-├── backend/              # Java 业务后端与数据库迁移
-├── frontend/             # Vue业务前端、角色页面与测试脚本
-├── contracts/            # 冻结契约与请求/响应示例
-├── fixtures/             # 合成档案、访视和特征
-├── tests/                # Python 与契约测试
-├── docs/                 # 需求、设计、联调和专题说明
-├── research_gateway/     # 可选研究接入适配
-├── research_runtime/     # 可选离线估计器、固定训练/校准与图计算源码；独立依赖
-├── .github/              # CI 工作流与 PR 模板
-├── CONTRIBUTING.md       # 协作流程
-└── AGENTS.md             # 编码助手约束
+backend/          Spring Boot、Flyway、授权、任务和审计
+frontend/         Vue 四角色工作台
+research_runtime/ 动态研究宿主、模型校验和预测解释
+python_service/   历史 Agent 合成契约与兼容回归
+contracts/        业务及历史 Agent OpenAPI
+fixtures/         可公开的合成档案与 CSV
+docs/             设计、研究证据、验收及运维说明
 ```
 
-## 参与贡献
-
-欢迎通过 [Issues](https://github.com/yanxiao07/AD-CausalRisk/issues) 报告问题或讨论需求，通过 [Pull requests](https://github.com/yanxiao07/AD-CausalRisk/pulls) 提交实现。开始前阅读[贡献指南](CONTRIBUTING.md)和对应模块说明，确认需求编号、文件范围与验收条件。
-
-1. 从最新 `main` 创建功能分支；无仓库写权限时使用 Fork。
-2. 按模块完成一个可测试的变更，运行本模块及受影响的共同检查。
-3. 提交 PR，说明行为变化、对应需求、实际测试、兼容影响及未完成项，参照[PR 模板](.github/pull_request_template.md)。
-4. 经 CI 和评审后合并。共同契约变更先明确字段、版本和调用方影响，不用 Mock 或改写评分规则掩盖集成失败。
-
-分工保持清晰：Python 维护工作流与算法契约；Java 负责权限、持久化和业务 API；前端负责会话、页面与交互。AI 辅助开发同样需要人工核对差异与测试，工作规则见 [AGENTS.md](AGENTS.md)。
-
-## 路线图
-
-- [x] Python 合成四阶段服务、固定契约与请求/结果校验。
-- [x] CSV 预检、质量报告、原规则来源追溯及合成工程工具。
-- [x] Java 工程、迁移、认证、档案与访视基础接口；CSV预览/确认入库与导入幂等（PR #8）。
-- [x] Java质控（QC）模块：审核队列、审核决策与状态统计。
-- [x] Java特征读取、持久化任务与实际AgentClient；保留BLOCKED/null及失败原因。
-- [x] Web工程、业务页面、四角色视图及测试脚本；移动端与全部交互场景另验收。
-- [x] 业务复核、随访、授权报告资源及内部评估的患者访问限制。
-- [x] 业务审计、患者白名单摘要、账号/授权管理及59操作契约；验证边界见[后端验收](docs/Backend_Requirements_Acceptance.md)。
-- [ ] MySQL、浏览器及跨服务故障/重启历史的端到端验收。
-
-研究算法与科学验收单独跟踪：固定训练扰动、分组归因及自然模态分层已有阶段交付，真实累计673基础/36校准；[当前需求状态](docs/Python_Requirement_Status.md)保留图增益阴性、结构四折不可估、CSF NO_GO和真实阈值整表抑制。维护主机研究页面不包含在本仓库。研究依赖与课程环境分开，图专题使用图锁环境。严格个人因果、独立/as-of/QC、研究模型业务接入和临床验证仍未完成。
-
-## 使用范围与许可
-
-仓库中的 `DEMO-*` 与 `SYNTHETIC_DEMO` 资料用于课程演示。真实来源数据、个人身份信息、凭据、模型授权材料及运行缓存不得随代码提交。教学报告和自动校验不代替医生人工复核、对象授权或临床验证。
-
-当前仓库尚未提供 `LICENSE` 文件，许可证方案待维护者确定。
+报告故障时可附版本、角色、预期操作和脱敏后的 `traceId`。病例、快照、权重和令牌通过各自受控渠道传递。仓库包含第三方依赖及字体，各自许可见对应文件。研究数据和权重依照原始授权使用。

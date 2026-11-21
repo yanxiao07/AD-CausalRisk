@@ -1,0 +1,153 @@
+# Release Notes v1.0
+
+## V32–V33 病例授权与验证报告 · 2026-11-21
+
+- 管理员可批量授权，逐档审计，失败可单独重试。责任医生登记结局，研究员读取首次成功预测和相同病例的结局。
+- 验证以项目和固定模型为范围，保存可回读的报告。结局未知和小组抑制明确显示，「证据与模型版本」可直接打开。
+- Windows 提供双击启动。已启用独立人工演练时，普通编号档案的医生说明可由绑定患者查看，患者界面保留白名单。
+- V32–V33 使用本机 H2 验收。目标 MySQL 升级、独立临床队列、候选复评及发布保留为后续验收。
+
+## V30–V31 普通档案与自动预测验收 · 2026-11-21
+
+- 医生使用普通院内编号建档。建档和补录访视使用同一套资料字段，可以录入并回看计算所需的七项。旧访视仍可查看及补录更正，实际零分保留。
+- 默认本机配置可以质控、登记评估申请、开通并绑定患者账号及安排复诊。评估申请保存后显示「等待可用模型」。
+- 配置固定训练模型发布物后，可在专用人工验收配置中验证医生提交、自动计算和医生复核。同一次访视重复提交回读原任务。研究员负责独立验证与版本复评，无需对该流程逐单审批。
+
+启动和模型交接见 [项目 README](../README.md#快速开始) 与 [普通档案自动预测的人工验收](../backend/README.md#普通档案自动预测的人工验收)。
+
+## V29 四角色流程交付 · 2026-11-20
+
+- **建档与开户**：从当前访视质控发起患者账号申请，管理员核对后发放，支持责任医生交接。既有账号、原申请人和访视历史保留。
+- **评估与结果**：医生申请回到研究员队列。受控任务的首次执行和重试都核对原申请、当前质控、冻结摘要及宿主许可。医生研究复核、患者说明发布和撤回独立记录。
+- **随访**：支持就诊地点、准备事项、患者确认和改期，提供多条预约和近期回执。V28 和 V29 为前向迁移。
+- **研究和系统管理**：七变量 CSV 与当前已质控访视绑定，模型仓库可与 Python 实际加载的摘要比对。医生报告突出访视日期、资料版本、来源和缺项。
+- **验收**：Java 391 项、Vue 生产构建、Python 构造用例与隔离 MySQL 8.0.46 升级联调。4 个角色在人工档案中完成模型推理、复核、发布、查看和撤回。真实病例、临床有效性和医院正式部署分别验收。
+
+启动与使用见 [项目 README](../README.md)，接口见 [OpenAPI](../contracts/java-business.target.openapi.json) 的 115 个操作。
+
+## v1.0 历史交付基线
+
+**基线日期**：2026-11-15  
+**分支**：`feat/backend-integration`  
+**范围**：W0–P3 交付基线
+
+本版本完成从单档案演示到「登记—同步—批量评估—持久历史」研究闭环的收口。真实七变量模型已在受控环境中跑通，但结果仍属于研究验证输出，不构成临床诊断、个人因果效应或生产部署验收。
+
+## 里程碑
+
+### W0 交付卫生
+
+- 统一工作区与提交边界，清理临时脚本、证据目录与调试产物。
+- `.gitignore` 纳入 `.tmp/`、运行时快照目录与本地模型文件。
+- CI 补齐研究运行时依赖，Python 3.11/3.12 工作流恢复通过。
+
+### W1 动态研究宿主
+
+- 新增 `research_runtime/dynamic_snapshot.py`：定义 `research-dynamic-snapshot-v1` bundle，校验 request/model/context 与三摘要。
+- 新增 `research_runtime/dynamic_host.py`：按 `runId` 动态解析快照，支持目录热加载与重复 `runId` 冲突检测。
+- 新增受控注册接口 `POST /api/research-table/v1/snapshots`，Bearer 校验、`verify_bundle`、幂等写入。
+- 解决 Java 与 Python 的 canonical JSON 摘要一致性问题；Java 端按真实 `Model_Manifest.json` 构造模型身份，拆分模型运行时摘要与宿主代码摘要。
+
+### P0 角色化开户与批量评估入口
+
+- 「新建账号」改为三步向导：基本信息 → 权限与绑定 → 确认提交。
+- `PATIENT` 强制绑定受试者档案与主治医生；创建后自动授予患者 `SUMMARY_READ`、医生 `VIEW`/`MANAGE`。
+- 研究证据页支持快照多选与批量评估抽屉，展示提交进度、成功/阻断/失败状态。
+
+### P1 快照自动同步与批量评估闭环
+
+- V16 为 `research_table_snapshot` 增加 `bundle_json`、`host_sync_status`、`host_synced_at`。
+- Java 登记成功后自动构造 bundle 并调用 Python 宿主注册；状态机为 `PENDING`/`SYNCED`/`FAILED`。
+- 未同步快照提交时返回 `RESEARCH_UNAVAILABLE`，前端给出准确提示并阻止批量提交。
+- 列表新增「宿主同步」列与失败重试入口。
+- Java 回归测试通过 Python `bundle_from_parts` 验证登记产出的 bundle。
+
+### P2 真实缺失值登记
+
+- 受控登记表单允许留空；缺失变量按 `NOT_COLLECTED` 写入 Observation，不补 0、不插均值。
+- 以受试者 203 的真实访视（MMSE 28、CDR-SB 0.5）登记快照 #9，其余五项标记缺失。
+- 双原因 24 个月 CIF：AD **5.20%**、其他痴呆 **17.83%**。
+- 结果标记 `predictionAllowed=false`、`clinicalUse=false`、`missingnessEffectsExplained=false`，明确不能当作完整七变量临床预测。
+
+### P3 持久历史、同步筛选与失败重试
+
+- 新增 `GET /api/research/table-assessment-tasks/history?subjectId=`，按任务时间倒序返回最近 50 条。
+- 新增 `POST /api/research/table-assessment-tasks/{id}/retry`，仅允许 `FAILED`/`OUTCOME_UNKNOWN` 重试。
+- 前端增加同步状态筛选、任务历史表与失败任务重试；刷新页面后历史从后端重建。
+- OpenAPI 操作数在 P3 时增至 83、路径 71；J1 后为 85 个操作、73 条路径，当前为 93 个操作、80 条路径。
+
+### P5 产品化文案
+
+- 根 README 重写为产品化 Quick Start，覆盖三端启动、演示账号与验证命令。
+- 清理 docs/ 与前端 UI 的历史项目表述，统一为“医疗科研协作平台/受试者研究队列/模型验证环境”。
+- 保留历史文档文件名以兼容链接；保留 `SYNTHETIC_DEMO`、`CONSTRUCTED_VALIDATION` 数据标签与历史实验记录。
+- 新增本发布说明作为 v1.0 交付基线。
+
+### J1–J4 交付加固
+
+- J1：新增研究验证报告服务端导出（PDF/HTML/JSON），按任务读权限授权并写审计；前端报告页改为下载后端附件。
+- J2：新增 `GET /api/research/table-assessment-tasks/metrics`，管理员大屏与医生工作台按独立研究口径展示任务/复核/同步/耗时，不与旧规则混算。
+- J3：V20 为 `research_table_task` 增加 `executor_id`、`lease_expires_at` 与租约索引，原子领取、过期恢复和多实例防重复执行；并发/过期测试覆盖。
+- J4：启用 Cookie 会话 CSRF，登录豁免，`GET /api/auth/csrf` 发放 token，前端 axios 对写请求自动附加 `X-CSRF-TOKEN`。
+- OpenAPI 增至 93 个操作、80 条路径；V1–V22 已在隔离 MySQL 8.0.46 完成 fresh 迁移、V12→V22 升级、备份恢复与租约恢复演练，生产部署与真实进程中断演练仍待执行。
+
+### 产品化与医疗合规收尾
+
+- V21：新增模型发布仓库，支持 Manifest/Artifact 上传、SHA-256 校验、启停与回滚，所有操作写审计；模型登记只代表发布意图，实际打分仍由研究宿主加载同一 Artifact。
+- V22：访视更正改为追加版本，原行保留 `is_current=false`，新行记录 `version_no`、`replaces_id`、原因、操作人和时间；current-only 读取保证详情不重复，历史可追溯。
+- 患者端新增 `GET /api/patients/me/research-summary`，仅对 `CONFIRMED` 研究结果输出定性结论、研究用途声明和限制，不返回 CIF、权重、图或 resultJson。
+- 前端增加患者研究摘要卡片、系统控制台模型仓库、360 档案访视更正与版本历史；移动端侧栏、表格横向滚动和工具栏换行覆盖 390px 验收。
+
+### 合并前安全与一致性修复
+
+- 批量研究评估只接受当前访视版本，且质控必须绑定同一输入摘要与数据版本；旧访视 PASS 不再放行新访视，批量分数使用原始值而不是舍入派生值。
+- 旧模型身份/CRLF 软件锁摘要快照标记为不兼容，并提供重新登记接口；旧快照与历史任务不重写。
+- 单条评估拒绝上一档案迟到的快照响应，并在加载、提交前后核对当前受试者。
+- 研究报告列表在计数/分页前过滤已撤权档案；JSON/HTML/PDF 导出由后端重新鉴权并记录审计，禁止浏览器缓存完整任务。
+- 质控只读取当前访视版本；批量评估改用档案级 `data_version` 绑定质控证据，修复访视更正或仅特征变更后的误阻断。
+- 模型上传使用独立不可变文件路径，避免并发同版本上传互相删除；任务租约默认 900 秒，最低 632 秒。
+- 报告 PDF/HTML 归因列直接读取数值型贡献；患者摘要即使 `predictionAllowed=false` 也保留“已复核、输入有限”状态，不再误报“数据不足”。
+- 报告列表、报告详情和导出统一使用报告档案授权：医生必须有明确的 VIEW/MANAGE，研究员限本人登记，非全量研究视角再校验档案权限；任务详情接口保持独立。
+- 租约不再只依赖默认值：配置必须覆盖 2s 连接 + 600s 读取 + 30s 结果落库余量（最少 632s），否则启动直接失败，避免部署调短后提前回收运行中任务。
+- 模型启用/停用/回滚在同一事务内先锁定 `model_configuration` 再串行切换，保证并发启用后恰好一个版本处于 enabled。
+
+## 真实七变量闭环
+
+以下结果来自受控七变量模型与动态宿主，属于构造/人工样例验证，不是临床概率：
+
+| 快照 | 变量概况 | AD 24m CIF | 其他痴呆 24m CIF | 任务 |
+| --- | --- | --- | --- | --- |
+| #7 | 72/14/26/1.5/0.5/18/4 | 19.34% | 0.08% | COMPLETED |
+| #8 | 50/30/11/11/3/11/11 | 63.99% | 36.01% | COMPLETED |
+| #9 | MMSE 28、CDR-SB 0.5，其余 5 项 NOT_COLLECTED | 5.20% | 17.83% | COMPLETED |
+
+共同标记：
+
+- `dataScope = CONSTRUCTED_VALIDATION`
+- `artifactSha256 = 66cfc253…`
+- `isCausalEffect = false`
+- 解释方法 `exact-single-reference-group-shapley-v1`
+- 快照 #9：`predictionAllowed=false`、`clinicalUse=false`
+
+## 验证记录
+
+- 后端：`.\mvnw.cmd -B -ntp clean verify` → 373 tests，0 failures，0 errors，0 skipped，BUILD SUCCESS。
+- 前端：`npm run build` → 2395 modules，构建成功。
+- Python：`tests.test_contracts_and_fixture` + `tests.test_lock_digest` 7/7；`tests.test_dynamic_host` 6/6。
+- CI：Python research primitives、Java backend、Python service 全部通过。
+
+## 交付物
+
+- 受控快照登记接口与七变量表单。
+- 动态研究宿主与 bundle 注册协议。
+- 快照同步状态机、批量评估抽屉、任务历史与重试。
+- 系统控制台：研究宿主、评估通道、审计保留策略。
+- 文档：P1 验收报告、P2 数据模板、产品化规划、发布说明。
+
+## 边界与后续
+
+- 不把研究模型输出表述为临床诊断、校准概率或个人因果效应。
+- 缺失值不补造；`BLOCKED` 不生成替代分数。
+- 患者主索引（跨 subject 合并）为远期规划，本版本不修改底层数据模型。
+- 真实患者数据接入、生产部署、备份恢复/任务耐久性与完整临床验证仍需单独验收。
+- 模型文件与受控数据不进入 Git；部署时由模型保管方提供 manifest、artifact 与可信 SHA-256。

@@ -1,12 +1,38 @@
 # 离线研究计算、固定训练与图模型
 
-新七/十变量模型的[Python接入候选](../docs/Research_Model_Integration_Candidate.md)区分课程/旧V8 HTTP、离线CLI与现有内存API，提供字段差异和纯标准库人工请求/响应示例。候选不新增服务或共享契约；离线九组合与内存表格六组合的支持边界分别保留。
+[表格研究通道](../docs/Research_Table_Agent_Contract.md)复用内存评估与语义校验。模型验证展示从受控目录核对清单和参数摘要，加载七变量 LR，再评估固定人工快照。[启动说明](../backend/README.md#本地研究任务联调)同时给出使用公开人工参数的契约回归方式。真实患者输入仍待独立准入。
+
+### 受控资料的指定运行授权
+
+动态宿主的 `--controlled-authorization-file <文件>` 可在启动时读取一个已有的授权记录。未指定时，受控资料进入资料核验。宿主配置管理者应先核实用途和授权，授权记录放在 `--snapshot-dir` 之外且由宿主方管理。HTTP 调用方只能提交原评估请求。
+
+| 授权 JSON 字段 | 来源 |
+| --- | --- |
+| `runId`、`snapshotId`、`subjectId` | 同一份受控冻结快照与其档案 |
+| `requestSha256`、`inputSha256`、`contextSha256` | 该快照已校验的请求、模型输入和独立证据摘要 |
+| `predictionAuthorizationRef`、`explanationAuthorizationRef` | 分别允许预测和解释的独立授权凭据编号 |
+
+宿主仅对全部绑定匹配的受控快照使用该记录。证据不全仍返回 `BLOCKED`，预测和解释调用均为零。证据齐备但缺少匹配授权时返回 `INDEPENDENT_EXECUTION_PERMISSION_REQUIRED`。授权编号留在宿主配置。撤回或替换授权后需重启宿主。同一快照仍走原业务幂等与重试规则。当前候选仅验收 Python HTTP 的人工输入，Java 仍只接收受控核验结果。
+
+[统一表格评估入口](../docs/Table_Assessment_Integration.md)将原许可预测与保存参考SHAP连接成同一输入/模型状态的内存结果，保留来源准入、独立解释权限和失败无部分数值。它是后续真实业务接入的计算步骤，不读取真实数据/参数、不新增HTTP或更换默认服务。
+
+新七/十变量模型的[Python接入候选](../docs/Research_Model_Integration_Candidate.md)区分规则引擎/旧V8 HTTP、离线CLI与现有内存API，提供字段差异和纯标准库人工请求/响应示例。候选不新增服务或共享契约；离线九组合与内存表格六组合的支持边界分别保留。
 
 同一人工解析案例的[预测/解释绑定候选](../docs/Prediction_Explanation_Binding_Candidate.md)复用原精确分组Shapley与单次调度，附固定JSON及16项错绑/数值检查；只需原锁NumPy。它不是实际研究模型运行或生产报告API，LIME与真实宿主证据保持未执行/未核验。
 
-## 新增离线评价与监测
+## 实验配置导出与参数核验
 
-本次交付复用已完成实现，为第2→3环节的结构/评价与第1→3→4环节的监测提供纯内存接口。不新增文件读取器、训练器或HTTP服务，也不改变业务默认模型。
+[FR-22 配置元数据导出](../docs/Research_Experiment_Config.md)提供标准库内存导出与回读，涵盖两规格三算法、原始 24 月策略、保存参考、种子、划分与发布摘要。个人内容、路径、参数及许可不导出。人工示例：`python -B -S -m research_runtime.examples.experiment_config_constructed`。
+
+[实际参数组件核验](../docs/Model_Artifact_Admission.md)覆盖六个表格模型的参数、状态与保存参考。九个人工案例验证预测与解释绑定；完整宿主资格仍为 NO_GO。
+
+[源码/锁及安装记录检查](../docs/Research_Runtime_Binding.md)补充表格数值8成员范围、两种锁字节对象和12版本/6274带哈希安装成员的一致性证据；3875无哈希成员、受阻模块导入、发行来源/缓存身份不升级为认证。未改原锁或环境，未签发可信上下文/许可。
+
+[图实验配置导出](../docs/Research_Experiment_Config.md#图模型配置)复用同一API，新增独立图schema、固定协议三臂和种子，区分单种子CIF与三种子CIF等权均值；各参数摘要按种子绑定，拒绝漏种子/重复参数/错误聚合策略。`python -B -S -m research_runtime.examples.graph_experiment_config_constructed`输出人工均值配置，`--arm self_only --single-seed 20260927`输出单模型配置。无需Torch/NumPy/参数读取；新增17检查加入标准库层，当前69项，原六表格v1字节不变。
+
+## 离线评价与监测
+
+以下纯内存接口支持结构评价和监测，独立于业务服务。
 
 | 模块 | 接口与限制 |
 | --- | --- |
@@ -25,7 +51,7 @@
 
 ```powershell
 # 标准库专题
-python -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve -v
+python -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve research_runtime.tests.test_experiment_config research_runtime.tests.test_graph_experiment_config -v
 
 # NumPy专题，无需pandas、Torch或预测依赖
 .venv-research/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability -v
@@ -34,9 +60,7 @@ python -B -S -m unittest research_runtime.tests.test_competing_event_functional 
 .venv-research-graph/Scripts/python.exe -B -m unittest research_runtime.tests.test_graph_modality_strata research_runtime.tests.test_graph_modality_evaluation research_runtime.tests.test_table_thresholds -v
 ```
 
-本次只提交计算源码、人工测试与技术说明；真实临床、权重、OOF、私有折、执行授权和机器审计不在Git中。以下既有训练/加载工具的范围保持，不能因源码交付自动执行训练或部署。
-
-原源码交付验收在Windows/Python 3.11的既有环境运行上述9个专题及原`test_graph_explanation`、`test_table_xai_study`回归，共241项通过；课程标准库/契约回归733项通过。当时有pandas `astype(copy=...)`弃用提示，未修改数值实现，也未执行Linux、Python 3.12或研究原语远端CI。下面单列新增CI检查的范围。
+受控数据、模型权重、折外预测、私有折和执行授权不在 Git 中。测试使用人工数据。
 
 ## 研究原语分层CI
 
@@ -44,7 +68,7 @@ python -B -S -m unittest research_runtime.tests.test_competing_event_functional 
 
 | 层 | 显式测试模块（`research_runtime.tests`下） | 依赖与范围 |
 | --- | --- | --- |
-| 标准库，35项 | `test_competing_event_functional`、`test_decision_curve` | `-S`禁用site packages；精确核功能量及未知结局界限 |
+| 标准库，69项 | `test_competing_event_functional`、`test_decision_curve`、`test_experiment_config`、`test_graph_experiment_config` | `-S`禁用site packages；精确核功能量、未知结局界限及配置绑定/受限导出 |
 | NumPy，139项 | `test_feature_drift`、`test_performance_monitor`、`test_lifecycle_monitor`、`test_graph_structure_stability`、`test_prediction_explanation_candidate` | 仅安装原锁中的NumPy 2.4.6；人工监测/隐私/结构稳定性及预测/解释错绑检查 |
 
 最小NumPy环境可用以下命令建立；Linux/macOS将解释器路径换成`.venv-primitives/bin/python`：
@@ -52,7 +76,7 @@ python -B -S -m unittest research_runtime.tests.test_competing_event_functional 
 ```powershell
 py -3.11 -m venv .venv-primitives
 .venv-primitives/Scripts/python.exe -m pip install --only-binary=:all: --constraint research_runtime/requirements.lock numpy
-.venv-primitives/Scripts/python.exe -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve -v
+.venv-primitives/Scripts/python.exe -B -S -m unittest research_runtime.tests.test_competing_event_functional research_runtime.tests.test_decision_curve research_runtime.tests.test_experiment_config research_runtime.tests.test_graph_experiment_config -v
 .venv-primitives/Scripts/python.exe -B -m unittest research_runtime.tests.test_feature_drift research_runtime.tests.test_performance_monitor research_runtime.tests.test_lifecycle_monitor research_runtime.tests.test_graph_structure_stability research_runtime.tests.test_prediction_explanation_candidate -v
 ```
 
@@ -64,7 +88,7 @@ py -3.11 -m venv .venv-primitives
 
 发布前的本地验收从只含Git源码的副本，在新建Windows/Python 3.11.9和3.12.13环境分别通过35+123项检查，零跳过；数值环境除环境自带工具外只安装NumPy 2.4.6。工作流通过actionlint检查。该本地记录不包含Linux与GitHub托管环境结果；远端记录以对应提交的Actions为准。
 
-接入候选发布时将16项人工预测/解释绑定测试加入现有NumPy作业，没有新增依赖或执行真实模型。Windows/Python 3.11.9和3.12.13的Git源码副本各通过35+139项，零跳过；原35+123项记录保留为上一发布的范围。
+接入候选发布时将16项人工预测/解释绑定测试加入现有NumPy任务，没有新增依赖或执行真实模型。Windows/Python 3.11.9和3.12.13的Git源码副本各通过35+139项，零跳过；原35+123项记录保留为上一发布的范围。
 
 ## 既有研究与源码移植范围
 
@@ -90,7 +114,7 @@ py -3.11 -m venv .venv-research
 .venv-research/Scripts/python.exe -m unittest research_runtime.tests.test_runtime research_runtime.tests.test_training -v
 ```
 
-Linux/macOS将解释器路径换成`.venv-research/bin/python`。已验证的是Windows/Python 3.11；新机器仍需运行这些检查。锁文件与现有模型清单记录的版本相同，不修改课程服务依赖。14项原验收测试使用九次小型合成拟合及一次分类器状态拟合；13项新训练测试使用90人构造队列、42次基础/12次校准拟合验证两条路径，不扫描或加载真实交付目录。构造拟合不计入真实研究账本。
+Linux/macOS将解释器路径换成`.venv-research/bin/python`。已验证的是Windows/Python 3.11；新机器仍需运行这些检查。锁文件与现有模型清单记录的版本相同，不修改合成验证服务依赖。14项原验收测试使用九次小型合成拟合及一次分类器状态拟合；13项新训练测试使用90人构造队列、42次基础/12次校准拟合验证两条路径，不扫描或加载真实交付目录。构造拟合不计入真实研究账本。
 
 ## 图模块环境与检查
 
@@ -148,7 +172,7 @@ Python API：`run_nested(frame, output, specification, families, splits=..., exi
   --request research_runtime/examples/seven.synthetic.json
 ```
 
-入口只向标准输出返回JSON，不保存结果或请求，也不启动HTTP服务。失败以退出码1和不含输入值的类型化错误返回。三个已有HTTP通道及Java契约保持原行为；该CLI不提供Java研究模型适配，现有AgentClient仍调用课程合成服务。
+入口只向标准输出返回JSON，不保存结果或请求，也不启动HTTP服务。失败以退出码1和不含输入值的类型化错误返回。三个已有HTTP通道及Java契约保持原行为；这个 CLI 用于离线验收。Java 通过独立的表格 HTTP 通道提交已登记快照。
 
 受控维护主机现另有同一工作台内的“模型与研究审查”页面，以独立进程调用本模块进行九模型合成计算，并展示既有聚合研究结果。它属于维护主机的本地Python演示接入，未成为Java共享API；本仓库的CLI继续保持上述离线范围。
 
@@ -175,19 +199,19 @@ Python API：`run_nested(frame, output, specification, families, splits=..., exi
 
 `discrete.py`保留原人月、预处理和CIF实现；`estimators.py`整理原七/十变量候选规格。仓库根目录`adni_algorithm_candidates.py`只保留原模型pickle引用的`NotEstimable`/`StrictHazards`类，类AST保持一致。这一兼容路径让现有模型无需重训或重新序列化即可加载。来源摘要与范围见[Source_Provenance.json](Source_Provenance.json)。
 
-剩余接入工作：版本化真实输入契约与字段映射、来源/QC/历史可获得性政策、受控参数交付及目标机部署、Java AgentClient/权限/任务和结果持久化的联合验收。共享契约变化先协调后实施。固定表格训练/校准、三臂图研究和图解释诊断均已阶段完成；历史队列重建、全部表格比较/解释并未整体迁移。当前CLI仍输出原始CIF，新训练产物不自动部署。严格个人因果、SHAP/LIME、跨重训/独立和临床验证继续开放，当前执行顺序取[Python需求状态](../docs/Python_Requirement_Status.md)。
+当前 CLI 输出原始 CIF。固定表格训练、校准、三臂图研究和解释诊断已有阶段交付。Java 与 Python 的人工快照联调已通过；真实接入仍需独立来源、量表完成与 QC、首次可用时间、执行许可及目标环境验收。科研进度见[Python 需求状态](../docs/Python_Requirement_Status.md)。
 
 输出为合成输入下的研究模型计算值，`clinicalUse=false`；工程一致性不能证明临床概率精度、算法优越或个体因果效应。
 
-## 本次分组归因与输入适配检查
+## 分组归因与输入适配检查
 
-在上述固定CPU图环境运行全部新增方法/适配/编排检查：
+在固定 CPU 图环境运行分组归因和输入适配检查：
 
 ```powershell
 .venv-research-graph/Scripts/python.exe -m unittest research_runtime.tests.test_group_shapley research_runtime.tests.test_group_lime research_runtime.tests.test_group_xai_admission research_runtime.tests.test_group_xai_dtypes research_runtime.tests.test_grouped_xai_study research_runtime.tests.test_table_explanation research_runtime.tests.test_table_xai_study research_runtime.tests.test_input_admission research_runtime.tests.test_input_admission_compatibility research_runtime.tests.test_inmemory_inference research_runtime.tests.test_inmemory_cif_bridge -v
 ```
 
-本次106项检查通过；在外层禁止所有风险/预处理fit、参数加载、网络和受控路径读取，实际1023次人工参数CIF、34次局部替代回归，25.282秒。局部回归与风险模型训练分开计数。完整60/1200编排矩阵使用模拟归因，不代表1200次实际回归或真实研究；原生图的人工状态由现有构造辅助函数赋值，不调用优化器。
+检查使用人工参数与构造输入。局部替代回归与风险模型训练分别计数，模拟编排不代表真实研究执行。
 
 输入一致性校验模块只用标准库。两个独立构造示例：
 
@@ -196,7 +220,7 @@ Python API：`run_nested(frame, output, specification, families, splits=..., exi
 .venv-research-graph/Scripts/python.exe -B -m research_runtime.examples.inmemory_constructed
 ```
 
-图/完整表格研究编排复用既有图聚合模块，因此使用图环境；单独表格参考/归因适配不依赖Torch。Linux、其他Python版本及未验收机器须另行核对，现有课程CI不会自动运行上述可选研究检查。真实输入/参数/私有折、宿主单次读取封装及内部授权不随源码发布；本地构造通过不等于真实业务接通或临床验证。
+图/完整表格研究编排复用既有图聚合模块，因此使用图环境；单独表格参考/归因适配不依赖Torch。Linux、其他Python版本及未验收机器须另行核对，现有Python 验证 CI不会自动运行上述可选研究检查。真实输入/参数/私有折、宿主单次读取封装及内部授权不随源码发布；本地构造通过不等于真实业务接通或临床验证。
 
 ## 训练扰动研究原语（2026-10-28）
 

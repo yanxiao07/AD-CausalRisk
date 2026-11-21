@@ -95,11 +95,19 @@ async function openAs(role, handlers) {
       return req.respond({
         status: custom.status || 200,
         contentType: 'application/json',
-        body: envelope(typeof custom.body === 'function' ? custom.body() : custom.body)
+        body: envelope(typeof custom.body === 'function' ? custom.body(pathOf(url)) : custom.body)
       })
     }
     if (pathOf(url) === '/api/auth/login' || pathOf(url) === '/api/me') {
       return req.respond({ status: 200, contentType: 'application/json', body: envelope(USERS[role]) })
+    }
+    if (pathOf(url) === '/api/auth/csrf') {
+      return req.respond({ status: 200, contentType: 'application/json', body: envelope({
+        headerName: 'X-XSRF-TOKEN', token: 'e2e-csrf'
+      }) })
+    }
+    if (pathOf(url).startsWith('/api/')) {
+      return req.respond({ status: 403, contentType: 'application/json', body: envelope(null) })
     }
     return req.continue()
   })
@@ -139,10 +147,21 @@ try {
   // ---------------- 医生：档案列表 ----------------
   let subjectItems = []
   const page = await openAs('doctor', [
-    { match: (path, m) => path === '/api/subjects' && m === 'GET', body: () => ({ items: subjectItems, page: 1, pageSize: 20, total: subjectItems.length }) }
+    { match: (path, m) => path === '/api/subjects' && m === 'GET', body: () => ({ items: subjectItems, page: 1, pageSize: 20, total: subjectItems.length }) },
+    // 抽屉打开时会拉基础信息 + 评估/任务/随访/复核；这里给空数据，避免打到不存在的后端
+    { match: (path, m) => /^\/api\/subjects\/\d+$/.test(path) && m === 'GET', body: () => ({ subject: SUBJECT(1), visits: [], features: [] }) },
+    { match: (path) => path === '/api/assessments' || path === '/api/assessment-tasks', body: () => ({ items: [], page: 1, pageSize: 100, total: 0 }) },
+    { match: (path) => path === '/api/subjects/1/follow-ups' || path.startsWith('/api/') && path.endsWith('/reviews'), body: () => [] },
+    {
+      match: (path) => /^\/api\/subjects\/\d+\/(capabilities|feature-sources|visit-sources)$/.test(path),
+      body: (path) =>
+        path.endsWith('/capabilities')
+          ? { readRaw: true, manage: true, record: true, writeClinical: true, requestAssessment: true }
+          : { items: [] }
+    }
   ])
 
-  check('doctor: 菜单可点击进入档案', await clickMenu(page, '受试者档案'), 'sidebar item')
+  check('doctor: 菜单可点击进入档案', await clickMenu(page, '患者档案'), 'sidebar item')
   await page.waitForFunction(() => location.pathname === '/subjects', { timeout: 15000 })
   check('doctor: 路由落点', await page.evaluate(() => location.pathname) === '/subjects', '')
   await page.waitForSelector('.patient-list .empty-state', { timeout: 15000 })
@@ -164,8 +183,12 @@ try {
 
   await page.click('.el-table__row')
   await page.waitForSelector('.el-drawer', { timeout: 10000 })
-  const drawerTitle = await page.evaluate(() => document.querySelector('.el-drawer__title, .el-drawer__header')?.textContent || '')
-  check('doctor: 抽屉打开且带档案信息', drawerTitle.includes('样本 1'), drawerTitle.trim().slice(0, 40))
+  await page.waitForFunction(
+    () => (document.querySelector('.patient-drawer .drawer__desc')?.textContent || '').includes('样本 1'),
+    { timeout: 10000 }
+  )
+  const drawer = await page.$eval('.patient-drawer', (element) => element.innerText)
+  check('doctor: 抽屉打开且带档案信息', drawer.includes('患者档案') && drawer.includes('样本 1'), '')
   await page.screenshot({ path: join(shotDir, 'p2-subject-drawer.png') })
   await page.close()
 
@@ -174,6 +197,10 @@ try {
     {
       match: (path, m) => path === '/api/import-jobs' && m === 'POST',
       body: JOB
+    },
+    {
+      match: (path, m) => path === '/api/import-jobs' && m === 'GET',
+      body: { items: [], page: 1, pageSize: 10, total: 0 }
     },
     {
       match: (path, m) => path === '/api/import-jobs/42/commit' && m === 'POST',
@@ -185,7 +212,10 @@ try {
   check('researcher: 菜单可点击进入导入', await clickMenu(rPage, '数据导入'), 'sidebar item')
   await rPage.waitForFunction(() => location.pathname === '/imports', { timeout: 15000 })
   await rPage.waitForSelector('.el-upload-dragger', { timeout: 15000 })
-  await rPage.waitForSelector('.import-center .empty-state', { timeout: 15000 })
+  await rPage.waitForFunction(
+    () => (document.body.textContent || '').includes('还没有上传文件'),
+    { timeout: 15000 }
+  )
   const beforeText = await rPage.evaluate(
     () => document.querySelector('.import-center .empty-state')?.textContent || ''
   )
@@ -218,11 +248,14 @@ try {
     () => [...document.querySelectorAll('.status-tag')].some((n) => n.textContent.includes('已入库')),
     { timeout: 15000 }
   )
-  const committedDisabled = await rPage.evaluate(() => {
-    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('确认入库'))
-    return btn?.disabled ?? false
+  const committedActions = await rPage.evaluate(() => {
+    const buttons = [...document.querySelectorAll('button')]
+    return {
+      canCommit: buttons.some((button) => button.textContent.includes('确认入库') && !button.disabled),
+      canOpenQc: buttons.some((button) => button.textContent.includes('去数据质控') && !button.disabled)
+    }
   })
-  check('researcher: 入库后按钮禁用', committedDisabled === true, `disabled=${committedDisabled}`)
+  check('researcher: 入库后可到质控且不能重复确认', committedActions.canOpenQc && !committedActions.canCommit, '')
   await rPage.screenshot({ path: join(shotDir, 'p2-import-committed.png') })
   await rPage.close()
 } finally {

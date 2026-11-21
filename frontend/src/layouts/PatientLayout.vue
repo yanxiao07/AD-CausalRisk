@@ -6,12 +6,11 @@
         <span class="patient__mark" aria-hidden="true">AD</span>
         <div>
           <strong>我的健康档案</strong>
-          <small>{{ userStore.username }}</small>
         </div>
       </div>
 
       <el-button class="patient__logout" size="large" text @click="onLogout">
-        退出
+        退出登录
       </el-button>
     </header>
 
@@ -28,11 +27,9 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { useUserStore } from '@/stores/user.js'
 import { logout } from '@/api/auth.js'
 
 const router = useRouter()
-const userStore = useUserStore()
 
 async function onLogout() {
   try {
@@ -79,6 +76,7 @@ async function onLogout() {
 .patient__brand {
   display: flex;
   align-items: center;
+  min-width: 0;
   gap: 14px;
 }
 
@@ -87,6 +85,7 @@ async function onLogout() {
   place-items: center;
   width: 48px;
   height: 48px;
+  flex: 0 0 48px;
   border-radius: 14px;
   background: linear-gradient(135deg, var(--brand-600), var(--brand-700));
   color: #fff;
@@ -97,24 +96,20 @@ async function onLogout() {
 
 .patient__brand strong {
   display: block;
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 700;
-}
-
-.patient__brand small {
-  font-size: 15px;
-  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .patient__logout {
-  font-size: 18px;
+  font-size: 1rem;
   color: var(--muted);
 }
 
 .patient__main {
   flex: 1;
   width: 100%;
-  max-width: 720px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 28px clamp(20px, 5vw, 32px) 40px;
 }

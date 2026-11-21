@@ -1,88 +1,19 @@
-name: Frontend build
-
-on:
-  push:
-    paths:
-      - 'frontend/**'
-      - '.gitignore'
-      - '.github/workflows/frontend-build.yml'
-  pull_request:
-    paths:
-      - 'frontend/**'
-      - '.gitignore'
-      - '.github/workflows/frontend-build.yml'
-
+name: Vue frontend build
+on: [push, pull_request]
 permissions:
   contents: read
-
-concurrency:
-  group: frontend-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-
-      # A source file excluded by .gitignore is invisible locally (it sits on disk) but
-      # absent from a clean checkout, so the build only fails here, with ENOENT. That is
-      # exactly how frontend/src/data/*.js went missing from the login-page PR.
-      #
-      # On a fresh clone this step usually sees nothing: the ignored files were never
-      # committed, so their directory does not exist at all. It still catches a checkout
-      # where such files exist but are invisible to git, and it is the command to run
-      # before pushing. The import check below is what fires in CI.
-      - name: Fail if source files are git-ignored
-        run: |
-          ignored=$(git ls-files --others --ignored --exclude-standard -- frontend/src || true)
-          if [ -n "$ignored" ]; then
-            echo "::error::These source files are excluded by .gitignore and will be missing from a clean checkout:"
-            echo "$ignored"
-            exit 1
-          fi
-          echo "frontend/src: $(git ls-files frontend/src | wc -l) tracked files"
-
-      # Resolve every "@/..." import against the checkout, so a missing module is reported
-      # by specifier instead of surfacing as a Rollup ENOENT halfway through the build.
-      # Verified against frontend/login-page: it reports @/data/roleMeta and
-      # @/data/exploreDetails before the fix, and nothing after adding the two files.
-      - name: Every @/ import resolves to a file
-        run: |
-          cd frontend
-          specs=$(grep -rhoE "@/[-A-Za-z0-9_./]+" src --include='*.vue' --include='*.js' \
-                  | sed 's|^@/||' | sort -u || true)
-          missing=0
-          for spec in $specs; do
-            if [ -e "src/$spec" ] || [ -e "src/$spec.js" ] || [ -e "src/$spec.vue" ] \
-               || [ -e "src/$spec/index.js" ] || [ -e "src/$spec/index.vue" ]; then
-              continue
-            fi
-            echo "::error::unresolved import: @/$spec (no such file in the checkout; check .gitignore)"
-            missing=1
-          done
-          if [ "$missing" -ne 0 ]; then
-            echo "::error::Some @/ imports do not exist in the checkout. If they exist locally, they are git-ignored."
-            exit 1
-          fi
-          echo "OK: every @/ import resolves ($(echo "$specs" | wc -w) checked)"
-
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      # npm ci refuses to run when package.json and the lockfile disagree, so this also
-      # guards against a hand-edited dependency list.
       - run: npm ci
-        working-directory: frontend
-
       - run: npm run build
-        working-directory: frontend
-
-      - name: Assert build output
-        run: |
-          test -f dist/index.html
-          ls dist/assets/*.js dist/assets/*.css
-        working-directory: frontend

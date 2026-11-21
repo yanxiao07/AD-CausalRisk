@@ -1,6 +1,6 @@
 # Java与Python联调约定
 
-Python只承担合成工作流，不访问Java数据库、不管理用户会话、不写业务任务表。Java向Python传当前任务需要的合成输入，按contracts/python-agent.openapi.json校验结果后保存；前端只调用Java。
+新评估由 Vue 调用 Java 的研究任务接口。Java 从已授权的冻结快照取输入，调用 Python 表格宿主并保存双原因 CIF 和解释。研究展示使用训练权重及人工样例。旧规则契约供历史回读与回归。其行为记录如下。[表格契约](Research_Table_Agent_Contract.md) · [启动与接口](../backend/README.md#本地研究任务联调)
 
 | Python情况 | HTTP | Java应做什么 |
 | --- | --- | --- |
@@ -35,20 +35,30 @@ python_service/deepagent_contract.py负责输入校验和四阶段编排，demo_
 
 ### 业务日期边界
 
-课程请求及三表CSV中的“不能晚于今天”统一使用现代上海业务日（UTC+08:00），与后端`ClockConfig`的当前`Asia/Shanghai`日期一致，不随Python宿主机时区变化。Python使用标准库固定偏移，无需Windows额外安装IANA时区数据；该时钟只确定当前校验边界，不把历史观测日期转换成时间戳或推定其时区/可获得日。
+验证请求及三表CSV中的“不能晚于今天”统一使用现代上海业务日（UTC+08:00），与后端`ClockConfig`的当前`Asia/Shanghai`日期一致，不随Python宿主机时区变化。Python使用标准库固定偏移，无需Windows额外安装IANA时区数据；该时钟只确定当前校验边界，不把历史观测日期转换成时间戳或推定其时区/可获得日。
 
 每次请求校验、每次CSV行校验在开始时固定一个业务日，避免逐字段遇到午夜后产生混合边界。例如`2026-10-23T16:30:00Z`已是上海10月24日，日期`2026-10-24`合法、`2026-10-25`仍拒绝。此处有意修正旧宿主日期的接受范围：UTC机器在16:00Z后不再误拒上海当天，日期已领先上海的宿主也不能放行上海明天。原严格日期格式、真实日历、错误码、版本/字段、公式、窗口及BLOCKED保持。协议错误/审计时间戳继续使用UTC。
 
 `python-demo-logistic-v1`是保留的旧接口标识；实际算法是加性演示规则加上下界截断，不是拟合的逻辑回归。贡献使用四位小数，基准为0.18，最终分数截断至[0.05,0.95]；解释贡献总和应结合基准、截断和舍入理解。`deepagent-causal-warning-v1`也不表示因果效应已识别。
 
-本地修订强化图到输入的计算连接、归并重复观测及严格日期校验，保持deepagent-v1字段、现有模型标识和正常输入的分数。原课程发布记录仍绑定其原提交；本地修改需要另外交付后才会出现在远端，同学不能依据旧CI记录推断新代码已经发布。
+联调时从同一提交取得服务源码、契约和示例，避免混用不同版本。
 
-`course-python-2026.10.11.1`提供完整源码ZIP及相对`fb4a09d243bf15170b478d484963312d490da83d`的定向补丁。已有Java/前端工程优先应用补丁：先检查`git status`保留自己的工作，再运行`git apply --check <补丁路径>`；检查成功后运行`git apply <补丁路径>`并执行本仓库测试。检查失败时按实际差异处理冲突，不能用完整ZIP覆盖已有工程。完整ZIP用于独立新目录启动，不替代业务数据库或任务数据。
+Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)，共 123 个操作，含责任医生交接、患者说明发布、七变量测试快照、研究授权和批次验证。患者结果由 Java 过滤，研究任务复核和患者说明发布分别记录。成功 Envelope 和 Python AgentResult 格式不同。
 
-Java业务接口另见contracts/java-business.target.openapi.json：当前59个操作已实现并经合成本地验证，完整后端验收边界见[后端验收](Backend_Requirements_Acceptance.md)。患者结果必须选PatientAssessmentSummary并在后端过滤；仅隐藏前端按钮不足以防止接口泄露。成功Envelope和PythonAgentResult格式不同，不能把data.data错当原Agent对象。
+动态研究宿主支持带 Bearer 身份的 `GET /api/research-table/v1/models`，返回启动时核验通过且已加载的模型规格、类型、清单和模型文件摘要。该路由不启动推理，不读取档案和快照。Java 管理员调用 `/api/system/research-models`，将宿主回应与仓库记录对应。早期宿主没有此路由时回报 `UNSUPPORTED`。
 
-报告导出支持HTML/PDF/JSON是课程要求，当前保留JSON资源并新增download附件入口，媒体类型与下载参数已记录于同份OpenAPI。后续变更媒体类型、下载头、错误DTO或状态时继续同步契约、调用方和测试。
+报告导出支持HTML/PDF/JSON是研究要求，当前保留JSON资源并新增download附件入口，媒体类型与下载参数已记录于同份OpenAPI。后续变更媒体类型、下载头、错误DTO或状态时继续同步契约、调用方和测试。
 
-## Java业务扩展（2026-11-08）
+## Java 业务调用
 
-Java OpenAPI已记录59个实际操作。浏览器使用异步submit入口，Java固定输入/质量绑定后后台调用仍为同步的Python；仅能取消Java排队任务。应用重启关闭遗留任务，不自动重放算法。原同步POST和报告JSON资源保留。raw数值参与请求；非法原始值不能经显示舍入变合法。来源、缺失、版本、授权、模板及未完成条件见[业务状态](Business_Feature_Status.md)。
+现有页面按快照提交研究任务。旧同步和异步规则 POST 拒绝新任务，可按原幂等键读取已有任务。历史任务和报告继续按原版本读取。
+
+发送后超时不得盲目重复 POST。验证通道可按原 runId 只读核对 Python 缓存；缓存未命中不证明任务未执行。研究通道的 runId 只用于关联，原幂等键与 GET 只读取 Java 已保存任务。旧版需求中的可配置重试次数不描述当前实现。
+
+## 获授权病例的批次验证
+
+1. 研究员调用 `GET /api/research/validation-cohort/scopes` 读取本人全部项目和模型选项。病例明细单独分页。
+2. 将选项的项目编号和模型产物 SHA-256 传给 `POST /api/research/validation-cohort/report`。同一快照可回读原报告。刷新使用相同的两个查询参数向同一路径发送 GET，查无可访问报告时返回空数据。
+3. `COMPLETED` 表示演练指标已计算，`SUPPRESSED` 表示小组抑制，`BLOCKED` 表示等待独立验证协议。抑制和阻断时指标为空。数字出自本机 Python 子进程，Java 验证回执并持久化。该通道使用已保存的概率，模型拟合和发布另有流程。
+
+[请求示例](../contracts/examples/validation-report.request.example.json) · [响应示例](../contracts/examples/validation-report.response.example.json)

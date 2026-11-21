@@ -13,6 +13,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.Objects;
 
 /** One planned follow-up visit for a subject (V1 {@code follow_up_plan}, FR-FOLLOW-02). */
 @Entity
@@ -49,6 +50,45 @@ public class FollowUpPlan {
 
     @Column(name = "notes", length = 1000)
     private String notes;
+
+    @Column(name = "visit_location", length = 255)
+    private String visitLocation;
+
+    @Column(name = "preparation", length = 1000)
+    private String preparation;
+
+    @Column(name = "appointment_revision", nullable = false)
+    private long appointmentRevision;
+
+    public String getVisitLocation() { return visitLocation; }
+    public String getPreparation() { return preparation; }
+    public long getAppointmentRevision() { return appointmentRevision; }
+
+    public void setBookingDetails(String location, String preparation) {
+        this.visitLocation = updateText(this.visitLocation, location);
+        this.preparation = updateText(this.preparation, preparation);
+    }
+
+    public void editBooking(Instant date, String purpose, String location, String preparation) {
+        if (status != Status.PLANNED && (location != null || preparation != null)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "已完结或取消的复诊不可修改");
+        }
+        Instant oldDate = scheduledAt;
+        String oldPurpose = this.purpose;
+        String oldLocation = visitLocation;
+        String oldPreparation = this.preparation;
+        reschedule(date, purpose);
+        setBookingDetails(location, preparation);
+        if (!Objects.equals(oldDate, scheduledAt) || !Objects.equals(oldPurpose, this.purpose)
+                || !Objects.equals(oldLocation, visitLocation) || !Objects.equals(oldPreparation, this.preparation)) {
+            appointmentRevision++;
+        }
+    }
+
+    private static String updateText(String existing, String update) {
+        if (update == null) return existing;
+        return update.isBlank() ? null : update.trim();
+    }
 
     public String getNotes() {
         return notes;

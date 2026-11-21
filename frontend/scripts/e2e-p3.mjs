@@ -176,6 +176,26 @@ try {
       })
     }
     if (path === '/api/assessments/99') return respond(ASSESSMENT)
+    if (path === '/api/assessments' && method === 'GET') {
+      return respond({ items: [], page: 1, pageSize: 100, total: 0 })
+    }
+    if (path === '/api/assessment-tasks' && method === 'GET') {
+      return respond({ items: [], page: 1, pageSize: 100, total: 0 })
+    }
+    if (path === '/api/subjects/1/follow-ups') return respond([])
+    if (path === '/api/subjects/1/capabilities') {
+      return respond({
+        readRaw: true,
+        manage: false,
+        record: true,
+        writeClinical: true,
+        requestAssessment: true
+      })
+    }
+    if (path === '/api/subjects/1/feature-sources' || path === '/api/subjects/1/visit-sources') {
+      return respond({ items: [] })
+    }
+    if (path.startsWith('/api/') && path.endsWith('/reviews') && method === 'GET') return respond([])
     if (path === '/api/assessments/99/review' && method === 'POST') {
       return respond({
         id: 5,
@@ -231,6 +251,19 @@ try {
   // 完成：分数 + 等级 + 因果图 canvas
   await page.waitForFunction(() => document.body.textContent.includes('83.0%'), { timeout: 30000 })
   check('风险概率渲染 83.0%', true, '')
+
+  // 新评估完成后抽屉会自动切到「全量报告库」，切回「概览与操作」再检查结果详情与复核入口
+  await page.evaluate(() => {
+    const tab = [...document.querySelectorAll('.drawer-tabs .el-tabs__item')].find((n) =>
+      n.textContent.includes('概览与操作')
+    )
+    tab?.click()
+  })
+  await page
+    .waitForFunction(() => document.querySelectorAll('.causal-graph__canvas canvas').length > 0, {
+      timeout: 15000
+    })
+    .catch(() => {})
 
   const levelText = await page.evaluate(
     () => document.querySelector('.score__side')?.textContent.replace(/\s+/g, ' ') || ''

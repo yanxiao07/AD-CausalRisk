@@ -1,5 +1,5 @@
 /**
- * 「评估任务」页的渲染回归测试。
+ * 按原地址打开的历史任务列表回归。
  *
  * 页面已经改成"列表 + 详情抽屉"，这个脚本用真实浏览器覆盖四件事：
  *
@@ -170,6 +170,7 @@ page.on('request', async (request) => {
   if (path === '/api/subjects') {
     return json(env({ items: [], page: 1, pageSize: 20, total: 0 }))
   }
+  if (path.startsWith('/api/')) return json(env(null))
 
   return request.continue()
 })
@@ -203,7 +204,7 @@ try {
   await login()
 
   // ---------- 1. 列表初始态 ----------
-  await page.goto(`${BASE}/tasks`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${BASE}/tasks?tab=legacy`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.task-page .el-table__body .el-table__row', { timeout: 20000 })
   const initial = await snapshot()
   check('列表渲染两行任务', initial.rows === 2, `rows=${initial.rows}`)
@@ -243,25 +244,20 @@ try {
     )
     button?.click()
   })
-  // 等路由真正切到 /reports 再断言，否则紧随其后的 goto('/tasks') 会和这次导航打架
+  // 等路由真正切到 /reports/22 再断言，否则紧随其后的 goto('/tasks') 会和这次导航打架
   await page
-    .waitForFunction(
-      () =>
-        location.pathname === '/reports' &&
-        new URLSearchParams(location.search).get('assessmentId') === '22',
-      { timeout: 10000 }
-    )
+    .waitForFunction(() => location.pathname === '/reports/22', { timeout: 10000 })
     .catch(() => {})
   const url = new URL(page.url())
   check(
-    '查看报告跳转到 assessmentId=22',
-    url.pathname === '/reports' && url.searchParams.get('assessmentId') === '22',
+    '查看报告跳转到 /reports/22',
+    url.pathname === '/reports/22',
     `${url.pathname}${url.search}`
   )
 
   // ---------- 4. 列表失败态 ----------
   listMode = 'fail'
-  await page.goto(`${BASE}/tasks`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${BASE}/tasks?tab=legacy`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.task-page .empty-state', { timeout: 20000 })
   const failed = await snapshot()
   check('失败态显示错误空态', failed.empty.includes('任务列表加载失败'), failed.empty.slice(0, 60))

@@ -147,4 +147,68 @@
   outline-offset: -2px;
   background: var(--brand-50);
 }
+/* ---- 用户偏好：字号 / 密度 ---- */
+body {
+  font-size: var(--user-font-size, 15px);
+}
 
+html[data-density='compact'] .shell__main {
+  padding-top: 18px;
+}
+
+html[data-density='compact'] .el-table td.el-table__cell,
+html[data-density='compact'] .el-table th.el-table__cell {
+  padding: 4px 0;
+}
+
+html[data-density='compact'] .data-card__body {
+  padding-top: 12px;
+}
+
+/* ---- 窄屏：表格内部滚动、弹层收口、筛选与分页换行 ---- */
+@media (max-width: 767px) {
+  .el-table {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  .el-table .cell {
+    word-break: break-word;
+  }
+
+  .el-table__body-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .el-dialog {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px);
+    margin-top: 8vh !important;
+  }
+
+  .el-message-box {
+    width: calc(100vw - 32px) !important;
+  }
+
+  .el-drawer {
+    width: 100% !important;
+  }
+
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 8px;
+  }
+
+  .el-pagination .el-pagination__sizes,
+  .el-pagination .el-pagination__jump {
+    display: none;
+  }
+
+  .toolbar,
+  .filters,
+  .filter-bar {
+    flex-wrap: wrap;
+  }
+}

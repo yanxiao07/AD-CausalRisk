@@ -92,20 +92,29 @@ public class SubjectService {
     // ===================================================================
 
     /**
-     * Creates a new subject. {@code ADMIN} and {@code RESEARCHER} are the only roles allowed to
-     * call this endpoint; anyone else receives {@code ACCESS_DENIED} (403).
-     *
-     * <p>{@code subjectCode} must match {@code ^DEMO-[A-Za-z0-9-]{1,45}$} (enforced by
-     * {@code @Pattern} on the DTO plus {@code @Valid} on the Controller method) and must not
-     * already exist - duplicates return {@code VALIDATION_ERROR} (400).
+     * Creates a subject with a unique code. Doctors can create ordinary care archives using
+     * {@code archiveType=CARE}. When the field is omitted, retain the existing {@code DEMO-} rule.
      *
      * <p>{@code dataVersion} is server-generated here and never reaches the client request; {@code
      * createdAt} is set to {@code Instant.now()} at creation time.
      */
     @Transactional
     public SubjectView createSubject(SubjectCreateRequest request, AppUserPrincipal principal) {
-        if (!accessPolicy.canCreate(principal)) {
+        if (!accessPolicy.canCreateArchive(principal)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权创建档案");
+        }
+
+        boolean care = "CARE".equals(request.archiveType());
+        if (care) {
+            if (!principal.roleCodes().contains("DOCTOR")) {
+                throw new BusinessException(ErrorCode.ACCESS_DENIED, "仅医生可创建普通患者档案");
+            }
+            String code = request.subjectCode().toUpperCase(java.util.Locale.ROOT);
+            if (code.startsWith("DEMO-") || code.startsWith("ADNI-REVIEW-")) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "请使用普通档案编号");
+            }
+        } else if (!request.subjectCode().matches("^DEMO-[A-Za-z0-9-]{1,45}$")) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "subjectCode 须以 DEMO- 开头");
         }
 
         if (subjectRepository.existsBySubjectCode(request.subjectCode())) {
@@ -113,10 +122,10 @@ public class SubjectService {
                     ErrorCode.VALIDATION_ERROR, "subjectCode 已存在: " + request.subjectCode());
         }
 
-        String dataVersion = generateDataVersion();
+        String dataVersion = (care ? InputVersions.CARE_PREFIX : "demo-") + UUID.randomUUID();
         Subject entity = SubjectMapper.toEntity(request, dataVersion, Instant.now());
         Subject saved = subjectRepository.saveAndFlush(entity);
-        if (!accessPolicy.hasFullVisibility(principal))
+        if (principal.roleCodes().contains("DOCTOR") || !accessPolicy.hasFullVisibility(principal))
             jdbc.update(
                     "INSERT INTO subject_permission(subject_id,user_id,permission_type)"
                             + " VALUES(?,?,'MANAGE')",
@@ -135,6 +144,9 @@ public class SubjectService {
     @Transactional
     public SubjectView updateSubject(
             Long subjectId, SubjectCreateRequest request, AppUserPrincipal principal) {
+        if (request.archiveType() != null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "档案用途创建后不可修改");
+        }
         if (!accessPolicy.canManage(principal, subjectId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "无权修改该档案");
         }
@@ -212,7 +224,7 @@ public class SubjectService {
         List<VisitResultView> visits =
                 accessPolicy.canReadRawScores(principal, subjectId)
                         ? visitRepository
-                                .findBySubjectIdOrderByVisitDateAscIdAsc(subjectId)
+                                .findBySubjectIdAndCurrentTrueOrderByVisitDateAscIdAsc(subjectId)
                                 .stream()
                                 .map(VisitMapper::toResultView)
                                 .toList()
@@ -257,7 +269,4 @@ public class SubjectService {
         }
     }
 
-    private static String generateDataVersion() {
-        return "demo-" + UUID.randomUUID().toString().substring(0, 8);
-    }
 }

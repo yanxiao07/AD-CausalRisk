@@ -29,7 +29,7 @@ const USERS = {
     id: 3,
     username: 'researcher',
     roles: ['RESEARCHER'],
-    menus: ['graph', 'imports', 'quality', 'reports', 'subjects', 'tasks']
+    menus: ['graph', 'imports', 'quality', 'reports', 'research', 'subjects', 'tasks']
   },
   admin: { id: 1, username: 'admin', roles: ['ADMIN'], menus: ['audit', 'system', 'users'] },
   patient: { id: 5, username: 'patient', roles: ['PATIENT'], menus: ['followups', 'summary'] }
@@ -41,9 +41,14 @@ const EXPECTED_PATH = {
   admin: '/admin',
   patient: '/patient'
 }
+const EXPECTED_MENU = {
+  doctor: ['工作台', '我的患者', '报告复核', '评估报告', '随访计划'],
+  researcher: ['工作台', '模型验证与更新', '数据导入', '研究档案', '数据质控', '评估任务', '评估报告', '评估贡献图'],
+  admin: ['工作台', '账号管理', '验证资料授权', '系统设置', '审计日志']
+}
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
-const shotDir = join(projectRoot, '.shots')
+const shotDir = process.env.E2E_SHOTS || join(projectRoot, '.shots')
 mkdirSync(shotDir, { recursive: true })
 
 const envelope = (data) =>
@@ -58,6 +63,44 @@ const envelope = (data) =>
 
 const results = []
 let failed = 0
+
+async function checkIntakeLayout(page) {
+  await page.evaluate(() => {
+    const entry = [...document.querySelectorAll('.shell__menu .el-menu-item')]
+      .find(item => item.textContent.trim() === '我的患者')
+    entry.click()
+  })
+  await page.waitForFunction(() => location.pathname === '/subjects')
+  const create = await page.waitForSelector('::-p-text(新建患者档案)', { visible: true })
+  await create.click()
+  await page.waitForSelector('#doctor-archive-form', { visible: true })
+
+  const layouts = []
+  for (const { width, height } of [{ width: 1440, height: 900 }, { width: 950, height: 620 }, { width: 390, height: 844 }]) {
+    await page.setViewport({ width, height })
+    const layout = await page.$eval('#doctor-archive-form', async form => {
+      const dialog = form.closest('.doctor-archive-intake')
+      if (dialog.getAnimations().length) {
+        await Promise.allSettled(dialog.getAnimations().map(animation => animation.finished))
+      }
+      const available = form.parentElement.clientWidth
+      const formWidth = Math.round(form.getBoundingClientRect().width)
+      const buttons = [...dialog.querySelectorAll('.el-dialog__footer button')]
+      return {
+        viewport: innerWidth,
+        available,
+        formWidth,
+        fullWidth: formWidth >= available - 12,
+        actionsVisible: buttons.every(button => {
+          const bounds = button.getBoundingClientRect()
+          return bounds.height >= 44 && bounds.right <= innerWidth + 1 && bounds.bottom <= innerHeight + 1
+        })
+      }
+    })
+    layouts.push(layout)
+  }
+  return layouts
+}
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
@@ -84,6 +127,9 @@ try {
       if (url.includes('/api/me')) {
         return req.respond({ status: 200, contentType: 'application/json', body: envelope(user) })
       }
+      // 未桩的业务接口直接中断（等价于后端未启动），避免真实后端 401 把会话踢回登录页。
+      // 注意用 pathname 判断：/src/api/*.js 是前端源码，不能被当成接口。
+      if (new URL(url).pathname.startsWith('/api/')) return req.abort()
       return req.continue()
     })
 
@@ -132,7 +178,9 @@ try {
 
     // 守卫：DOCTOR 直接访问 /admin 必须被挡到 401
     let guardPath = ''
+    let intakeLayouts = []
     if (role === 'doctor') {
+      intakeLayouts = await checkIntakeLayout(page)
       await page.goto(`${BASE}/admin`, { waitUntil: 'domcontentloaded' })
       await page.waitForFunction(() => location.pathname !== '/admin', { timeout: 15000 })
       guardPath = await page.evaluate(() => location.pathname)
@@ -157,11 +205,10 @@ try {
       check('patient font size', state.patientFontSize === '20px', state.patientFontSize)
     }
     if (role !== 'patient') {
-      // 四个角色现在共用同一套侧边栏：第一项是本角色工作台，其余来自后端 menus
       check(
-        'sidebar menu = home + menus',
-        state.menuLabels.length === user.menus.length + 1,
-        `${state.menuLabels.length} items: ${state.menuLabels.join(',')}`
+        'role-specific primary navigation',
+        JSON.stringify(state.menuLabels) === JSON.stringify(EXPECTED_MENU[role]),
+        state.menuLabels.join(',')
       )
     }
     if (role === 'admin') {
@@ -174,6 +221,8 @@ try {
     }
     check('no page errors', consoleErrors.length === 0, consoleErrors[0] || 'none')
     if (role === 'doctor') {
+      check('login navigation keeps intake form full width', intakeLayouts.every(item => item.fullWidth && item.actionsVisible),
+        JSON.stringify(intakeLayouts))
       check('guard blocks cross-role route', guardPath === '/401', guardPath)
     }
 
