@@ -1,0 +1,20 @@
+{
+  "code": 0,
+  "message": "成功",
+  "data": {
+    "id": "d0000000-0000-4000-8000-000000000001",
+    "project": "SYNTHETIC-VALIDATION",
+    "artifactSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "snapshotSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "createdAt": "2026-11-21T10:00:00Z",
+    "method": "SAVED_CIF_24M_V1",
+    "includedCases": 1,
+    "status": "SUPPRESSED",
+    "reason": "SMALL_OUTCOME_RISK_CELL",
+    "metrics": null,
+    "versionReviewState": "WAITING_FOR_INDEPENDENT_COMPARISON"
+  },
+  "errorCode": null,
+  "traceId": "synthetic-validation-example",
+  "timestamp": "2026-11-21T10:00:00Z"
+}

@@ -11521,10 +11521,1175 @@
           }
         }
       }
+    },
+    "/api/research/validation-cohort": {
+      "get": {
+        "summary": "按研究员授权读取去标识化验证病例",
+        "operationId": "listValidationCohort",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-implementation-state": "IMPLEMENTED_BY_BACKEND_OWNER",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "const": 0
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "items": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/ValidationCohortCase"
+                              }
+                            },
+                            "page": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "pageSize": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "total": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "items",
+                            "page",
+                            "pageSize",
+                            "total"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "errorCode": {
+                          "type": "null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无操作权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/validation-cohort/grant": {
+      "put": {
+        "summary": "管理员登记授权依据",
+        "operationId": "grantValidationCase",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-implementation-state": "IMPLEMENTED_BY_BACKEND_OWNER",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidationCohortGrant"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "const": 0
+                        },
+                        "data": {
+                          "type": "null"
+                        },
+                        "errorCode": {
+                          "type": "null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无操作权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "管理员撤销病例访问",
+        "operationId": "revokeValidationCase",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-implementation-state": "IMPLEMENTED_BY_BACKEND_OWNER",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "subjectCode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            }
+          },
+          {
+            "name": "researcher",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "const": 0
+                        },
+                        "data": {
+                          "type": "null"
+                        },
+                        "errorCode": {
+                          "type": "null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无操作权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/subjects/{id}/validation-follow-up": {
+      "get": {
+        "summary": "责任医生读取随访结局",
+        "operationId": "getValidationFollowUp",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-implementation-state": "IMPLEMENTED_BY_BACKEND_OWNER",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "const": 0
+                        },
+                        "data": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/ValidationFollowUp"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "errorCode": {
+                          "type": "null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无操作权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "责任医生登记随访结局",
+        "operationId": "saveValidationFollowUp",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-implementation-state": "IMPLEMENTED_BY_BACKEND_OWNER",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidationFollowUp"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "const": 0
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/ValidationFollowUp"
+                        },
+                        "errorCode": {
+                          "type": "null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无操作权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/validation-cohort/report": {
+      "get": {
+        "operationId": "getLatestValidationReport",
+        "summary": "Read latest authorized cohort validation report",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z0-9][A-Z0-9_-]{0,49}$"
+            }
+          },
+          {
+            "name": "artifactSha256",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "const": 0
+                        },
+                        "errorCode": {
+                          "type": "null"
+                        },
+                        "data": {
+                          "oneOf": [
+                            {
+                              "$ref": "#/components/schemas/ValidationReport"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Calculator unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "runValidationReport",
+        "summary": "Run and save fixed-version cohort validation",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidationReportScope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "const": 0
+                        },
+                        "errorCode": {
+                          "type": "null"
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/ValidationReport"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Calculator unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/validation-cohort/scopes": {
+      "get": {
+        "summary": "List all authorized project and pinned model options",
+        "operationId": "listValidationScopes",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-implementation-state": "IMPLEMENTED_BY_BACKEND_OWNER",
+        "responses": {
+          "200": {
+            "description": "Authorized options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "const": 0
+                        },
+                        "errorCode": {
+                          "type": "null"
+                        },
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "project": {
+                                "type": "string",
+                                "pattern": "^[A-Z0-9][A-Z0-9_-]{0,49}$"
+                              },
+                              "artifactSha256": {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{64}$"
+                              },
+                              "model": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "project",
+                              "artifactSha256",
+                              "model"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ValidationReportScope": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "pattern": "^[A-Z0-9][A-Z0-9_-]{0,49}$"
+          },
+          "artifactSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "project",
+          "artifactSha256"
+        ],
+        "additionalProperties": false
+      },
+      "ValidationReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[A-Z0-9][A-Z0-9_-]{0,49}$"
+          },
+          "artifactSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "snapshotSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "method": {
+            "const": "SAVED_CIF_24M_V1"
+          },
+          "includedCases": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000
+          },
+          "status": {
+            "enum": [
+              "COMPLETED",
+              "SUPPRESSED",
+              "BLOCKED"
+            ]
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metrics": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "knownSubsetBrier": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "knownSubsetAuc": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "meanPrediction": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "brierBounds": {
+                    "type": "object",
+                    "properties": {
+                      "lower": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "upper": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "lower",
+                      "upper"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "observedRateBounds": {
+                    "type": "object",
+                    "properties": {
+                      "lower": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "upper": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "denominatorMayBeZero": {
+                        "type": "boolean"
+                      },
+                      "denominatorAlwaysZero": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "lower",
+                      "upper",
+                      "denominatorMayBeZero",
+                      "denominatorAlwaysZero"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "eceBounds": {
+                    "type": "object",
+                    "properties": {
+                      "lower": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "upper": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "lower",
+                      "upper"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "knownCases": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "unknownCases": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "knownSubsetBrier",
+                  "knownSubsetAuc",
+                  "meanPrediction",
+                  "brierBounds",
+                  "observedRateBounds",
+                  "eceBounds",
+                  "knownCases",
+                  "unknownCases"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versionReviewState": {
+            "const": "WAITING_FOR_INDEPENDENT_COMPARISON"
+          }
+        },
+        "required": [
+          "id",
+          "project",
+          "artifactSha256",
+          "snapshotSha256",
+          "createdAt",
+          "method",
+          "includedCases",
+          "status",
+          "reason",
+          "metrics",
+          "versionReviewState"
+        ],
+        "additionalProperties": false
+      },
+      "ValidationCohortGrant": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "subjectCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "researcher": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "authorizationRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150
+          }
+        },
+        "required": [
+          "project",
+          "subjectCode",
+          "researcher",
+          "authorizationRef"
+        ],
+        "additionalProperties": false
+      },
+      "ValidationFollowUp": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "AD",
+              "OTHER_DEMENTIA",
+              "NO_EVENT",
+              "UNKNOWN"
+            ]
+          },
+          "observedDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "sourceRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150
+          }
+        },
+        "required": [
+          "outcome",
+          "observedDate",
+          "sourceRef"
+        ],
+        "additionalProperties": false
+      },
+      "ValidationCohortCase": {
+        "type": "object",
+        "properties": {
+          "caseCode": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "predictionStatus": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "COMPLETED",
+              "BLOCKED",
+              "FAILED",
+              "OUTCOME_UNKNOWN"
+            ]
+          },
+          "indexDate": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "horizonDate": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adRisk": {
+            "oneOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artifactSha256": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "clinicalUse": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inputSha256": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "observedDate": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome24m": {
+            "type": "string",
+            "enum": [
+              "AD",
+              "OTHER_DEMENTIA",
+              "NO_EVENT",
+              "UNKNOWN"
+            ]
+          }
+        },
+        "required": [
+          "caseCode",
+          "project",
+          "predictionStatus",
+          "indexDate",
+          "horizonDate",
+          "adRisk",
+          "model",
+          "artifactSha256",
+          "clinicalUse",
+          "inputSha256",
+          "inputs",
+          "observedDate",
+          "outcome24m"
+        ],
+        "additionalProperties": false
+      },
       "PatientAppointment": {
         "type": "object",
         "additionalProperties": false,

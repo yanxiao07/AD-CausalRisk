@@ -29,7 +29,7 @@ const USERS = {
     id: 3,
     username: 'researcher',
     roles: ['RESEARCHER'],
-    menus: ['graph', 'imports', 'quality', 'reports', 'subjects', 'tasks']
+    menus: ['graph', 'imports', 'quality', 'reports', 'research', 'subjects', 'tasks']
   },
   admin: { id: 1, username: 'admin', roles: ['ADMIN'], menus: ['audit', 'system', 'users'] },
   patient: { id: 5, username: 'patient', roles: ['PATIENT'], menus: ['followups', 'summary'] }
@@ -41,9 +41,14 @@ const EXPECTED_PATH = {
   admin: '/admin',
   patient: '/patient'
 }
+const EXPECTED_MENU = {
+  doctor: ['工作台', '我的患者', '报告复核', '评估报告', '随访计划'],
+  researcher: ['工作台', '模型验证与更新', '数据导入', '研究档案', '数据质控', '评估任务', '评估报告', '评估贡献图'],
+  admin: ['工作台', '账号管理', '验证资料授权', '系统设置', '审计日志']
+}
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
-const shotDir = join(projectRoot, '.shots')
+const shotDir = process.env.E2E_SHOTS || join(projectRoot, '.shots')
 mkdirSync(shotDir, { recursive: true })
 
 const envelope = (data) =>
@@ -200,11 +205,10 @@ try {
       check('patient font size', state.patientFontSize === '20px', state.patientFontSize)
     }
     if (role !== 'patient') {
-      // 四个角色现在共用同一套侧边栏：第一项是本角色工作台，其余来自后端 menus
       check(
-        'sidebar menu = home + menus',
-        state.menuLabels.length === user.menus.length + 1,
-        `${state.menuLabels.length} items: ${state.menuLabels.join(',')}`
+        'role-specific primary navigation',
+        JSON.stringify(state.menuLabels) === JSON.stringify(EXPECTED_MENU[role]),
+        state.menuLabels.join(',')
       )
     }
     if (role === 'admin') {
@@ -217,8 +221,6 @@ try {
     }
     check('no page errors', consoleErrors.length === 0, consoleErrors[0] || 'none')
     if (role === 'doctor') {
-      check('doctor menu includes review, report and graph',
-        ['报告复核', '评估报告', '评估贡献图'].every(label => state.menuLabels.includes(label)), state.menuLabels.join(','))
       check('login navigation keeps intake form full width', intakeLayouts.every(item => item.fullWidth && item.actionsVisible),
         JSON.stringify(intakeLayouts))
       check('guard blocks cross-role route', guardPath === '/401', guardPath)

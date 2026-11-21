@@ -10,7 +10,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class ContractTests(unittest.TestCase):
     def test_both_openapi_documents_are_valid_and_operations_unique(self):
-        for name,count in [('python-agent.openapi.json',3),('java-business.target.openapi.json',115)]:
+        for name,count in [('python-agent.openapi.json',3),('java-business.target.openapi.json',123)]:
             spec=json.loads((ROOT/'contracts'/name).read_text(encoding='utf-8'));validate(spec)
             operations=[value for path in spec['paths'].values() for method,value in path.items() if method in ('get','post','put','patch','delete')]
             self.assertEqual(len(operations),count)
@@ -37,6 +37,15 @@ class ContractTests(unittest.TestCase):
         for row in subjects:
             self.assertTrue(row['subjectCode'].startswith('DEMO-'));self.assertEqual(row['dataVersion'],fixture['dataVersion'])
             validator.validate(row)
+
+    def test_validation_report_examples_match_openapi(self):
+        spec = json.loads((ROOT / 'contracts/java-business.target.openapi.json').read_text(encoding='utf-8'))
+        schemas = spec['components']['schemas']
+        examples = ROOT / 'contracts/examples'
+        request = json.loads((examples / 'validation-report.request.example.json').read_text(encoding='utf-8'))
+        response = json.loads((examples / 'validation-report.response.example.json').read_text(encoding='utf-8'))
+        for shape, value in [('ValidationReportScope', request), ('Envelope', response), ('ValidationReport', response['data'])]:
+            Draft202012Validator(schemas[shape], format_checker=FormatChecker()).validate(value)
     def test_synthetic_csv_row_counts_and_keys(self):
         for name,expected in [('subjects.synthetic.csv',100),('visits.synthetic.csv',200),('features.synthetic.csv',300)]:
             with (ROOT/'fixtures'/name).open(encoding='utf-8',newline='') as stream:rows=list(csv.DictReader(stream))

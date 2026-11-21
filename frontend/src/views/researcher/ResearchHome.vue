@@ -2,13 +2,11 @@
   <div class="research-home">
     <PageHeader
       title="研究员工作台"
-      subtitle="核验获授权的研究资料、验证模型表现并维护版本证据。"
+      subtitle="查看获授权病例、研究资料质控和评估任务。"
       :terms="['quality', 'controlled', 'frozen']"
     >
       <template #extra>
-        <RouterLink :to="{ name: 'ResearchEvidence', query: { tab: 'validation' } }">
-          模型验证与更新
-        </RouterLink>
+        <el-button type="primary" @click="router.push({ name: 'ResearchEvidence' })">模型验证与更新</el-button>
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
       </template>
     </PageHeader>
@@ -57,7 +55,7 @@
         </div>
       </DataCard>
 
-      <DataCard title="核验受控研究资料" subtitle="查看档案的资料来源、测量时间与质控记录。">
+      <DataCard title="核验受控研究资料" subtitle="核对另行登记的研究受试者及资料快照。">
         <div class="batch-card">
           <div class="batch-card__point">
             <el-icon><Files /></el-icon>
@@ -67,10 +65,10 @@
             <el-icon><Connection /></el-icon>
             <span>打开核验报告，查看仍需补证或复核的项目。</span>
           </div>
-          <el-button type="primary" @click="router.push('/tasks')">
-            打开评估任务
-            <el-icon class="el-icon--right"><ArrowRight /></el-icon>
-          </el-button>
+          <div class="batch-actions">
+            <el-button @click="router.push({ name: 'PatientList' })">查看研究档案</el-button>
+            <el-button @click="router.push({ name: 'TaskList' })">打开评估任务</el-button>
+          </div>
         </div>
       </DataCard>
     </div>
@@ -122,7 +120,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, Checked, Connection, Cpu, Files, Refresh } from '@element-plus/icons-vue'
+import { Checked, Connection, Cpu, Files, Refresh } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import DataCard from '@/components/common/DataCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -130,6 +128,7 @@ import StatusTag from '@/components/common/StatusTag.vue'
 import { listImportJobs } from '@/api/imports.js'
 import { listQualityChecks } from '@/api/qc.js'
 import { getResearchTaskSummary } from '@/api/research.js'
+import { listValidationCases } from '@/api/validationCohort.js'
 import { CONTROLLED_RESEARCH } from '@/utils/researchResults.js'
 import { formatDateTime } from '@/utils/datetime.js'
 
@@ -140,10 +139,17 @@ const importToday = ref(null)
 const summary = ref(null)
 const qcItems = ref([])
 const qcPending = ref(null)
+const validationTotal = ref(null)
 
 const stats = computed(() => {
   const data = summary.value || {}
   return [
+    {
+      key: 'validation',
+      label: '获授权病例',
+      value: validationTotal.value ?? '—',
+      hint: '医生档案的预测与随访结局'
+    },
     {
       key: 'imports',
       label: '今日数据导入',
@@ -154,7 +160,7 @@ const stats = computed(() => {
       key: 'tasks',
       label: '今日受控评估',
       value: data.tasksToday ?? '—',
-      hint: `完成 ${data.completedToday ?? 0} · 失败 ${data.failedToday ?? 0}`
+      hint: summary.value ? `完成 ${data.completedToday ?? 0} · 失败 ${data.failedToday ?? 0}` : '受控研究任务'
     },
     {
       key: 'avg',
@@ -216,26 +222,29 @@ async function load() {
   loading.value = true
   loadError.value = ''
   const today = todayKey()
-  const [imports, taskSummary, warn, blocked] = await Promise.allSettled([
+  const results = await Promise.allSettled([
+    listValidationCases(1),
     listImportJobs({ page: 1, pageSize: 1, from: today, to: today }),
     getResearchTaskSummary(CONTROLLED_RESEARCH),
     listQualityChecks({ status: 'WARN', page: 1, pageSize: 5 }),
-    listQualityChecks({ status: 'BLOCKED', page: 1, pageSize: 1 })
+    listQualityChecks({ status: 'BLOCKED', page: 1, pageSize: 5 })
   ])
+  const [validation, imports, taskSummary, warn, blocked] = results
 
-  const failed = [imports, taskSummary, warn, blocked].filter((item) => item.status === 'rejected')
-  if (failed.length === 4) {
+  const failed = results.filter(item => item.status === 'rejected').length
+  if (failed === results.length) {
     loadError.value = '工作台数据读取失败，请稍后刷新重试。'
-  } else if (failed.length > 0) {
+  } else if (failed > 0) {
     loadError.value = '部分数据读取失败，已展示可用的内容。'
   }
 
-  if (imports.status === 'fulfilled') importToday.value = Number(imports.value?.total ?? 0)
-  if (taskSummary.status === 'fulfilled') summary.value = taskSummary.value || {}
-  if (warn.status === 'fulfilled') qcItems.value = Array.isArray(warn.value?.items) ? warn.value.items : []
-  const warnTotal = warn.status === 'fulfilled' ? Number(warn.value?.total ?? 0) : 0
-  const blockedTotal = blocked.status === 'fulfilled' ? Number(blocked.value?.total ?? 0) : 0
-  qcPending.value = warnTotal + blockedTotal
+  validationTotal.value = validation.status === 'fulfilled' ? validation.value.total : null
+  importToday.value = imports.status === 'fulfilled' ? imports.value.total : null
+  summary.value = taskSummary.status === 'fulfilled' ? taskSummary.value : null
+  const qcPages = [warn, blocked].filter(result => result.status === 'fulfilled')
+  qcItems.value = qcPages.flatMap(result => result.value.items)
+    .sort((left, right) => Date.parse(right.checkedAt) - Date.parse(left.checkedAt)).slice(0, 5)
+  qcPending.value = qcPages.length === 2 ? qcPages.reduce((total, result) => total + result.value.total, 0) : null
   loading.value = false
 }
 
@@ -343,6 +352,16 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.batch-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 .batch-card__point {

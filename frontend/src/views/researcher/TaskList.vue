@@ -69,7 +69,7 @@
         :description="
           statusFilter
             ? '换一个状态筛选，或清空筛选查看全部任务。'
-            : '旧规则评估已停用；研究模型评估请使用右上角入口，或在受试者档案中发起。'
+            : '研究模型评估可从右上角入口或研究档案发起。'
         "
       />
 
@@ -309,7 +309,7 @@
         :data-scope="scope"
         @submitted="onResearchSubmitted"
       />
-      <el-empty v-else description="请先选择受试者档案" :image-size="72" />
+      <el-empty v-else description="请先选择研究档案" :image-size="72" />
       <template #footer>
         <el-button @click="submitOpen = false">关闭</el-button>
       </template>

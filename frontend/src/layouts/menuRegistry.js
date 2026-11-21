@@ -4,6 +4,7 @@ import {
   Cpu,
   DataAnalysis,
   Document,
+  Key,
   Postcard,
   Setting,
   Share,
@@ -17,11 +18,11 @@ import {
 /**
  * 菜单词表 —— 与后端 security/MenuCatalog.java 一一对应：
  *   ADMIN      : audit, system, users
- *   RESEARCHER : graph, imports, quality, reports, subjects, tasks
+ *   RESEARCHER : graph, imports, quality, reports, research, subjects, tasks
  *   DOCTOR     : followups, graph, reports, reviews, subjects
  *   PATIENT    : followups, summary
  *
- * 前端只负责"这个 key 长什么样、点去哪里"；"你有没有这个 key"由后端 menus 决定。
+ * 后端 menus 提供可用入口，前端将次级工具放在对应工作流程内。
  * ready=false 表示页面尚未交付：仍然展示（让用户知道功能存在），但处于禁用态。
  */
 export const MENU_REGISTRY = {
@@ -35,8 +36,9 @@ export const MENU_REGISTRY = {
   reports: { label: '评估报告', path: '/reports', icon: Document, ready: true },
   audit: { label: '审计日志', path: '/admin/audit', icon: Tickets, ready: true },
   users: { label: '账号管理', path: '/admin/users', icon: UserFilled, ready: true },
+  validationAuthorization: { label: '验证资料授权', path: '/admin/validation', icon: Key, ready: true },
   system: { label: '系统设置', path: '/admin/system', icon: Setting, ready: true },
-  research: { label: '研究证据', path: '/research', icon: DataAnalysis, ready: true },
+  research: { label: '模型验证与更新', path: '/research', icon: DataAnalysis, ready: true },
   summary: { label: '我的摘要', path: '/summary', icon: Postcard, ready: true }
 }
 
@@ -47,9 +49,14 @@ export const MENU_REGISTRY = {
  */
 export function buildMenuItems(menus = [], role) {
   if (role === 'DOCTOR') {
-    menus = ['subjects', 'reviews', 'reports', 'graph', 'followups'].filter(key => menus.includes(key))
+    menus = ['subjects', 'reviews', 'reports', 'followups'].filter(key => menus.includes(key))
+  } else if (role === 'RESEARCHER') {
+    const priorities = ['research', 'imports', 'subjects', 'quality', 'tasks', 'reports', 'graph']
+    menus = [...priorities.filter(key => menus.includes(key)), ...menus.filter(key => !priorities.includes(key))]
   } else if (role === 'ADMIN') {
-    const priorities = ['users', 'system', 'audit']
+    // The admin route already exists and enforces its own role and write permissions.
+    menus = [...menus, 'validationAuthorization']
+    const priorities = ['users', 'validationAuthorization', 'system', 'audit']
     menus = [...priorities.filter(key => menus.includes(key)), ...menus.filter(key => !priorities.includes(key))]
   }
   return menus.map((key) => {
@@ -57,9 +64,9 @@ export function buildMenuItems(menus = [], role) {
     if (!entry) {
       return { key, label: key, path: null, icon: Document, ready: false, unknown: true }
     }
-    const label = role === 'DOCTOR'
-      ? ({ subjects: '我的患者', reviews: '报告复核' })[key] || entry.label
-      : entry.label
+    let label = entry.label
+    if (role === 'DOCTOR') label = ({ subjects: '我的患者', reviews: '报告复核' })[key] || label
+    if (role === 'RESEARCHER' && key === 'subjects') label = '研究档案'
     return { key, ...entry, label }
   })
 }

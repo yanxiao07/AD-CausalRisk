@@ -49,7 +49,7 @@ export default defineConfig({
     proxy: {
       // 浏览器只访问 Java 业务 API；Java 再按需调用 Python 子服务。
       '/api': {
-        target: 'http://localhost:8080',
+        target: process.env.ADCR_VITE_BACKEND || 'http://localhost:8080',
         changeOrigin: true
       }
     },

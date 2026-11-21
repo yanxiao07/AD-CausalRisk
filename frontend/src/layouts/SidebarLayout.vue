@@ -57,7 +57,7 @@
           </el-button>
           <el-breadcrumb separator="/">
             <el-breadcrumb-item>{{ roleLabel }}</el-breadcrumb-item>
-            <el-breadcrumb-item>{{ route.meta?.title || '工作台' }}</el-breadcrumb-item>
+            <el-breadcrumb-item>{{ pageTitle }}</el-breadcrumb-item>
           </el-breadcrumb>
         </div>
 
@@ -110,8 +110,8 @@
       <el-descriptions :column="1" border size="small" class="profile__desc">
         <el-descriptions-item label="账号 ID">{{ userStore.id ?? '—' }}</el-descriptions-item>
         <el-descriptions-item label="当前身份">{{ roleLabel }}</el-descriptions-item>
-        <el-descriptions-item label="可用菜单">
-          {{ (userStore.menus || []).length }} 项
+        <el-descriptions-item label="主导航">
+          {{ items.length }} 项
         </el-descriptions-item>
       </el-descriptions>
       <template #footer>
@@ -180,6 +180,11 @@ watch(
 
 const ROLE_LABELS = { ADMIN: '管理员', RESEARCHER: '研究员', DOCTOR: '医生', PATIENT: '患者' }
 const roleLabel = computed(() => ROLE_LABELS[userStore.primaryRole] ?? '访客')
+const pageTitle = computed(() => {
+  if (route.name === 'PatientList') return userStore.primaryRole === 'DOCTOR'
+    ? (route.query.tab === 'legacy' ? '全部授权档案' : '我的患者') : '研究档案'
+  return route.meta?.title || '工作台'
+})
 const initial = computed(() => (userStore.username || '?').slice(0, 1).toUpperCase())
 
 /** 第一项永远是本角色工作台；其余由后端 menus 决定。 */
@@ -187,7 +192,6 @@ const items = computed(() => [
   { key: 'home', label: '工作台', path: userStore.homePath, icon: HomeFilled, ready: true },
   ...buildMenuItems(userStore.menus, userStore.primaryRole)
 ])
-
 const activeKey = computed(() => {
   if (route.path === userStore.homePath) return 'home'
   return activeKeyOf(items.value, route.path) || 'home'

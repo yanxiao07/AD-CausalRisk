@@ -99,6 +99,12 @@ const routes = [
     meta: { title: '账号管理', layout: 'sidebar', roles: ['ADMIN'] }
   },
   {
+    path: '/admin/validation',
+    name: 'ValidationAuthorization',
+    component: () => import('../views/admin/ValidationAuthorization.vue'),
+    meta: { title: '验证资料授权', layout: 'sidebar', roles: ['ADMIN'] }
+  },
+  {
     path: '/reports',
     name: 'ReportList',
     beforeEnter: to => {
@@ -160,7 +166,7 @@ const routes = [
     path: '/research',
     name: 'ResearchEvidence',
     component: () => import('../views/researcher/ResearchEvidence.vue'),
-    meta: { title: '研究证据', layout: 'sidebar', roles: ['RESEARCHER', 'ADMIN'] }
+    meta: { title: '模型验证与更新', layout: 'sidebar', roles: ['RESEARCHER', 'ADMIN'] }
   },
   {
     path: '/:pathMatch(.*)*',
