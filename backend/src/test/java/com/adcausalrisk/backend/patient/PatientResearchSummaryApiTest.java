@@ -219,6 +219,19 @@ class PatientResearchSummaryApiTest {
     }
 
     @Test
+    void ordinaryCareRehearsalDoesNotAppearOutsideItsIsolatedProfile() throws Exception {
+        jdbc.update("UPDATE subject SET subject_code=?,data_version='care-test' WHERE id=?",
+                "OP-SUMMARY-" + UUID.randomUUID(), subjectId);
+        jdbc.update("UPDATE research_table_snapshot SET doctor_handoff=TRUE WHERE id=?", snapshotId);
+        insertTask("CONFIRMED", """
+                {"prediction":{"adCif24m":0.31},"clinicalUse":false}
+                """);
+        JsonNode body = bodyOf(get("/api/patients/me/research-summary"), login("patient"));
+        assertThat(body.at("/data/state").asText()).isEqualTo("NO_TASK");
+        assertThat(body.toString()).doesNotContain("adCif24m", "0.31");
+    }
+
+    @Test
     void nonPatientRoleIsDenied() throws Exception {
         MockHttpSession doctor = login("doctor");
         mockMvc.perform(get("/api/patients/me/research-summary").session(doctor))

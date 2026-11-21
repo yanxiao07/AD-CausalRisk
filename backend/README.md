@@ -30,7 +30,7 @@ $env:ADCR_DB_PASSWORD='<db-password>'
 .\mvnw.cmd spring-boot:run
 ```
 
-Java 默认端口为 8080。Flyway 在启动时执行 V1–V31，Hibernate 验证表结构。V30 支持普通患者档案和评估申请登记。V31 为访视版本新增五项可空资料，旧访视缺失值保持为空。目标库迁移和既有备份恢复记录见 [MySQL 验收](../docs/MySQL8_Acceptance.md)。
+Java 默认端口为 8080。Flyway 在启动时执行 V1–V33，Hibernate 验证表结构。V30 支持普通档案和评估申请。V31 扩展访视输入。V32 新增研究授权与随访结局，V33 保存绑定快照的验证报告。V32–V33 在本机 H2 验收，MySQL 目标环境的升级及恢复需另行复测。[既有 MySQL 验收](../docs/MySQL8_Acceptance.md)
 
 合成种子账号为admin、researcher、doctor、patient、research_doctor，仓库种子口令为 `DemoPass!2026`，保存BCrypt哈希。管理员可通过账号管理重置密码；本地既有账号密码不会在升级时重置。
 
@@ -88,6 +88,12 @@ npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
 用演练医生账号登录。新建普通编号人工档案，在同一次访视填入 MMSE、CDR-SB 和五项补充资料并质控，然后点击「提交预测评估」。Java 读取已保存的当前版本并绑定质控记录，缺项时引导至原访视，齐备时固定输入并调用模型。同一版本重复提交回读原任务。报告沿用档案授权与医生复核流程。关闭 Java 后，这次验收的内存档案即清空。
+
+## 获授权病例验证
+
+管理员登记或撤销项目内的档案授权。研究员仅能读取本人在项目下获授权的病例、模型选项及报告。普通档案取首次成功的预测，失败状态留在诊疗任务记录。随访写入需要当前医生具有档案管理权限，已办理责任交接时按现任医生校验。
+
+在 `synthetic-care` 中，Java 通过本机 Python 计算已保存概率的描述指标。启动器为演练配置 `research.validation.python` 和 `research.validation.workspace`。Java 限制进程并发和输入输出时间，保存结果前复查授权。普通业务配置返回独立协议待补齐的状态。接口示例与状态见[集成契约](../docs/Integration_Contract.md#获授权病例的批次验证)。
 
 ## 研究补件交接
 

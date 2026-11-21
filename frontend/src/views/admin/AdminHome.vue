@@ -7,6 +7,7 @@
     >
       <template #extra>
         <span class="admin-updated">数据截至 {{ lastUpdatedText }}</span>
+        <el-button @click="router.push({ name: 'ValidationAuthorization' })">验证资料授权</el-button>
         <el-button :icon="Refresh" :loading="refreshing" @click="manualRefresh">
           手动刷新
         </el-button>

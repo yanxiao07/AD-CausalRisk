@@ -43,7 +43,7 @@ python_service/deepagent_contract.py负责输入校验和四阶段编排，demo_
 
 联调时从同一提交取得服务源码、契约和示例，避免混用不同版本。
 
-Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)，共 115 个操作，含责任医生交接、患者说明发布、七变量测试快照和宿主模型核对。患者结果由 Java 过滤，研究任务复核和患者说明发布分别记录。成功 Envelope 和 Python AgentResult 格式不同。
+Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)，共 123 个操作，含责任医生交接、患者说明发布、七变量测试快照、研究授权和批次验证。患者结果由 Java 过滤，研究任务复核和患者说明发布分别记录。成功 Envelope 和 Python AgentResult 格式不同。
 
 动态研究宿主支持带 Bearer 身份的 `GET /api/research-table/v1/models`，返回启动时核验通过且已加载的模型规格、类型、清单和模型文件摘要。该路由不启动推理，不读取档案和快照。Java 管理员调用 `/api/system/research-models`，将宿主回应与仓库记录对应。早期宿主没有此路由时回报 `UNSUPPORTED`。
 
@@ -54,3 +54,11 @@ Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)�
 现有页面按快照提交研究任务。旧同步和异步规则 POST 拒绝新任务，可按原幂等键读取已有任务。历史任务和报告继续按原版本读取。
 
 发送后超时不得盲目重复 POST。验证通道可按原 runId 只读核对 Python 缓存；缓存未命中不证明任务未执行。研究通道的 runId 只用于关联，原幂等键与 GET 只读取 Java 已保存任务。旧版需求中的可配置重试次数不描述当前实现。
+
+## 获授权病例的批次验证
+
+1. 研究员调用 `GET /api/research/validation-cohort/scopes` 读取本人全部项目和模型选项。病例明细单独分页。
+2. 将选项的项目编号和模型产物 SHA-256 传给 `POST /api/research/validation-cohort/report`。同一快照可回读原报告。刷新使用相同的两个查询参数向同一路径发送 GET，查无可访问报告时返回空数据。
+3. `COMPLETED` 表示演练指标已计算，`SUPPRESSED` 表示小组抑制，`BLOCKED` 表示等待独立验证协议。抑制和阻断时指标为空。数字出自本机 Python 子进程，Java 验证回执并持久化。该通道使用已保存的概率，模型拟合和发布另有流程。
+
+[请求示例](../contracts/examples/validation-report.request.example.json) · [响应示例](../contracts/examples/validation-report.response.example.json)

@@ -6,6 +6,8 @@ import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.adcausalrisk.backend.subject.SubjectPermissionRepository;
 import com.adcausalrisk.backend.subject.SubjectRepository;
 import com.adcausalrisk.backend.subject.entity.Subject;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -42,7 +44,9 @@ public class PatientResearchSummaryService {
                 AND p.id=(SELECT MAX(p2.id) FROM patient_research_publication p2 WHERE p2.task_id=t.id)
              WHERE s.subject_id=?
                AND (s.data_scope='CONTROLLED_RESEARCH'
-                    OR (s.data_scope='CONSTRUCTED_VALIDATION' AND sub.subject_code LIKE 'DEMO-%'
+                    OR (s.data_scope='CONSTRUCTED_VALIDATION'
+                        AND (sub.subject_code LIKE 'DEMO-%'
+                            OR (?=TRUE AND sub.data_version LIKE 'care-%' AND s.doctor_handoff=TRUE))
                         AND NOT EXISTS (SELECT 1 FROM research_table_snapshot controlled
                                         WHERE controlled.subject_id=s.subject_id
                                           AND controlled.data_scope='CONTROLLED_RESEARCH')))
@@ -53,14 +57,16 @@ public class PatientResearchSummaryService {
     private final SubjectPermissionRepository permissionRepository;
     private final SubjectRepository subjectRepository;
     private final JdbcTemplate jdbc;
+    private final boolean syntheticCare;
 
     public PatientResearchSummaryService(
             SubjectPermissionRepository permissionRepository,
             SubjectRepository subjectRepository,
-            JdbcTemplate jdbc) {
+            JdbcTemplate jdbc, Environment environment) {
         this.permissionRepository = permissionRepository;
         this.subjectRepository = subjectRepository;
         this.jdbc = jdbc;
+        this.syntheticCare = environment.acceptsProfiles(Profiles.of("synthetic-care"));
     }
 
     /** De-identified shape: no task id, no result JSON, no model/CIF fields. */
@@ -183,7 +189,7 @@ public class PatientResearchSummaryService {
                                         rs.getString("review_status"),
                                         instant(rs.getTimestamp("created_at")),
                                         rs.getString("published_message")),
-                        subjectId);
+                        subjectId, syntheticCare);
         return rows.isEmpty() ? null : rows.getFirst();
     }
 

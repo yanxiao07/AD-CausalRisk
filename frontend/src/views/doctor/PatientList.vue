@@ -1,8 +1,8 @@
 <template>
   <div class="patient-list">
     <PageHeader back
-      :title="doctorView ? (showLegacy ? '全部授权档案' : '我的患者') : '受试者档案'"
-      subtitle="点击档案查看资料与评估记录。"
+      :title="doctorView ? (showLegacy ? '全部授权档案' : '我的患者') : '研究档案'"
+      :subtitle="doctorView ? '点击档案查看资料与评估记录。' : '查阅另行登记的受控研究资料和测试样例。'"
       :terms="doctorView ? ['quality', 'coreScales', 'archiveBinding'] : ['controlled', 'constructed', 'dataVersion', 'source']"
     >
       <template #extra>
@@ -60,11 +60,19 @@
       />
 
       <!-- 空态 -->
+      <div v-else-if="items.length === 0 && !doctorView">
+        <EmptyState :icon="User" title="授权范围内还没有研究档案"
+          :description="scope === CONTROLLED_RESEARCH ? '研究项目另行登记并授权的受试者会出现在这里。' : '导入资料或新建测试档案后，可在这里查看。'" />
+        <div class="research-empty-links">
+          <RouterLink :to="{ name: 'ResearchEvidence' }">前往模型验证与更新</RouterLink>
+          <RouterLink :to="{ name: 'ResearchEvidence', query: { tab: 'tools' } }">返回研究工具</RouterLink>
+        </div>
+      </div>
       <EmptyState
         v-else-if="items.length === 0"
         :icon="User"
         title="授权范围内还没有档案"
-        :description="doctorView ? (showLegacy ? '可更改搜索条件或返回我的患者。' : '您负责的普通患者档案会出现在这里。') : scope === CONTROLLED_RESEARCH ? '已登记且授权的受控档案会出现在这里。' : '可新建测试档案，或查阅已有测试样例。'"
+        :description="showLegacy ? '可更改搜索条件或返回我的患者。' : '您负责的普通患者档案会出现在这里。'"
       />
 
       <template v-else>
@@ -571,6 +579,9 @@
               />
             </div>
 
+            <ValidationFollowUp v-if="doctorView && isCareArchive && subjectCapabilities?.manage"
+              :key="selected.id" :subject-id="selected.id" />
+
             <section v-if="doctorView && canQualityCheck" class="drawer__section">
               <h3>已保存的检验和影像结果</h3>
               <p v-if="timelineLoading" role="status">正在读取结果…</p>
@@ -806,6 +817,7 @@ import { getSubjectCapabilities, getSubjectDetail, listSubjects } from '@/api/su
 import { listFollowUps } from '@/api/followups.js'
 import { listResearchReports } from '@/api/research.js'
 import ResearchScopeSelect from '@/components/assessment/ResearchScopeSelect.vue'
+import ValidationFollowUp from '@/components/assessment/ValidationFollowUp.vue'
 import { CARE_WORKFLOW, CONSTRUCTED_VALIDATION, CONTROLLED_RESEARCH, researchScope, subjectResearchScope } from '@/utils/researchResults.js'
 import { getPatientOnboardingStatus, onboardingQualityLabel, requestPatientAccount } from '@/api/patientAccountRequests.js'
 import {
@@ -1604,6 +1616,14 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.research-empty-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 20px;
+  padding: 0 16px 24px;
+}
+
 .patient-list {
   display: flex;
   flex-direction: column;

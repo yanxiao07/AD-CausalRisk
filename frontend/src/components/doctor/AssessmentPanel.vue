@@ -15,7 +15,7 @@
       :closable="false"
       show-icon
       title="当前账号没有研究评估权限"
-      description="需要研究员或管理员角色。请联系研究员在「研究证据 → 研究表格评估」中提交，或由管理员在用户管理中调整角色。"
+      description="请联系获授权的研究员，从「模型验证与更新 → 研究工具 → 研究表格评估」提交。"
     />
   </section>
 </template>

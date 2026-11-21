@@ -2,29 +2,62 @@
   <div class="research-page">
     <PageHeader
       back
-      title="研究证据"
-      subtitle="证据目录只读；研究表格评估按受试者加载冻结快照，支持多选后批量提交并查看进度。"
+      title="模型验证与更新"
+      :subtitle="activeTab === 'validation' ? '查看获授权病例的预测、随访结局与模型版本。' : ''"
       :terms="['controlled', 'frozen', 'admission', 'source']"
     >
       <template #extra>
-        <el-button v-if="canRegister && activeTab !== 'validation'" :icon="Plus" @click="openRegister">手动登记快照</el-button>
-        <el-button :icon="Refresh" :loading="loading || refreshingBatch" @click="refreshAll">刷新全部</el-button>
+        <el-button v-if="canRegister && activeTab === 'table'" :icon="Plus" @click="openRegister">手动登记快照</el-button>
+        <el-button v-if="activeTab === 'catalog' || (activeTab === 'table' && validSubjectId)" :icon="Refresh"
+          :loading="loading || refreshingBatch" @click="refreshAll">刷新</el-button>
       </template>
     </PageHeader>
 
     <el-tabs v-model="activeTab" class="tabs">
-      <el-tab-pane label="模型验证与更新" name="validation">
-        <DataCard title="与医院合作的验证任务" padding="lg">
-          <ol class="validation-list">
-            <li><strong>准备独立验证资料</strong><p>确认目标患者范围、测量方式、结局和随访时长。使用获授权且与训练人群独立的资料。</p></li>
-            <li><strong>验证 24 个月风险</strong><p>核对预测概率是否贴合实际结局，记录整体和预先定义人群的表现及适用范围。</p></li>
-            <li><strong>评估随访策略</strong><p>与医院明确现行流程、比较的新策略和评价指标，记录实际邀约、复诊及结局后评估收益。</p></li>
-            <li><strong>审查候选模型版本</strong><p>证据支持更新时，使用获授权的固定批次在独立环境训练候选版本。与现用模型对照，通过复评后再发布。</p></li>
+      <el-tab-pane label="获授权病例" name="validation" lazy>
+        <div class="stack">
+          <ValidationCohort />
+          <DataCard title="与医院合作的验证任务" padding="lg">
+            <ol class="validation-list">
+              <li><strong>准备独立验证资料</strong><p>确认目标患者范围、测量方式、结局和随访时长。使用获授权且与训练人群独立的资料。</p></li>
+              <li><strong>验证 24 个月风险</strong><p>核对预测概率是否贴合实际结局，记录整体和预先定义人群的表现及适用范围。</p></li>
+              <li><strong>评估随访策略</strong><p>与医院明确现行流程、比较的新策略和评价指标，记录实际邀约、复诊及结局后评估收益。</p></li>
+              <li><strong>审查候选模型版本</strong><p>证据支持更新时，使用获授权的固定批次在独立环境训练候选版本。与现用模型对照，通过复评后再发布。</p></li>
+            </ol>
+          </DataCard>
+        </div>
+      </el-tab-pane>
+      <el-tab-pane label="研究工具" name="tools" lazy>
+        <DataCard title="从资料导入到报告" subtitle="这里处理另行登记的受控研究资料和测试样例。">
+          <ol class="tool-links">
+            <li>
+              <RouterLink :to="{ name: 'ImportCenter' }">导入测试资料</RouterLink>
+              <span>上传测试 CSV，查看预检和导入错误。</span>
+            </li>
+            <li>
+              <RouterLink :to="{ name: 'PatientList' }">研究档案</RouterLink>
+              <span>查找研究受试者，核对访视、来源及历史评估。</span>
+            </li>
+            <li>
+              <RouterLink :to="{ name: 'QcList' }">数据质控</RouterLink>
+              <span>核对可用资料及需要补证的项目。</span>
+            </li>
+            <li>
+              <RouterLink :to="{ name: 'ResearchEvidence', query: { tab: 'table' } }">研究表格评估</RouterLink>
+              <span>选择已登记的快照并提交评估。</span>
+            </li>
+            <li>
+              <RouterLink :to="{ name: 'TaskList' }">评估任务</RouterLink>
+              <span>查看执行状态和阻断原因。</span>
+            </li>
+            <li>
+              <RouterLink :to="{ name: 'ReportList' }">评估报告</RouterLink>
+              <span>打开对应报告查看结果及贡献图。</span>
+            </li>
           </ol>
-          <p>当前待医院合作资料和随访结果。医生档案按业务用途保存，研究分析使用另行登记的资料。</p>
         </DataCard>
       </el-tab-pane>
-      <el-tab-pane label="证据目录" name="catalog">
+      <el-tab-pane label="证据与模型版本" name="catalog" lazy>
         <EmptyState
           v-if="error"
           :icon="WarningFilled"
@@ -94,7 +127,7 @@
         </template>
       </el-tab-pane>
 
-      <el-tab-pane label="研究表格评估" name="table">
+      <el-tab-pane v-if="activeTab === 'table'" label="研究表格评估" name="table" lazy>
         <div class="stack">
           <DataCard
             title="选择受试者"
@@ -218,8 +251,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import ValidationCohort from '@/components/assessment/ValidationCohort.vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -246,7 +280,18 @@ const activeReport = ref(null)
 
 // ---- 研究表格评估 ----
 const route = useRoute()
-const activeTab = ref(route.query.tab === 'validation' ? 'validation' : 'catalog')
+const router = useRouter()
+const routedSubjectId = computed(() => {
+  const id = Number(route.query.subjectId)
+  return Number.isSafeInteger(id) && id > 0 ? id : null
+})
+const activeTab = computed({
+  get: () => {
+    if (routedSubjectId.value) return 'table'
+    return ['tools', 'catalog', 'table'].includes(route.query.tab) ? route.query.tab : 'validation'
+  },
+  set: tab => router.push({ name: 'ResearchEvidence', query: tab === 'validation' ? {} : { tab } })
+})
 const tableSubjectId = ref(null)
 const subjectOptions = ref([])
 const subjectLoading = ref(false)
@@ -330,9 +375,13 @@ async function loadSubjectOption(subjectId) {
 }
 
 async function refreshAll() {
+  if (activeTab.value === 'catalog') return load()
   refreshingBatch.value = true
-  await Promise.allSettled([load(), batchRef.value?.reload()])
-  refreshingBatch.value = false
+  try {
+    await batchRef.value?.reload()
+  } finally {
+    refreshingBatch.value = false
+  }
 }
 
 function openRegister() {
@@ -430,18 +479,17 @@ useEscapeToClose(drawerOpen, () => {
   drawerOpen.value = false
 })
 
-onMounted(() => {
-  load()
-  searchSubjects('')
-  const subjectId = Number(route.query.subjectId)
-  if (Number.isInteger(subjectId) && subjectId > 0) {
+watch([activeTab, routedSubjectId], ([tab, subjectId]) => {
+  if (tab === 'catalog' && !catalog.value && !loading.value) load()
+  if (tab !== 'table') return
+  if (!subjectOptions.value.length) searchSubjects('')
+  if (subjectId) {
     tableSubjectId.value = subjectId
-    activeTab.value = 'table'
     loadSubjectOption(subjectId)
-  } else if (route.query.tab === 'table') {
-    activeTab.value = 'table'
   }
-})
+}, { immediate: true })
+
+onBeforeUnmount(() => clearTimeout(subjectSearchTimer))
 </script>
 
 <style scoped>
@@ -457,6 +505,8 @@ onMounted(() => {
 
 .validation-list { display: grid; gap: 12px; padding-left: 1.5em; }
 .validation-list p { margin: 4px 0 0; line-height: 1.6; }
+.tool-links { display: grid; gap: 12px; padding-inline-start: 1.5em; }
+.tool-links span { display: block; margin-top: 4px; }
 
 .stack {
   display: flex;
