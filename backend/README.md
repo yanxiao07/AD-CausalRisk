@@ -42,7 +42,9 @@ Java 默认端口为 8080。Flyway 在启动时执行 V1–V33，Hibernate 验�
 
 ### 普通档案自动预测的人工验收
 
-`synthetic-care` 用于隔离的人工验收。Java 配置 `--server.address=127.0.0.1`，并使用 `jdbc:h2:mem:adcr_care_sandbox` 或带下划线和字母数字后缀的指定内存库。配置不匹配会在连接数据库前失败。配套 Python 研究宿主使用独立环回端口、固定摘要的模型清单和专用人工快照目录。研究用途标记随报告保存。默认配置继续保存普通评估申请，待取得适用于普通患者的模型版本后接入业务运行。
+`synthetic-care` 用于隔离的人工验收。Java 必须监听 `127.0.0.1`。双击从 `backend` 工作目录打开固定的 `jdbc:h2:file:./../runtime/desktop/adcr_care_sandbox`，持久化档案和结果。下方手工演练使用 `jdbc:h2:mem:adcr_care_sandbox`，临时演练也可使用带下划线和字母数字后缀的指定内存库。库地址或监听地址不匹配会在连接数据库前失败。Python 研究宿主使用独立环回端口、固定摘要的模型清单和专用人工快照目录。研究用途标记随报告保存。
+
+启动器在模型未就绪时传入 `--research.care.prediction-enabled=false`，同一联调库继续保存普通评估申请，既有评估任务与报告仍可读取。批次验证使用独立的 Python 进程计算已保存的概率，不依赖预测宿主持续运行。正常医院环境的普通评估仍待适用模型准入。
 
 从模型保管方取得七变量 `Model_Manifest.json`、同目录 `final__logistic.joblib` 和独立提供的清单 SHA-256。下列命令从仓库根目录开始，使用 Windows PowerShell 7。将示例中的清单路径和摘要替换为收到的内容。三个终端的端口分别为 `16301`、`8080` 和 `5173`。如果已经按快速开始启动了 Java、Vue 或研究宿主，先在原终端按 Ctrl+C 停止，再用新终端启动这套流程。
 
