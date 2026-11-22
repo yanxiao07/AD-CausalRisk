@@ -55,6 +55,10 @@ public final class ResearchTableClient {
     public record LoadedModel(String specification, String family, String manifestSha256, String artifactSha256) {}
     public record ModelStatus(String status, List<LoadedModel> models) {}
 
+    boolean configured() {
+        return settings.researchHost().configured();
+    }
+
     public ModelStatus loadedModels() {
         var host = settings.researchHost();
         if (!host.enabled() || !host.configured()) return new ModelStatus("NOT_CONFIGURED", List.of());
