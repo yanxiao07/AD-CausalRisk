@@ -136,6 +136,7 @@
               <include>Training_Perturbation_Results.md</include>
               <include>Graph_Training_Perturbation_Results.md</include>
               <include>Graph_Modality_Strata_Results.md</include>
+              <include>Graph_Explanation_Results.md</include>
               <include>Table_Grouped_XAI_Results.md</include>
               <include>Causal_Identification_Results.md</include>
               <include>Research_Host_Evidence_Admission.md</include>
@@ -171,6 +172,7 @@
               <include>Training_Perturbation_Results.md</include>
               <include>Graph_Training_Perturbation_Results.md</include>
               <include>Graph_Modality_Strata_Results.md</include>
+              <include>Graph_Explanation_Results.md</include>
               <include>Table_Grouped_XAI_Results.md</include>
               <include>Causal_Identification_Results.md</include>
               <include>Research_Host_Evidence_Admission.md</include>
