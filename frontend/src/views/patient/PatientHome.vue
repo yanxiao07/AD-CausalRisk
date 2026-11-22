@@ -74,6 +74,18 @@
       </section>
     </div>
 
+    <section class="hcard hcard--memo-entry" aria-labelledby="memo-entry-title">
+      <h2 id="memo-entry-title" class="hcard__label">我的备忘</h2>
+      <p v-if="memoState === 'loading'" class="hcard__note" role="status">正在读取备忘…</p>
+      <template v-else-if="memoState === 'ready'">
+        <p v-if="memoCount === 0" class="hcard__note">还没有备忘。点下面的按钮记下想记住的事。</p>
+        <p v-else class="hcard__note">已有 {{ memoCount }} 条备忘。可以生成卡片像翻单词卡一样复习。</p>
+      </template>
+      <div class="memo-entry-actions">
+        <el-button type="primary" size="large" @click="$router.push('/patient/memos')">进入我的备忘</el-button>
+      </div>
+    </section>
+
     <section class="hcard hcard--research" aria-labelledby="research-title">
       <div class="hcard__heading">
         <h2 id="research-title" class="hcard__label">评估进度</h2>
@@ -107,7 +119,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { Printer } from '@element-plus/icons-vue'
-import { getMyDoctor, getMyFollowUp, getResearchSummary, respondToFollowUp } from '@/api/patients.js'
+import { getMyDoctor, getMyFollowUp, getResearchSummary, respondToFollowUp, getMyMemos } from '@/api/patients.js'
 import { formatDateTime } from '@/utils/datetime.js'
 
 const doctor = ref(null)
@@ -116,6 +128,8 @@ const followUp = ref(null)
 const followUpState = ref('loading')
 const research = ref(null)
 const researchState = ref('loading')
+const memoCount = ref(0)
+const memoState = ref('loading')
 const bookingBusy = ref(false)
 const bookingError = ref('')
 const rescheduleOpen = ref(false)
@@ -220,6 +234,17 @@ const loadFollowUp = () => loadSection(getMyFollowUp, followUp, followUpState)
 const loadDoctor = () => loadSection(getMyDoctor, doctor, doctorState)
 const loadResearch = () => loadSection(getResearchSummary, research, researchState)
 
+async function loadMemos() {
+  memoState.value = 'loading'
+  try {
+    const list = await getMyMemos()
+    memoCount.value = Array.isArray(list) ? list.length : 0
+    memoState.value = 'ready'
+  } catch {
+    memoState.value = 'degraded'
+  }
+}
+
 function printSummary() {
   window.print()
 }
@@ -228,6 +253,7 @@ onMounted(() => {
   loadFollowUp()
   loadDoctor()
   loadResearch()
+  loadMemos()
 })
 </script>
 
@@ -273,6 +299,18 @@ onMounted(() => {
 .hcard--research {
   background: linear-gradient(150deg, #ffffff 0%, #fffbeb 100%);
   border-color: rgba(180, 120, 20, 0.22);
+}
+
+.hcard--memo-entry {
+  background: linear-gradient(150deg, #ffffff 0%, #f0fdf4 100%);
+  border-color: rgba(16, 185, 129, 0.22);
+}
+
+.memo-entry-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .hcard__heading {

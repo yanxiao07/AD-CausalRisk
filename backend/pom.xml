@@ -77,11 +77,10 @@
       <scope>runtime</scope>
     </dependency>
 
-    <!-- Test only: H2 in MySQL compatibility mode. No Docker / Testcontainers. -->
     <dependency>
       <groupId>com.h2database</groupId>
       <artifactId>h2</artifactId>
-      <scope>test</scope>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -109,16 +108,83 @@
     </dependency>
   </dependencies>
 
+  <profiles>
+    <profile>
+      <id>h2-resources</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <build>
+        <resources>
+          <resource>
+            <directory>src/main/resources</directory>
+            <excludes>
+              <exclude>db/migration/mysql/**</exclude>
+            </excludes>
+          </resource>
+          <resource>
+            <directory>${project.basedir}/../docs/contracts</directory>
+            <targetPath>research-contract</targetPath>
+            <includes>
+              <include>research-table-agent.draft.openapi.json</include>
+            </includes>
+          </resource>
+          <resource>
+            <directory>${project.basedir}/../docs</directory>
+            <targetPath>research-evidence</targetPath>
+            <includes>
+              <include>Training_Perturbation_Results.md</include>
+              <include>Graph_Training_Perturbation_Results.md</include>
+              <include>Graph_Modality_Strata_Results.md</include>
+              <include>Table_Grouped_XAI_Results.md</include>
+              <include>Causal_Identification_Results.md</include>
+              <include>Research_Host_Evidence_Admission.md</include>
+              <include>Feature_Drift_Monitoring.md</include>
+              <include>Performance_Monitoring.md</include>
+              <include>Lifecycle_Monitoring.md</include>
+            </includes>
+          </resource>
+        </resources>
+      </build>
+    </profile>
+    <profile>
+      <id>mysql-resources</id>
+      <build>
+        <resources>
+          <resource>
+            <directory>src/main/resources</directory>
+            <excludes>
+              <exclude>db/migration/h2/**</exclude>
+            </excludes>
+          </resource>
+          <resource>
+            <directory>${project.basedir}/../docs/contracts</directory>
+            <targetPath>research-contract</targetPath>
+            <includes>
+              <include>research-table-agent.draft.openapi.json</include>
+            </includes>
+          </resource>
+          <resource>
+            <directory>${project.basedir}/../docs</directory>
+            <targetPath>research-evidence</targetPath>
+            <includes>
+              <include>Training_Perturbation_Results.md</include>
+              <include>Graph_Training_Perturbation_Results.md</include>
+              <include>Graph_Modality_Strata_Results.md</include>
+              <include>Table_Grouped_XAI_Results.md</include>
+              <include>Causal_Identification_Results.md</include>
+              <include>Research_Host_Evidence_Admission.md</include>
+              <include>Feature_Drift_Monitoring.md</include>
+              <include>Performance_Monitoring.md</include>
+              <include>Lifecycle_Monitoring.md</include>
+            </includes>
+          </resource>
+        </resources>
+      </build>
+    </profile>
+  </profiles>
+
   <build>
-    <resources>
-      <resource><directory>src/main/resources</directory></resource>
-      <resource>
-        <directory>${project.basedir}/../docs/contracts</directory>
-        <targetPath>research-contract</targetPath>
-        <includes><include>research-table-agent.draft.openapi.json</include></includes>
-      </resource>
-      <resource><directory>${project.basedir}/../docs</directory><targetPath>research-evidence</targetPath><includes><include>Training_Perturbation_Results.md</include><include>Graph_Training_Perturbation_Results.md</include><include>Graph_Modality_Strata_Results.md</include><include>Graph_Explanation_Results.md</include><include>Table_Grouped_XAI_Results.md</include><include>Causal_Identification_Results.md</include><include>Research_Host_Evidence_Admission.md</include><include>Feature_Drift_Monitoring.md</include><include>Performance_Monitoring.md</include><include>Lifecycle_Monitoring.md</include></includes></resource>
-    </resources>
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>

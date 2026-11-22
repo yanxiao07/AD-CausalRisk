@@ -62,6 +62,18 @@ const routes = [
     meta: { title: '我的健康档案', layout: 'patient', roles: ['PATIENT'] }
   },
   {
+    path: '/patient/memos',
+    name: 'PatientMemos',
+    component: () => import('../views/patient/MyMemos.vue'),
+    meta: { title: '我的备忘', layout: 'patient', roles: ['PATIENT'] }
+  },
+  {
+    path: '/patient/memos/:memoId(\\d+)',
+    name: 'patient-memo-detail',
+    component: () => import('../views/patient/MemoDetail.vue'),
+    meta: { title: '备忘详情', layout: 'patient', roles: ['PATIENT'] }
+  },
+  {
     // MenuCatalog 仍给患者下发 summary；这里落到同一个患者摘要页面，避免死菜单。
     path: '/summary',
     name: 'PatientSummary',
