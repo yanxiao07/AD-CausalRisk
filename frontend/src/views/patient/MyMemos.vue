@@ -11,6 +11,11 @@
         记一件事
       </el-button>
 
+      <div v-if="dueCount > 0" class="review-tip" role="status">
+        <p class="review-tip__text">今天有 {{ dueCount }} 张卡片该复习了。</p>
+        <el-button type="primary" size="large" @click="openMemoById(dueMemoId)">去复习</el-button>
+      </div>
+
       <div v-if="loadState === 'loading'" class="hcard__note" role="status">正在读取备忘…</div>
       <div v-else-if="loadState === 'degraded'" class="hcard__note" role="alert">
         暂时无法读取备忘。
@@ -53,7 +58,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
-import { getMyMemos, createMemo } from '@/api/patients.js'
+import { getMyMemos, createMemo, getDueCards } from '@/api/patients.js'
 
 const router = useRouter()
 const memos = ref([])
@@ -61,6 +66,8 @@ const loadState = ref('loading')
 const newMemoOpen = ref(false)
 const newMemoContent = ref('')
 const saving = ref(false)
+const dueCount = ref(0)
+const dueMemoId = ref(null)
 
 function formatTime(iso) {
   if (!iso) return ''
@@ -72,7 +79,13 @@ function formatTime(iso) {
 async function loadMemos() {
   loadState.value = 'loading'
   try {
-    memos.value = await getMyMemos()
+    const [list, due] = await Promise.all([
+      getMyMemos(),
+      getDueCards().catch(() => [])
+    ])
+    memos.value = list
+    dueCount.value = due.length
+    dueMemoId.value = due.length > 0 ? due[0].memoId : null
     loadState.value = 'ready'
   } catch {
     loadState.value = 'degraded'
@@ -105,6 +118,11 @@ async function saveNewMemo() {
 
 function openMemo(memo) {
   router.push({ name: 'patient-memo-detail', params: { memoId: memo.id } })
+}
+
+function openMemoById(memoId) {
+  if (!memoId) return
+  router.push({ name: 'patient-memo-detail', params: { memoId } })
 }
 
 onMounted(loadMemos)
@@ -163,6 +181,24 @@ onMounted(loadMemos)
 .new-memo-btn {
   min-height: 56px;
   margin: 16px 0;
+}
+
+.review-tip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  background: linear-gradient(150deg, #ffffff 0%, #ecfdf5 100%);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: var(--r-xl);
+}
+
+.review-tip__text {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .empty-tip {

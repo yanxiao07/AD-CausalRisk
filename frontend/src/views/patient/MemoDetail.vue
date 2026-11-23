@@ -47,8 +47,23 @@
         </el-button>
       </div>
       <template v-else>
-        <div v-if="reviewIndex >= 0 && reviewIndex < cards.length" class="review-stage">
-          <p class="review-progress">第 {{ reviewIndex + 1 }} / {{ cards.length }} 张</p>
+        <div v-if="previewMode" class="review-preview">
+          <p class="hcard__value">新卡片已生成，请先确认内容</p>
+          <p class="hcard__note">确认无误后再开始复习；如果有错，可以重新生成卡片。</p>
+          <ul class="card-list">
+            <li v-for="card in cards" :key="card.id" class="card-list-item">
+              <div class="card-list-front">{{ card.frontText }}</div>
+              <div class="card-list-back">{{ card.backText }}</div>
+            </li>
+          </ul>
+          <div class="inline-actions">
+            <el-button size="large" plain :loading="generating" @click="generateCards">重新生成卡片</el-button>
+            <el-button type="primary" size="large" @click="confirmPreview">确认卡片，开始复习</el-button>
+          </div>
+        </div>
+
+        <div v-else-if="reviewIndex >= 0 && reviewIndex < reviewQueue.length" class="review-stage">
+          <p class="review-progress">第 {{ reviewIndex + 1 }} / {{ reviewQueue.length }} 张</p>
 
           <div class="flashcard" :class="{ flipped: showAnswer }" @click="showAnswer = !showAnswer">
             <div class="flashcard-inner">
@@ -82,19 +97,19 @@
           </details>
         </div>
         <div v-else class="review-done">
-          <p class="hcard__value">这一轮看完啦！</p>
-          <p class="hcard__note">记住的卡片会安排下次复习，忘记的卡片会优先出现。</p>
-          <el-button type="primary" size="large" @click="startReview">从头再来一遍</el-button>
+          <p class="hcard__value">今天没有需要复习的卡片</p>
+          <p class="hcard__note">记住的卡片会按 1 / 3 / 7 天的间隔再次出现，到时间再来复习。</p>
+          <el-button type="primary" size="large" @click="startReview">检查有没有到期卡片</el-button>
         </div>
 
-        <div class="manage-cards" style="margin-top: 24px;">
+        <div v-if="!previewMode" class="manage-cards" style="margin-top: 24px;">
           <el-button size="large" plain :loading="generating" @click="generateCards">重新生成卡片</el-button>
           <el-button size="large" plain @click="toggleList = !toggleList">
             {{ toggleList ? '收起卡片列表' : '查看全部卡片' }}
           </el-button>
         </div>
 
-        <ul v-if="toggleList" class="card-list">
+        <ul v-if="toggleList && !previewMode" class="card-list">
           <li v-for="card in cards" :key="card.id" class="card-list-item" @click="jumpTo(card.id)">
             <div class="card-list-front">{{ card.frontText }}</div>
             <div class="card-list-back">{{ card.backText }}</div>
@@ -136,7 +151,15 @@ const reviewIndex = ref(-1)
 const showAnswer = ref(false)
 const toggleList = ref(false)
 
-const currentCard = computed(() => cards.value[reviewIndex.value] || cards.value[0])
+const reviewQueue = ref([])
+const previewMode = ref(false)
+
+const currentCard = computed(() => reviewQueue.value[reviewIndex.value] || null)
+
+function dueCardsNow() {
+  const cutoff = Date.now() + 5000
+  return cards.value.filter(c => c.nextReviewAt && new Date(c.nextReviewAt).getTime() <= cutoff)
+}
 
 function formatTime(iso) {
   if (!iso) return ''
@@ -169,9 +192,7 @@ async function loadCards() {
   } catch {
     cardsState.value = 'degraded'
   }
-  if (cards.value.length > 0 && reviewIndex.value < 0) {
-    startReview()
-  }
+  startReview()
 }
 
 function startEdit() {
@@ -192,9 +213,15 @@ async function saveEdit() {
   }
   saving.value = true
   try {
+    const previous = memo.value?.content
     memo.value = await updateMemo(memoId.value, text)
     editingContent.value = false
-    ElMessage.success('已保存')
+    if (previous !== memo.value.content) {
+      await loadCards()
+      ElMessage.success('已保存。原文变了，旧卡片已暂停，请重新生成卡片后再复习')
+    } else {
+      ElMessage.success('已保存')
+    }
   } catch {
   } finally {
     saving.value = false
@@ -223,37 +250,49 @@ async function generateCards() {
   generating.value = true
   try {
     cards.value = await apiGenerateCards(memoId.value)
-    reviewIndex.value = 0
+    previewMode.value = true
+    reviewIndex.value = -1
     showAnswer.value = false
-    ElMessage.success(`生成了 ${cards.value.length} 张卡片`)
+    ElMessage.success(`生成了 ${cards.value.length} 张卡片，确认后再开始复习`)
   } catch {
   } finally {
     generating.value = false
   }
 }
 
+function confirmPreview() {
+  previewMode.value = false
+  startReview()
+  if (reviewIndex.value >= 0) {
+    ElMessage.success('已开始复习')
+  }
+}
+
 function startReview() {
-  reviewIndex.value = 0
+  reviewQueue.value = dueCardsNow()
+  reviewIndex.value = reviewQueue.value.length > 0 ? 0 : -1
   showAnswer.value = false
 }
 
 function nextCard() {
-  if (cards.value.length === 0) return
+  if (reviewQueue.value.length === 0) return
   showAnswer.value = false
-  reviewIndex.value = (reviewIndex.value + 1) % cards.value.length
+  reviewIndex.value = (reviewIndex.value + 1) % reviewQueue.value.length
 }
 
 function prevCard() {
-  if (cards.value.length === 0) return
+  if (reviewQueue.value.length === 0) return
   showAnswer.value = false
-  reviewIndex.value = (reviewIndex.value - 1 + cards.value.length) % cards.value.length
+  reviewIndex.value = (reviewIndex.value - 1 + reviewQueue.value.length) % reviewQueue.value.length
 }
 
 function jumpTo(cardId) {
-  const idx = cards.value.findIndex(c => c.id === cardId)
+  const idx = reviewQueue.value.findIndex(c => c.id === cardId)
   if (idx >= 0) {
     reviewIndex.value = idx
     showAnswer.value = false
+  } else {
+    ElMessage.info('这张卡片还没到复习时间')
   }
 }
 
@@ -263,8 +302,14 @@ async function markGotIt() {
     const updated = await reviewCard(memoId.value, currentCard.value.id, 'GOT_IT')
     const idx = cards.value.findIndex(c => c.id === updated.id)
     if (idx >= 0) cards.value[idx] = updated
-    ElMessage.success('记住了！下次可以更久再复习')
-    nextCard()
+    reviewQueue.value.splice(reviewIndex.value, 1)
+    if (reviewQueue.value.length === 0) {
+      reviewIndex.value = -1
+    } else if (reviewIndex.value >= reviewQueue.value.length) {
+      reviewIndex.value = 0
+    }
+    showAnswer.value = false
+    ElMessage.success('记住了！这张卡片已安排到下次复习')
   } catch {
   }
 }
