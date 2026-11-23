@@ -98,17 +98,26 @@ public class PatientFlashCard {
         this.updatedAt = Instant.now();
     }
 
+    /**
+     * Spaced repetition on the 1 / 3 / 7 day ladder the module promises: the first successful
+     * recall schedules the next look one day out, the second three days, and the third and any
+     * later one seven days. The interval follows the number of successful recalls, not the state
+     * after the update, so the very first review is 1 day rather than 3.
+     */
     public void recordReview() {
+        Instant now = Instant.now();
         this.reviewCount++;
-        this.lastReviewedAt = Instant.now();
-        this.cardState = this.reviewCount >= 3 ? CardState.MASTERED : CardState.REVIEW;
-        long delayDays = switch (this.cardState) {
-            case NEW -> 1;
-            case REVIEW -> 3;
-            case MASTERED -> 7;
-        };
-        this.nextReviewAt = Instant.now().plusSeconds(delayDays * 86400L);
-        this.updatedAt = Instant.now();
+        this.lastReviewedAt = now;
+        long delayDays;
+        if (this.reviewCount >= 3) {
+            this.cardState = CardState.MASTERED;
+            delayDays = 7;
+        } else {
+            this.cardState = CardState.REVIEW;
+            delayDays = this.reviewCount == 1 ? 1 : 3;
+        }
+        this.nextReviewAt = now.plusSeconds(delayDays * 86400L);
+        this.updatedAt = now;
     }
 
     public void resetForRetry() {

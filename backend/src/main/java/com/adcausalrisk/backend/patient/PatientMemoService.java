@@ -2,7 +2,6 @@ package com.adcausalrisk.backend.patient;
 
 import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
-import com.adcausalrisk.backend.common.BusinessQueries;
 import com.adcausalrisk.backend.patient.entity.PatientFlashCard;
 import com.adcausalrisk.backend.patient.entity.PatientMemo;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
@@ -22,30 +21,41 @@ public class PatientMemoService {
     private final PatientMemoRepository memoRepository;
     private final PatientFlashCardRepository cardRepository;
     private final PatientSummaryService summary;
-    private final BusinessQueries queries;
 
     public PatientMemoService(PatientMemoRepository memoRepository,
                               PatientFlashCardRepository cardRepository,
-                              PatientSummaryService summary,
-                              BusinessQueries queries) {
+                              PatientSummaryService summary) {
         this.memoRepository = memoRepository;
         this.cardRepository = cardRepository;
         this.summary = summary;
-        this.queries = queries;
+    }
+
+    /**
+     * Every memo and card entry point is patient-only. A doctor or researcher account must never
+     * read even an empty list through these paths, so the role is checked once here instead of
+     * relying on each caller to remember it.
+     */
+    private static void requirePatient(AppUserPrincipal principal) {
+        if (!principal.roleCodes().contains("PATIENT")) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "仅患者本人可访问我的备忘");
+        }
     }
 
     @Transactional(readOnly = true)
     public List<PatientMemo> listMyMemos(AppUserPrincipal principal) {
+        requirePatient(principal);
         return memoRepository.findByUserIdOrderByCreatedAtDesc(principal.userId());
     }
 
     @Transactional(readOnly = true)
     public long countMyMemos(AppUserPrincipal principal) {
+        requirePatient(principal);
         return memoRepository.countByUserId(principal.userId());
     }
 
     @Transactional
     public PatientMemo createMemo(String content, AppUserPrincipal principal) {
+        requirePatient(principal);
         if (content == null || content.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘内容不能为空");
         }
@@ -53,30 +63,33 @@ public class PatientMemoService {
         if (trimmed.length() > 1000) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘内容不能超过1000字");
         }
-        Long subjectId = null;
-        var current = summary.currentSummary(principal);
-        if (current.subjectId() != null) {
-            var rows = queries.rows("""
-                    SELECT pra.subject_id FROM patient_account_request pra
-                    WHERE pra.user_id=? AND pra.issued_user_id=?
-                    """, current.subjectId(), principal.userId());
-            if (!rows.isEmpty()) {
-                subjectId = current.subjectId();
-            }
-        }
+        // subjectForPatient resolves the bound archive through subject_permission and rejects any
+        // non-patient caller. patient_account_request has no user_id column, so querying it here
+        // used to fail the whole request with a 500 for every bound patient.
+        Long subjectId = summary.subjectForPatient(principal);
         return memoRepository.saveAndFlush(new PatientMemo(principal.userId(), subjectId, trimmed));
     }
 
     @Transactional
     public PatientMemo editMemo(Long memoId, String content, AppUserPrincipal principal) {
+        requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
+        String previous = memo.getContent();
         memo.editContent(content);
-        return memoRepository.saveAndFlush(memo);
+        PatientMemo saved = memoRepository.saveAndFlush(memo);
+        // A card whose answer was extracted from the old wording would keep showing a stale
+        // answer, so the old cards are retired as soon as the source text really changed. The
+        // patient then previews freshly generated cards before reviewing them again.
+        if (!Objects.equals(previous, saved.getContent())) {
+            cardRepository.deleteByMemoId(memoId);
+        }
+        return saved;
     }
 
     @Transactional
     public void deleteMemo(Long memoId, AppUserPrincipal principal) {
+        requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
         cardRepository.deleteByMemoId(memoId);
@@ -85,20 +98,28 @@ public class PatientMemoService {
 
     @Transactional(readOnly = true)
     public List<PatientFlashCard> listCardsForMemo(Long memoId, AppUserPrincipal principal) {
+        requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
         return cardRepository.findByMemoIdOrderByCreatedAtAsc(memo.getId());
     }
 
+    /**
+     * The spaced-repetition queue: only cards whose {@code nextReviewAt} has arrived, scoped to the
+     * memos this patient owns. The review page consumes this queue instead of walking every card
+     * of a memo, so a card answered today does not reappear until its interval elapses.
+     */
     @Transactional(readOnly = true)
     public List<PatientFlashCard> dueCardsForPatient(AppUserPrincipal principal) {
+        requirePatient(principal);
+        List<Long> memoIds = memoRepository.findByUserIdOrderByCreatedAtDesc(principal.userId()).stream()
+                .map(PatientMemo::getId)
+                .toList();
+        if (memoIds.isEmpty()) {
+            return List.of();
+        }
         Instant now = Instant.now();
-        return cardRepository.findAll().stream()
-                .filter(card -> card.getNextReviewAt() != null && !card.getNextReviewAt().isAfter(now))
-                .filter(card -> {
-                    if (card.getMemoId() == null) return false;
-                    return memoRepository.findByIdAndUserId(card.getMemoId(), principal.userId()).isPresent();
-                })
+        return cardRepository.findDueByMemoIds(memoIds, now).stream()
                 .sorted((a, b) -> {
                     int stateCmp = stateOrder(a.getCardState()) - stateOrder(b.getCardState());
                     if (stateCmp != 0) return stateCmp;
@@ -118,6 +139,7 @@ public class PatientMemoService {
 
     @Transactional
     public List<PatientFlashCard> generateCardsForMemo(Long memoId, AppUserPrincipal principal) {
+        requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
         cardRepository.deleteByMemoId(memoId);
@@ -230,6 +252,7 @@ public class PatientMemoService {
     @Transactional
     public PatientFlashCard editCard(Long memoId, Long cardId, String frontText, String backText,
                                       AppUserPrincipal principal) {
+        requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
         PatientFlashCard card = cardRepository.findByIdAndMemoId(cardId, memo.getId())
@@ -240,6 +263,7 @@ public class PatientMemoService {
 
     @Transactional
     public PatientFlashCard reviewCard(Long memoId, Long cardId, String action, AppUserPrincipal principal) {
+        requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
         PatientFlashCard card = cardRepository.findByIdAndMemoId(cardId, memo.getId())
@@ -256,6 +280,7 @@ public class PatientMemoService {
 
     @Transactional
     public void deleteCard(Long memoId, Long cardId, AppUserPrincipal principal) {
+        requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
         PatientFlashCard card = cardRepository.findByIdAndMemoId(cardId, memo.getId())
