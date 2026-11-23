@@ -32,6 +32,10 @@ export function deleteMemo(memoId) {
   return request.delete(`/patients/me/memos/${memoId}`)
 }
 
+export function draftCards(memoId) {
+  return request.post(`/patients/me/memos/${memoId}/card-drafts`)
+}
+
 export function generateCards(memoId) {
   return request.post(`/patients/me/memos/${memoId}/generate-cards`)
 }

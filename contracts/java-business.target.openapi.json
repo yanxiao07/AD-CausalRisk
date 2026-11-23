@@ -12728,6 +12728,87 @@
         }
       }
     },
+    "/api/patients/me/memos/{memoId}/card-drafts": {
+      "post": {
+        "operationId": "postApiPatientsMeMemosMemoIdCardDrafts",
+        "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
+        "summary": "预览从备忘文本生成的卡片（不写库、不改动已有卡片）",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "memoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "maxItems": 6,
+                          "items": {
+                            "$ref": "#/components/schemas/PatientCardDraftView"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数/业务失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/patients/me/memos/{memoId}/cards": {
       "get": {
         "operationId": "getApiPatientsMeMemosMemoIdCards",
@@ -14176,6 +14257,24 @@
           "nextReviewAt",
           "createdAt",
           "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "PatientCardDraftView": {
+        "type": "object",
+        "properties": {
+          "frontText": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "backText": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "frontText",
+          "backText"
         ],
         "additionalProperties": false
       },

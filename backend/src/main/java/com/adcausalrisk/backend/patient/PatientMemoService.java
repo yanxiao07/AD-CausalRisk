@@ -12,8 +12,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class PatientMemoService {
@@ -156,6 +158,28 @@ public class PatientMemoService {
         return created;
     }
 
+    /**
+     * 只做预览：按当前原文算出候选卡片，但不写库，也不动已有卡片和复习进度。
+     * 患者点「确认」后才会调用 {@link #generateCardsForMemo} 真正替换旧卡，
+     * 这样生成动作在确认之前不会生效。
+     */
+    @Transactional(readOnly = true)
+    public List<String[]> draftCardsForMemo(Long memoId, AppUserPrincipal principal) {
+        requirePatient(principal);
+        PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
+        List<String[]> facts = extractFacts(memo.getContent()).stream()
+                .filter(pair -> pair[0].length() <= 500 && pair[1].length() <= 500)
+                .toList();
+        if (facts.isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "未能从这段备忘中提取出可复习的内容，请改写后再试");
+        }
+        return facts;
+    }
+
+    private static final int MAX_FACTS = 6;
+
     private static List<String[]> extractFacts(String content) {
         List<String[]> results = new ArrayList<>();
         if (content == null || content.isBlank()) return results;
@@ -168,21 +192,14 @@ public class PatientMemoService {
             String[] qa = parseQuestionAnswer(sent);
             if (qa != null) {
                 results.add(qa);
-                if (results.size() >= 6) break;
+                if (results.size() >= MAX_FACTS) break;
                 continue;
             }
 
-            String[] chunks = sent.split("[，,、\\s]+");
-            if (chunks.length >= 2) {
-                for (int i = 0; i < chunks.length - 1 && results.size() < 6; i++) {
-                    String a = chunks[i].trim();
-                    String b = chunks[i + 1].trim();
-                    if (a.length() >= 1 && b.length() >= 1
-                            && a.length() <= 80 && b.length() <= 80) {
-                        results.add(new String[] { "关于「" + a + "」，我写了什么？", b });
-                    }
-                }
-            } else if (results.isEmpty() && sent.length() >= 2) {
+            // 没有可靠问答结构时整句作为一张「回忆这件事」的卡片。早期实现会把相邻的
+            // 词两两配对成「关于 A，我写了什么？→ B」，把互不相关的片段拼成错误答案，
+            // 所以这里只做整句兜底：宁可少一张卡，也不生成答非所问的内容。
+            if (results.size() < MAX_FACTS && sent.length() <= 120) {
                 results.add(new String[] { "我记下的这件事是什么？", sent });
             }
         }
@@ -197,56 +214,77 @@ public class PatientMemoService {
         return results;
     }
 
+    /**
+     * 出现这些疑问词说明句子本身在提问，不能再拿它当「X 在 Y」这类陈述句去拆答案。
+     * 「哪」同时覆盖「哪里 / 哪儿 / 哪个 / 哪些」。
+     */
+    private static final Set<String> QUESTION_WORDS = Set.of("哪", "什么", "谁", "怎么", "多少");
+
+    /**
+     * 按可靠度从高到低尝试抽取一组问答：
+     * 1. 冒号结构「标题：内容」是最明确的写法，优先于任何句式推断；
+     * 2. 「X 在 Y（里/中/上/下/处/旁边）」地点陈述句；
+     * 3. 「我 要/需要/… X」计划陈述句。
+     * 都不匹配时返回 null，由整句兜底接管，避免拼出答非所问的卡片。
+     */
     private static String[] parseQuestionAnswer(String sentence) {
-        String[] questionPatterns = {
-            "^我(.+)在(.+?)(?:里|中|上|下|处|旁边)",
-            "^我(.+?)(?:要|需要|得|会|打算|计划|想)",
-            "^(.+?)在(.+?)(?:里|中|上|下)",
-        };
+        String[] colon = splitByColon(sentence);
+        if (colon != null) return colon;
 
-        for (String pattern : questionPatterns) {
-            java.util.regex.Pattern p = java.util.regex.Pattern.compile(pattern);
-            java.util.regex.Matcher m = p.matcher(sentence);
-            if (m.find() && m.groupCount() >= 2) {
-                String part1 = m.group(1).trim();
-                String part2 = m.group(2).trim();
-                if (!part1.isBlank() && !part2.isBlank()
-                        && part1.length() <= 120 && part2.length() <= 120) {
-                    String question = "我" + part1 + "在哪里？";
-                    String answer = part2;
-                    return new String[] { question, answer };
-                }
-            }
+        String[] place = matchPlaceStatement(sentence);
+        if (place != null) return place;
+
+        return matchIntentStatement(sentence);
+    }
+
+    /**
+     * 「标题：内容」按冒号切分。旧实现在句式正则之后才处理冒号，导致
+     * 「棋盒放在哪里：蓝色帆布袋」被地点句式抢走，答案只剩下「哪」。
+     */
+    private static String[] splitByColon(String sentence) {
+        if (!sentence.contains("：") && !sentence.contains(":")) return null;
+        String[] parts = sentence.split("[:：]", 2);
+        String head = parts[0].trim();
+        String tail = parts[1].trim();
+        if (head.length() < 2 || tail.isBlank()) return null;
+        if (head.length() > 120 || tail.length() > 120) return null;
+        // 「16:00」「http://…」这类冒号不是问答结构，切开会得到毫无意义的卡片。
+        if (Character.isDigit(head.charAt(head.length() - 1)) && Character.isDigit(tail.charAt(0))) return null;
+        if (tail.startsWith("//")) return null;
+        String question = head.endsWith("？") || head.endsWith("?") ? head : head + "？";
+        return new String[] { question, tail };
+    }
+
+    private static final Pattern PLACE_STATEMENT = Pattern.compile(
+            "^(.{1,60}?)在(.{1,40}?)(?:里面|里|中|上|下|处|旁边|内)$");
+
+    private static String[] matchPlaceStatement(String sentence) {
+        if (containsQuestionWord(sentence)) return null;
+        Matcher m = PLACE_STATEMENT.matcher(sentence);
+        if (!m.matches()) return null;
+        String subject = m.group(1).trim();
+        String location = m.group(2).trim();
+        if (subject.isBlank() || location.isBlank()) return null;
+        if (containsQuestionWord(subject) || containsQuestionWord(location)) return null;
+        return new String[] { subject + "在哪里？", location };
+    }
+
+    private static final Pattern INTENT_STATEMENT = Pattern.compile(
+            "^我(?:要|需要|得|会|打算|计划|想)(.{1,80})$");
+
+    private static String[] matchIntentStatement(String sentence) {
+        Matcher m = INTENT_STATEMENT.matcher(sentence);
+        if (!m.matches()) return null;
+        String action = m.group(1).trim();
+        if (action.isBlank() || containsQuestionWord(action)) return null;
+        return new String[] { "我接下来要做什么？", action };
+    }
+
+    private static boolean containsQuestionWord(String text) {
+        for (String word : QUESTION_WORDS) {
+            if (text.contains(word)) return true;
         }
-
-        if (sentence.contains("和") || sentence.contains("与") || sentence.contains("跟")) {
-            java.util.regex.Pattern p = java.util.regex.Pattern.compile("(.+?)[和与跟](.+?)在(.+?)(?:里|中|上|下)");
-            java.util.regex.Matcher m = p.matcher(sentence);
-            if (m.find()) {
-                String who = m.group(1).trim();
-                String location = m.group(3).trim();
-                if (!who.isBlank() && !location.isBlank()
-                        && who.length() <= 120 && location.length() <= 120) {
-                    return new String[] { who + "在哪里？", location };
-                }
-            }
-        }
-
-        if (sentence.contains("：") || sentence.contains(":")) {
-            String[] parts = sentence.split("[:：]", 2);
-            if (parts.length == 2 && !parts[0].isBlank() && !parts[1].isBlank()) {
-                return new String[] { parts[0].trim() + "？", parts[1].trim() };
-            }
-        }
-
-        if (sentence.contains("，") || sentence.contains(",")) {
-            String[] parts = sentence.split("[，,]", 2);
-            if (parts.length == 2 && parts[0].length() >= 4 && parts[1].length() >= 2) {
-                return new String[] { parts[0].trim() + "？", parts[1].trim() };
-            }
-        }
-
-        return null;
+        return false;
     }
 
     @Transactional

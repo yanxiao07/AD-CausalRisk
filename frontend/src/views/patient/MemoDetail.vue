@@ -36,10 +36,29 @@
     <section v-if="memo && !editingContent" class="hcard hcard--cards" aria-labelledby="cards-title">
       <div class="hcard__heading">
         <h2 id="cards-title" class="hcard__label">复习卡片</h2>
-        <span v-if="cards.length > 0" class="cards-count">共 {{ cards.length }} 张</span>
+        <span v-if="previewMode && previewCards.length > 0" class="cards-count">共 {{ previewCards.length }} 张</span>
+        <span v-else-if="!previewMode && cards.length > 0" class="cards-count">共 {{ cards.length }} 张</span>
       </div>
 
       <div v-if="cardsState === 'loading'" class="hcard__note">正在读取卡片…</div>
+      <div v-else-if="previewMode" class="review-preview">
+        <p class="hcard__value">新卡片已生成，请先确认内容</p>
+        <p class="hcard__note">
+          确认无误后再开始复习；如果有错，可以重新生成卡片。确认前旧卡片和复习进度都保持不变。
+        </p>
+        <ul class="card-list">
+          <li v-for="(card, index) in previewCards" :key="index" class="card-list-item">
+            <div class="card-list-front">{{ card.frontText }}</div>
+            <div class="card-list-back">{{ card.backText }}</div>
+          </li>
+        </ul>
+        <div class="inline-actions">
+          <el-button size="large" plain :loading="generating" @click="generateCards">重新生成卡片</el-button>
+          <el-button type="primary" size="large" :loading="confirming" @click="confirmPreview">
+            确认卡片，开始复习
+          </el-button>
+        </div>
+      </div>
       <div v-else-if="cards.length === 0">
         <p class="hcard__note">还没有复习卡片。生成卡片后，可以像翻单词卡一样复习。</p>
         <el-button type="primary" size="large" :loading="generating" @click="generateCards">
@@ -47,22 +66,7 @@
         </el-button>
       </div>
       <template v-else>
-        <div v-if="previewMode" class="review-preview">
-          <p class="hcard__value">新卡片已生成，请先确认内容</p>
-          <p class="hcard__note">确认无误后再开始复习；如果有错，可以重新生成卡片。</p>
-          <ul class="card-list">
-            <li v-for="card in cards" :key="card.id" class="card-list-item">
-              <div class="card-list-front">{{ card.frontText }}</div>
-              <div class="card-list-back">{{ card.backText }}</div>
-            </li>
-          </ul>
-          <div class="inline-actions">
-            <el-button size="large" plain :loading="generating" @click="generateCards">重新生成卡片</el-button>
-            <el-button type="primary" size="large" @click="confirmPreview">确认卡片，开始复习</el-button>
-          </div>
-        </div>
-
-        <div v-else-if="reviewIndex >= 0 && reviewIndex < reviewQueue.length" class="review-stage">
+        <div v-if="reviewIndex >= 0 && reviewIndex < reviewQueue.length" class="review-stage">
           <p class="review-progress">第 {{ reviewIndex + 1 }} / {{ reviewQueue.length }} 张</p>
 
           <div class="flashcard" :class="{ flipped: showAnswer }" @click="showAnswer = !showAnswer">
@@ -86,8 +90,12 @@
 
           <div class="review-actions">
             <el-button size="large" @click="prevCard">上一张</el-button>
-            <el-button size="large" type="danger" @click="markRetry">再看一次</el-button>
-            <el-button size="large" type="primary" @click="markGotIt">记住了</el-button>
+            <el-button size="large" type="danger" :disabled="reviewingCardId !== null" @click="markRetry">
+              再看一次
+            </el-button>
+            <el-button size="large" type="primary" :disabled="reviewingCardId !== null" @click="markGotIt">
+              记住了
+            </el-button>
             <el-button size="large" @click="nextCard">下一张</el-button>
           </div>
 
@@ -102,14 +110,14 @@
           <el-button type="primary" size="large" @click="startReview">检查有没有到期卡片</el-button>
         </div>
 
-        <div v-if="!previewMode" class="manage-cards" style="margin-top: 24px;">
+        <div class="manage-cards" style="margin-top: 24px;">
           <el-button size="large" plain :loading="generating" @click="generateCards">重新生成卡片</el-button>
           <el-button size="large" plain @click="toggleList = !toggleList">
             {{ toggleList ? '收起卡片列表' : '查看全部卡片' }}
           </el-button>
         </div>
 
-        <ul v-if="toggleList && !previewMode" class="card-list">
+        <ul v-if="toggleList" class="card-list">
           <li v-for="card in cards" :key="card.id" class="card-list-item" @click="jumpTo(card.id)">
             <div class="card-list-front">{{ card.frontText }}</div>
             <div class="card-list-back">{{ card.backText }}</div>
@@ -129,6 +137,7 @@ import {
   getMyMemos,
   updateMemo,
   deleteMemo,
+  draftCards as apiDraftCards,
   generateCards as apiGenerateCards,
   getCardsForMemo,
   reviewCard,
@@ -153,6 +162,9 @@ const toggleList = ref(false)
 
 const reviewQueue = ref([])
 const previewMode = ref(false)
+const previewCards = ref([])
+const confirming = ref(false)
+const reviewingCardId = ref(null)
 
 const currentCard = computed(() => reviewQueue.value[reviewIndex.value] || null)
 
@@ -192,7 +204,7 @@ async function loadCards() {
   } catch {
     cardsState.value = 'degraded'
   }
-  startReview()
+  if (!previewMode.value) startReview()
 }
 
 function startEdit() {
@@ -217,6 +229,8 @@ async function saveEdit() {
     memo.value = await updateMemo(memoId.value, text)
     editingContent.value = false
     if (previous !== memo.value.content) {
+      previewMode.value = false
+      previewCards.value = []
       await loadCards()
       ElMessage.success('已保存。原文变了，旧卡片已暂停，请重新生成卡片后再复习')
     } else {
@@ -249,22 +263,29 @@ async function confirmDelete() {
 async function generateCards() {
   generating.value = true
   try {
-    cards.value = await apiGenerateCards(memoId.value)
+    previewCards.value = await apiDraftCards(memoId.value)
     previewMode.value = true
     reviewIndex.value = -1
     showAnswer.value = false
-    ElMessage.success(`生成了 ${cards.value.length} 张卡片，确认后再开始复习`)
+    ElMessage.success(`生成了 ${previewCards.value.length} 张卡片，确认后再开始复习`)
   } catch {
   } finally {
     generating.value = false
   }
 }
 
-function confirmPreview() {
-  previewMode.value = false
-  startReview()
-  if (reviewIndex.value >= 0) {
+async function confirmPreview() {
+  if (confirming.value) return
+  confirming.value = true
+  try {
+    cards.value = await apiGenerateCards(memoId.value)
+    previewMode.value = false
+    previewCards.value = []
+    startReview()
     ElMessage.success('已开始复习')
+  } catch {
+  } finally {
+    confirming.value = false
   }
 }
 
@@ -297,32 +318,55 @@ function jumpTo(cardId) {
 }
 
 async function markGotIt() {
-  if (!currentCard.value) return
+  if (!currentCard.value || reviewingCardId.value) return
+  const cardId = currentCard.value.id
+  reviewingCardId.value = cardId
   try {
-    const updated = await reviewCard(memoId.value, currentCard.value.id, 'GOT_IT')
+    const updated = await reviewCard(memoId.value, cardId, 'GOT_IT')
     const idx = cards.value.findIndex(c => c.id === updated.id)
     if (idx >= 0) cards.value[idx] = updated
-    reviewQueue.value.splice(reviewIndex.value, 1)
-    if (reviewQueue.value.length === 0) {
-      reviewIndex.value = -1
-    } else if (reviewIndex.value >= reviewQueue.value.length) {
-      reviewIndex.value = 0
-    }
+    removeFromQueue(cardId)
     showAnswer.value = false
     ElMessage.success('记住了！这张卡片已安排到下次复习')
   } catch {
+  } finally {
+    reviewingCardId.value = null
   }
 }
 
 async function markRetry() {
-  if (!currentCard.value) return
+  if (!currentCard.value || reviewingCardId.value) return
+  const cardId = currentCard.value.id
+  reviewingCardId.value = cardId
   try {
-    const updated = await reviewCard(memoId.value, currentCard.value.id, 'AGAIN')
+    const updated = await reviewCard(memoId.value, cardId, 'AGAIN')
     const idx = cards.value.findIndex(c => c.id === updated.id)
     if (idx >= 0) cards.value[idx] = updated
     ElMessage.info('再看一次！这张会优先出现')
     showAnswer.value = false
   } catch {
+  } finally {
+    reviewingCardId.value = null
+  }
+}
+
+/**
+ * 按提交时的卡片 ID 出队。请求返回时患者可能已经切到别的卡片，所以不能再用
+ * 当前的 reviewIndex 定位，否则会把没提交的那张移出本轮队列。
+ */
+function removeFromQueue(cardId) {
+  const removedAt = reviewQueue.value.findIndex(c => c.id === cardId)
+  if (removedAt < 0) return
+  reviewQueue.value.splice(removedAt, 1)
+  if (reviewQueue.value.length === 0) {
+    reviewIndex.value = -1
+    return
+  }
+  if (removedAt < reviewIndex.value) {
+    reviewIndex.value -= 1
+  }
+  if (reviewIndex.value >= reviewQueue.value.length) {
+    reviewIndex.value = 0
   }
 }
 

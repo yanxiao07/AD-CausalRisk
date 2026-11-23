@@ -39,6 +39,7 @@ public class PatientMemoController {
     public record MemoUpdateRequest(@Size(max = 1000) String content) {}
     public record CardEditRequest(@Size(max = 500) String frontText, @Size(max = 500) String backText) {}
     public record CardReviewRequest(String action) {}
+    public record CardDraftView(String frontText, String backText) {}
 
     private MemoView view(PatientMemo m) {
         return new MemoView(m.getId(), m.getSubjectId(), m.getContent(), m.getCreatedAt(), m.getUpdatedAt());
@@ -87,6 +88,14 @@ public class PatientMemoController {
         AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
         memoService.deleteMemo(memoId, principal);
         return Envelope.success(null);
+    }
+
+    @PostMapping("/api/patients/me/memos/{memoId}/card-drafts")
+    public Envelope<List<CardDraftView>> draftCards(@PathVariable long memoId, Authentication auth) {
+        AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
+        return Envelope.success(memoService.draftCardsForMemo(memoId, principal).stream()
+                .map(pair -> new CardDraftView(pair[0], pair[1]))
+                .toList());
     }
 
     @PostMapping("/api/patients/me/memos/{memoId}/generate-cards")
