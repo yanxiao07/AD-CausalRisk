@@ -10,6 +10,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import sys
 import time
 from urllib.request import ProxyHandler, build_opener
 import webbrowser
@@ -17,6 +18,10 @@ import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime/desktop"
+DESKTOP_DATABASE = "file:./../runtime/desktop/adcr_care_sandbox"
+PREVIEW_DATABASE = "mem:adcr_care_sandbox_validation"
+DESKTOP_PORTS = (5173, 8080, 16301)
+PREVIEW_PORTS = (5174, 8081, 16302)
 HTTP = build_opener(ProxyHandler({}))
 ENV = {key: value for key, value in os.environ.items() if not key.upper().startswith((
     "SPRING_", "SERVER_", "ADCR_", "RESEARCH_", "APP_SECURITY_", "JAVA_TOOL_OPTIONS",
@@ -69,9 +74,11 @@ def owns_ports(expected):
                for port, pid in expected.items())
 
 
-def same_instance(state, login):
-    return (state and not any(available(int(port)) for port in state["listeners"])
-            and owns_ports(state["listeners"]) and responds(login))
+def same_instance(state, ports, login):
+    if not state:
+        return False
+    listeners = {str(port): state["listeners"][str(port)] for port in ports[:2]}
+    return not any(available(port) for port in ports[:2]) and owns_ports(listeners) and responds(login)
 
 
 def read_config():
@@ -84,8 +91,8 @@ def read_config():
     return config
 
 
-def model_config(config, care_only):
-    if care_only or not any(config.get(key) for key in ("manifest", "trustedManifestSha256", "modelPython")):
+def model_config(config):
+    if not any(config.get(key) for key in ("manifest", "trustedManifestSha256")):
         return None
     manifest = (ROOT / config.get("manifest", "")).resolve()
     python = (ROOT / config.get("modelPython", ".venv/Scripts/python.exe")).resolve()
@@ -95,6 +102,41 @@ def model_config(config, care_only):
     if hashlib.sha256(manifest.read_bytes()).hexdigest() != trusted:
         raise RuntimeError("模型清单与配置中的可信摘要不一致。")
     return manifest, python, trusted
+
+
+def stop_child(child):
+    if child.poll() is None:
+        subprocess.run(["taskkill.exe", "/PID", str(child.pid), "/T", "/F"],
+                       capture_output=True, check=False)
+        child.wait(timeout=15)
+
+
+def start_model(model, python_port, logs, snapshot_dir, children):
+    if not available(python_port):
+        raise RuntimeError(f"模型端口 {python_port} 已被占用。")
+    print("正在启动医生预测所需的模型服务…", flush=True)
+    manifest, python, trusted = model
+    token = secrets.token_hex(32)
+    lock = hashlib.sha256(
+        (ROOT / "research_runtime/requirements.lock").read_bytes().replace(b"\r\n", b"\n")
+    ).hexdigest()
+    handshake = snapshot_dir.parent / "dynamic-host-handshake.json"
+    previous = handshake.stat().st_mtime_ns if handshake.is_file() else None
+    child = launch([
+        str(python), "-B", "-m", "research_runtime.dynamic_host",
+        "--host", "127.0.0.1", "--port", str(python_port), "--manifest", str(manifest),
+        "--trusted-manifest-sha256", trusted, "--snapshot-dir", str(snapshot_dir),
+    ], ROOT, logs / "python.log", dict(ENV, RESEARCH_TABLE_TEST_TOKEN=token))
+    children[python_port] = child
+    wait_until(child, logs / "python.log", lambda: (
+        handshake.is_file() and handshake.stat().st_mtime_ns != previous
+        and not available(python_port) and owns_ports({str(python_port): child.pid})
+    ))
+    return [
+        f"--research.table.base-url=http://127.0.0.1:{python_port}",
+        f"--research.model.manifest-path={manifest}", f"--research.model.trusted-manifest-sha256={trusted}",
+        f"--research.model.software-lock-sha256={lock}",
+    ], token
 
 
 def build_app(config):
@@ -112,11 +154,10 @@ def build_app(config):
         subprocess.run(["cmd.exe", "/d", "/c", "npm.cmd", "ci"], cwd=ROOT / "frontend", env=ENV, check=True)
 
 
-def start(model, config, preview):
-    vue_port, java_port, python_port = (5174, 8081, 16302) if preview else (5173, 8080, 16301)
-    ports = (vue_port, java_port, python_port) if model else (vue_port, java_port)
+def start(model, config, preview, ports, database):
+    vue_port, java_port, python_port = ports
     login = f"http://127.0.0.1:{vue_port}/login"
-    occupied = [str(port) for port in ports if not available(port)]
+    occupied = [str(port) for port in ports[:2] if not available(port)]
     if occupied:
         raise RuntimeError("端口已由其他服务占用：" + ", ".join(occupied))
     build_app(config)
@@ -124,43 +165,41 @@ def start(model, config, preview):
     logs.mkdir()
     java_env = dict(ENV)
     dependencies = (ROOT / "backend/target/desktop-classpath.txt").read_text(encoding="utf-8").strip()
+    validation_python = config.get("modelPython")
+    validation_python = ROOT / validation_python if isinstance(validation_python, str) else ROOT / ".venv/Scripts/python.exe"
+    if not validation_python.is_file():
+        validation_python = Path(sys.executable)
     java_args = [
         "java.exe", "-Dfile.encoding=UTF-8", "-cp", os.pathsep.join(("target/classes", dependencies)),
         "com.adcausalrisk.backend.BackendApplication",
         "--server.address=127.0.0.1", f"--server.port={java_port}",
+        "--spring.profiles.active=synthetic-care",
         "--spring.datasource.driver-class-name=org.h2.Driver",
         "--spring.datasource.username=sa", "--spring.datasource.password=",
+        f"--spring.datasource.url=jdbc:h2:{database};MODE=MySQL;DATABASE_TO_LOWER=TRUE;"
+        "CASE_INSENSITIVE_IDENTIFIERS=TRUE;WRITE_DELAY=0",
+        f"--research.validation.python={validation_python.resolve()}",
+        f"--research.validation.workspace={ROOT}",
     ]
     children = {}
+    prediction = False
     try:
         if model:
-            print("正在启动医生预测演练所需的模型服务…", flush=True)
-            manifest, python, trusted = model
-            token = secrets.token_hex(32)
-            lock = hashlib.sha256(
-                (ROOT / "research_runtime/requirements.lock").read_bytes().replace(b"\r\n", b"\n")
-            ).hexdigest()
-            children[python_port] = launch([
-                str(python), "-B", "-m", "research_runtime.dynamic_host",
-                "--host", "127.0.0.1", "--port", str(python_port), "--manifest", str(manifest),
-                "--trusted-manifest-sha256", trusted, "--snapshot-dir", str(logs / "snapshots"),
-            ], ROOT, logs / "python.log", dict(ENV, RESEARCH_TABLE_TEST_TOKEN=token))
-            wait_until(children[python_port], logs / "python.log",
-                       lambda: (logs / "dynamic-host-handshake.json").is_file() and not available(python_port))
-            database = "mem:adcr_care_sandbox_validation" if preview else "mem:adcr_care_sandbox"
-            java_args += [
-                "--spring.profiles.active=synthetic-care", f"--research.table.base-url=http://127.0.0.1:{python_port}",
-                f"--research.model.manifest-path={manifest}", f"--research.model.trusted-manifest-sha256={trusted}",
-                f"--research.model.software-lock-sha256={lock}", f"--research.validation.python={python}",
-                f"--research.validation.workspace={ROOT}",
-            ]
-            java_env["SPRING_APPLICATION_JSON"] = json.dumps({"research": {"table": {"bearer-token": token}}})
-        else:
-            database = f"file:{(RUNTIME / 'care').as_posix()}"
-        java_args.append(
-            f"--spring.datasource.url=jdbc:h2:{database};MODE=MySQL;DATABASE_TO_LOWER=TRUE;"
-            "CASE_INSENSITIVE_IDENTIFIERS=TRUE"
-        )
+            snapshot_dir = (logs if preview else RUNTIME / "rehearsal-model") / "snapshots"
+            try:
+                model_args, token = start_model(model, python_port, logs, snapshot_dir, children)
+            except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+                if preview:
+                    raise
+                child = children.pop(python_port, None)
+                if child is not None:
+                    stop_child(child)
+                print(f"模型未就绪，继续打开联调档案。{error}", flush=True)
+            else:
+                java_args.extend(model_args)
+                java_env["SPRING_APPLICATION_JSON"] = json.dumps({"research": {"table": {"bearer-token": token}}})
+                prediction = True
+        java_args.append(f"--research.care.prediction-enabled={str(prediction).lower()}")
         children[java_port] = launch(java_args, ROOT / "backend", logs / "java.log", java_env)
         wait_until(children[java_port], logs / "java.log", lambda: responds(f"http://127.0.0.1:{java_port}/api/auth/csrf"))
         children[vue_port] = launch([
@@ -171,22 +210,19 @@ def start(model, config, preview):
         listeners = {str(port): child.pid for port, child in children.items()}
         if not owns_ports(listeners):
             raise RuntimeError("服务端口与启动进程不一致。")
-        return {"mode": "synthetic" if model else "care", "logs": str(logs),
+        return {"database": database, "prediction": prediction, "logs": str(logs),
                 "listeners": listeners}
     except BaseException:
         for child in reversed(list(children.values())):
-            if child.poll() is None:
-                subprocess.run(["taskkill.exe", "/PID", str(child.pid), "/T", "/F"],
-                               capture_output=True, check=False)
-                child.wait(timeout=15)
+            stop_child(child)
         raise
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode_flags = parser.add_mutually_exclusive_group()
-    mode_flags.add_argument("--care-only", action="store_true", help="启动本地持久化业务演示")
-    mode_flags.add_argument("--validation-preview", action="store_true", help="在 5174 启动隔离的验证演练")
+    mode_flags.add_argument("--care-only", action="store_true", help="打开同一联调库，跳过启动模型")
+    mode_flags.add_argument("--validation-preview", action="store_true", help="在 5174 启动独立的临时演练")
     parser.add_argument("--no-browser", action="store_true", help="保留服务并跳过打开浏览器")
     args = parser.parse_args()
     RUNTIME.mkdir(parents=True, exist_ok=True)
@@ -196,23 +232,38 @@ def main():
             msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError as error:
             raise RuntimeError("已有一个启动操作在运行，等待浏览器打开即可。") from error
-        config = read_config()
-        model = model_config(config, args.care_only)
-        if args.validation_preview and not model:
-            raise RuntimeError("验证演练需要本机模型配置。")
         # Use a separate browser cookie host for the preview and the default instance.
-        login = "http://localhost:5174/login" if args.validation_preview else "http://127.0.0.1:5173/login"
-        mode = "synthetic" if model else "care"
+        ports = PREVIEW_PORTS if args.validation_preview else DESKTOP_PORTS
+        database = PREVIEW_DATABASE if args.validation_preview else DESKTOP_DATABASE
+        host = "localhost" if args.validation_preview else "127.0.0.1"
+        login = f"http://{host}:{ports[0]}/login"
         state_path = RUNTIME / ("validation-preview.json" if args.validation_preview else "services.json")
         state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else None
-        if same_instance(state, login):
-            if state["mode"] != mode:
-                raise RuntimeError("项目已按另一种模式运行。当前实例的 PID、模式和日志在 " + str(state_path))
+        if same_instance(state, ports, login):
+            if state.get("database") != database:
+                raise RuntimeError("旧版实例仍在运行。请先停止旧版实例，再启动新版联调库。")
         else:
-            state = start(model, config, args.validation_preview)
+            config = {}
+            model = None
+            try:
+                config = read_config()
+                if not args.care_only:
+                    model = model_config(config)
+            except (RuntimeError, OSError, TypeError, ValueError) as error:
+                if args.validation_preview:
+                    raise RuntimeError(f"验证演练无法读取模型配置。{error}") from error
+                print(f"模型配置不可用，继续打开联调档案。{error}", flush=True)
+            if args.validation_preview and not model:
+                raise RuntimeError("验证演练需要本机模型配置。")
+            state = start(model, config, args.validation_preview, ports, database)
             state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    label = "医生预测演练（仅人工样例，重启清空）" if mode == "synthetic" else "本地业务演示（档案跨重启保存）"
-    print(f"已启动 {label}\n{login}\n运行日志 {state['logs']}", flush=True)
+    label = ("临时验证演练（重启清空）" if args.validation_preview
+             else f"本机联调（重启保留）\n数据文件 {RUNTIME / 'adcr_care_sandbox.mv.db'}")
+    model_ready = state["prediction"] and not available(ports[2]) and owns_ports({
+        str(ports[2]): state["listeners"][str(ports[2])]
+    })
+    status = "已启动" if model_ready else "未就绪，可继续建档和查看已有结果"
+    print(f"已启动 {label}\n模型服务{status}\n{login}\n运行日志 {state['logs']}", flush=True)
     if not args.no_browser:
         webbrowser.open(login)
 

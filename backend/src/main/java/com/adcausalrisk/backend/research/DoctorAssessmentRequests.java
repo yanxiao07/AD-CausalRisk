@@ -84,19 +84,21 @@ class DoctorAssessmentRequests {
             if (!archive.active() || !gate.ready()) {
                 return new Status(CARE, qualityStatus, "NEEDS_QUALITY", row == null ? null : row.id(), null);
             }
-            if (syntheticCare.enabled()) {
+            var candidate = syntheticCare.enabled() ? fixture(subjectId, gate, actor.userId(), archive) : null;
+            Long requestId = row != null && Objects.equals(gate.id(), row.qualityId()) ? row.id() : null;
+            if (candidate != null && candidate.taskId() != null) {
+                return new Status(CARE, qualityStatus, taskState(candidate.status(), candidate.reviewStatus()),
+                        requestId, candidate.taskId());
+            }
+            if (carePredictionConfigured()) {
                 if (!gate.visit().modelInputs().complete()) {
                     return new Status(CARE, qualityStatus, "NEEDS_PREDICTION_INPUTS", null, null);
                 }
-                var candidate = fixture(subjectId, gate, actor.userId(), archive);
                 String state = candidate == null || "SYNCED".equals(candidate.sync()) ? "CARE_PREDICTION_READY" : "NEEDS_SYNC";
-                if (candidate != null && candidate.taskId() != null) state = taskState(candidate.status(), candidate.reviewStatus());
-                Long requestId = row != null && Objects.equals(gate.id(), row.qualityId()) ? row.id() : null;
-                return new Status(CARE, qualityStatus, state, requestId,
-                        candidate == null ? null : candidate.taskId());
+                return new Status(CARE, qualityStatus, state, requestId, null);
             }
-            if (row != null && Objects.equals(gate.id(), row.qualityId())) {
-                return new Status(CARE, qualityStatus, "WAITING_FOR_VALIDATED_MODEL", row.id(), null);
+            if (requestId != null) {
+                return new Status(CARE, qualityStatus, "WAITING_FOR_VALIDATED_MODEL", requestId, null);
             }
             return new Status(CARE, qualityStatus, "READY", null, null);
         }
@@ -134,7 +136,7 @@ class DoctorAssessmentRequests {
                 var gate = quality.forSubject(subjectId);
                 var current = archive(subjectId);
                 if (!current.active() || !gate.ready()) throw needsQuality();
-                boolean auto = syntheticCare.enabled();
+                boolean auto = carePredictionConfigured();
                 if (auto && !gate.visit().modelInputs().complete()) throw conflict("请补齐最近访视的五项补充资料");
                 var prior = latestCareRequest(subjectId);
                 if (prior == null || !Objects.equals(prior.qualityId(), gate.id())) {
@@ -174,6 +176,10 @@ class DoctorAssessmentRequests {
             if (snapshot.taskId() == null) assessments.submitDoctorFixture(snapshot.id(), subjectId, actor);
         }
         return view(subjectId, actor);
+    }
+
+    private boolean carePredictionConfigured() {
+        return syntheticCare.predictionEnabled() && client.configured();
     }
 
     Queue queue(int page, AppUserPrincipal actor) {
