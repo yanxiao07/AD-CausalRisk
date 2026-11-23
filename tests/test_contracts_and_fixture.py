@@ -10,7 +10,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 class ContractTests(unittest.TestCase):
     def test_both_openapi_documents_are_valid_and_operations_unique(self):
-        for name,count in [('python-agent.openapi.json',3),('java-business.target.openapi.json',123)]:
+        for name,count in [('python-agent.openapi.json',3),('java-business.target.openapi.json',134)]:
             spec=json.loads((ROOT/'contracts'/name).read_text(encoding='utf-8'));validate(spec)
             operations=[value for path in spec['paths'].values() for method,value in path.items() if method in ('get','post','put','patch','delete')]
             self.assertEqual(len(operations),count)
