@@ -7,6 +7,8 @@
 -- columns now keep two decimals.
 --
 -- PORTABILITY
+-- MODIFY COLUMN is accepted by both MySQL 8 and H2 2.x in MODE=MySQL (verified on H2
+-- 2.3.232). ALTER COLUMN ... SET DATA TYPE would work on H2 but is not MySQL syntax.
 -- MySQL drops attributes that MODIFY COLUMN does not restate, so NULL is restated
 -- explicitly; these columns carry no default and no comment. The ck_visit_* CHECK
 -- constraints are table-level and survive the type change.
