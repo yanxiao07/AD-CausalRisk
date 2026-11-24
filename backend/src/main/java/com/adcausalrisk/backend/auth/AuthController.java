@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,9 +34,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final boolean csrfEnabled;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService,
+                          @Value("${app.security.csrf-enabled:true}") boolean csrfEnabled) {
         this.authService = authService;
+        this.csrfEnabled = csrfEnabled;
     }
 
     @PostMapping("/auth/login")
@@ -54,7 +58,11 @@ public class AuthController {
      * {@code CookieCsrfTokenRepository}; the browser echoes the raw value in {@code X-CSRF-TOKEN}.
      */
     @GetMapping("/auth/csrf")
-    public Envelope<CsrfTokenView> csrf(CsrfToken token) {
+    public Envelope<CsrfTokenView> csrf(HttpServletRequest httpRequest) {
+        CsrfToken token = (CsrfToken) httpRequest.getAttribute(CsrfToken.class.getName());
+        if (token == null || !csrfEnabled) {
+            return Envelope.success(new CsrfTokenView("", "X-CSRF-TOKEN"));
+        }
         return Envelope.success(new CsrfTokenView(token.getToken(), token.getHeaderName()));
     }
 

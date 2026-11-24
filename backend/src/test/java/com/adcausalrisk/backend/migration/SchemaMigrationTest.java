@@ -77,7 +77,8 @@ class SchemaMigrationTest {
                     "controlled_assessment_request",
                     "care_assessment_request",
                     "follow_up_response", "patient_research_publication",
-                    "validation_cohort_enrollment", "validation_follow_up", "validation_cohort_report");
+                    "validation_cohort_enrollment", "validation_follow_up", "validation_cohort_report",
+                    "patient_memo", "patient_flash_card");
 
     /** Flyway's own bookkeeping table; created by Flyway, not by V1. */
     private static final String FLYWAY_HISTORY_TABLE = "flyway_schema_history";
@@ -103,7 +104,8 @@ class SchemaMigrationTest {
         assertThat(versions)
                 .containsExactly(
                         "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17",
-                        "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33");
+                        "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33",
+                        "34");
     }
 
     /**
@@ -204,7 +206,7 @@ class SchemaMigrationTest {
 
     @Test
     void baselineDefinesExactlyTheExpectedTables() throws SQLException {
-        assertThat(BASELINE_TABLES).hasSize(32).doesNotHaveDuplicates();
+        assertThat(BASELINE_TABLES).hasSize(34).doesNotHaveDuplicates();
 
         assertThat(applicationTables())
                 .containsExactlyInAnyOrderElementsOf(
