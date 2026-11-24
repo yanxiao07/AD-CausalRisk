@@ -9,8 +9,12 @@ import com.adcausalrisk.backend.security.AppUserPrincipal;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -141,9 +145,29 @@ public class PatientMemoService {
 
     @Transactional
     public List<PatientFlashCard> generateCardsForMemo(Long memoId, AppUserPrincipal principal) {
+        return generateCardsForMemo(memoId, principal, null);
+    }
+
+    /**
+     * 确认生成卡片。{@code expectedVersion} 非空时先校验它是否仍是当前原文的版本。
+     *
+     * <p>预览与确认之间原文可能被另一个窗口改掉：此时按新原文抽卡，患者就会收到自己
+     * 从未看过、却已进入复习队列的卡片。所以版本不符必须拒绝。校验放在
+     * {@code deleteByMemoId} 之前，拒绝时旧卡片和复习进度原样保留。
+     *
+     * <p>{@code expectedVersion} 为空表示调用方没有预览步骤，沿用原有行为。
+     */
+    @Transactional
+    public List<PatientFlashCard> generateCardsForMemo(Long memoId, AppUserPrincipal principal,
+                                                       String expectedVersion) {
         requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
+        if (expectedVersion != null && !expectedVersion.isBlank()
+                && !memoVersion(memo.getContent()).equals(expectedVersion)) {
+            throw new BusinessException(ErrorCode.MEMO_VERSION_MISMATCH,
+                    "备忘原文已修改，请重新预览卡片后再确认");
+        }
         cardRepository.deleteByMemoId(memoId);
 
         List<String[]> facts = extractFacts(memo.getContent());
@@ -158,13 +182,16 @@ public class PatientMemoService {
         return created;
     }
 
+    /** 预览结果连同原文版本号，供确认时核对「患者看到的是不是当前原文」。 */
+    public record CardDrafts(String memoVersion, List<String[]> cards) {}
+
     /**
      * 只做预览：按当前原文算出候选卡片，但不写库，也不动已有卡片和复习进度。
      * 患者点「确认」后才会调用 {@link #generateCardsForMemo} 真正替换旧卡，
      * 这样生成动作在确认之前不会生效。
      */
     @Transactional(readOnly = true)
-    public List<String[]> draftCardsForMemo(Long memoId, AppUserPrincipal principal) {
+    public CardDrafts draftCardsForMemo(Long memoId, AppUserPrincipal principal) {
         requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
@@ -175,7 +202,21 @@ public class PatientMemoService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                     "未能从这段备忘中提取出可复习的内容，请改写后再试");
         }
-        return facts;
+        return new CardDrafts(memoVersion(memo.getContent()), facts);
+    }
+
+    /**
+     * 原文版本号：内容摘要的十六进制串。原文一改值就变，且不依赖时间戳精度——
+     * 同一秒内两次编辑也能区分开。
+     */
+    private static String memoVersion(String content) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest((content == null ? "" : content).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 不可用", e);
+        }
     }
 
     private static final int MAX_FACTS = 6;

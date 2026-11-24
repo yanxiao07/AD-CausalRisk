@@ -36,8 +36,12 @@ export function draftCards(memoId) {
   return request.post(`/patients/me/memos/${memoId}/card-drafts`)
 }
 
-export function generateCards(memoId) {
-  return request.post(`/patients/me/memos/${memoId}/generate-cards`)
+export function generateCards(memoId, memoVersion) {
+  return request.post(
+    `/patients/me/memos/${memoId}/generate-cards`,
+    memoVersion ? { memoVersion } : undefined,
+    { silent: true }
+  )
 }
 
 export function getCardsForMemo(memoId) {

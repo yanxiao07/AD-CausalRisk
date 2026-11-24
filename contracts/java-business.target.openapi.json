@@ -12668,6 +12668,24 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "description": "可选。带上 card-drafts 返回的 memoVersion 时，服务端会核对原文在预览之后是否被修改，已修改则拒绝（400 MEMO_VERSION_MISMATCH），避免把患者没预览过的卡片发进复习队列。省略则沿用原有行为。",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "memoVersion": {
+                    "type": "string",
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "成功",
@@ -12732,7 +12750,7 @@
       "post": {
         "operationId": "postApiPatientsMeMemosMemoIdCardDrafts",
         "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
-        "summary": "预览从备忘文本生成的卡片（不写库、不改动已有卡片）",
+        "summary": "预览从备忘文本生成的卡片（不写库、不改动已有卡片），并返回原文版本号",
         "security": [
           {
             "sessionCookie": []
@@ -12763,11 +12781,26 @@
                       "type": "object",
                       "properties": {
                         "data": {
-                          "type": "array",
-                          "maxItems": 6,
-                          "items": {
-                            "$ref": "#/components/schemas/PatientCardDraftView"
-                          }
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "memoVersion": {
+                              "type": "string",
+                              "maxLength": 128,
+                              "description": "当前备忘原文的版本号（内容摘要）。确认生成时回传，用于发现预览之后原文被修改。"
+                            },
+                            "drafts": {
+                              "type": "array",
+                              "maxItems": 6,
+                              "items": {
+                                "$ref": "#/components/schemas/PatientCardDraftView"
+                              }
+                            }
+                          },
+                          "required": [
+                            "memoVersion",
+                            "drafts"
+                          ]
                         }
                       }
                     }

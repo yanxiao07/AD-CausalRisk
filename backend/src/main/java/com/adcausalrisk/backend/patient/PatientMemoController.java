@@ -40,6 +40,8 @@ public class PatientMemoController {
     public record CardEditRequest(@Size(max = 500) String frontText, @Size(max = 500) String backText) {}
     public record CardReviewRequest(String action) {}
     public record CardDraftView(String frontText, String backText) {}
+    public record CardDraftResponse(String memoVersion, List<CardDraftView> drafts) {}
+    public record CardGenerateRequest(@Size(max = 128) String memoVersion) {}
 
     private MemoView view(PatientMemo m) {
         return new MemoView(m.getId(), m.getSubjectId(), m.getContent(), m.getCreatedAt(), m.getUpdatedAt());
@@ -91,17 +93,27 @@ public class PatientMemoController {
     }
 
     @PostMapping("/api/patients/me/memos/{memoId}/card-drafts")
-    public Envelope<List<CardDraftView>> draftCards(@PathVariable long memoId, Authentication auth) {
+    public Envelope<CardDraftResponse> draftCards(@PathVariable long memoId, Authentication auth) {
         AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
-        return Envelope.success(memoService.draftCardsForMemo(memoId, principal).stream()
-                .map(pair -> new CardDraftView(pair[0], pair[1]))
-                .toList());
+        PatientMemoService.CardDrafts drafts = memoService.draftCardsForMemo(memoId, principal);
+        return Envelope.success(new CardDraftResponse(drafts.memoVersion(),
+                drafts.cards().stream()
+                        .map(pair -> new CardDraftView(pair[0], pair[1]))
+                        .toList()));
     }
 
+    /**
+     * 确认生成卡片。请求体可省略（保持旧调用方可用）；带 {@code memoVersion} 时，
+     * 服务层会核对原文在预览之后有没有被改过，改过就拒绝并提示重新预览。
+     */
     @PostMapping("/api/patients/me/memos/{memoId}/generate-cards")
-    public Envelope<List<CardView>> generateCards(@PathVariable long memoId, Authentication auth) {
+    public Envelope<List<CardView>> generateCards(@PathVariable long memoId,
+                                                  @Valid @RequestBody(required = false) CardGenerateRequest request,
+                                                  Authentication auth) {
         AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
-        return Envelope.success(memoService.generateCardsForMemo(memoId, principal).stream().map(this::view).toList());
+        String expectedVersion = request == null ? null : request.memoVersion();
+        return Envelope.success(memoService.generateCardsForMemo(memoId, principal, expectedVersion).stream()
+                .map(this::view).toList());
     }
 
     @GetMapping("/api/patients/me/memos/{memoId}/cards")

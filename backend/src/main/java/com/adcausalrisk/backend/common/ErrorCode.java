@@ -39,6 +39,13 @@ public enum ErrorCode {
     /** No route matches the request. Not used for missing business resources. */
     NOT_FOUND(404, HttpStatus.NOT_FOUND, "请求的资源不存在"),
 
+    /**
+     * The resource changed after the caller previewed it, so the pending confirmation no longer
+     * matches what the caller saw. Used by memo card generation, where publishing cards extracted
+     * from text the patient never previewed would put unseen material into the review queue.
+     */
+    MEMO_VERSION_MISMATCH(400, HttpStatus.BAD_REQUEST, "内容已修改，请重新预览后再确认"),
+
     METHOD_NOT_ALLOWED(405, HttpStatus.METHOD_NOT_ALLOWED, "请求方法不被支持"),
     TASK_STATE_CONFLICT(409, HttpStatus.CONFLICT, "当前任务状态不支持此操作"),
 

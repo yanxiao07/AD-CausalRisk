@@ -107,6 +107,7 @@
         <div v-else class="review-done">
           <p class="hcard__value">今天没有需要复习的卡片</p>
           <p class="hcard__note">记住的卡片会按 1 / 3 / 7 天的间隔再次出现，到时间再来复习。</p>
+          <p v-if="nextDueLabel" class="hcard__note">这 {{ cards.length }} 张卡片的下次复习时间：{{ nextDueLabel }}</p>
           <el-button type="primary" size="large" @click="startReview">检查有没有到期卡片</el-button>
         </div>
 
@@ -163,10 +164,21 @@ const toggleList = ref(false)
 const reviewQueue = ref([])
 const previewMode = ref(false)
 const previewCards = ref([])
+const previewVersion = ref('')
 const confirming = ref(false)
 const reviewingCardId = ref(null)
 
 const currentCard = computed(() => reviewQueue.value[reviewIndex.value] || null)
+
+const nextDueLabel = computed(() => {
+  const cutoff = Date.now() + 5000
+  const upcoming = cards.value
+    .filter(c => c.nextReviewAt && new Date(c.nextReviewAt).getTime() > cutoff)
+    .map(c => new Date(c.nextReviewAt).getTime())
+  if (upcoming.length === 0) return ''
+  const earliest = new Date(Math.min(...upcoming))
+  return `${earliest.getMonth() + 1} 月 ${earliest.getDate()} 日`
+})
 
 function dueCardsNow() {
   const cutoff = Date.now() + 5000
@@ -187,13 +199,18 @@ function stateLabel(s) {
 async function loadAll() {
   viewState.value = 'loading'
   try {
-    const memos = await getMyMemos()
-    memo.value = memos.find(m => m.id === memoId.value) || null
+    await refreshMemo()
     viewState.value = memo.value ? 'ready' : 'degraded'
   } catch {
     viewState.value = 'degraded'
   }
   await loadCards()
+}
+
+/** 只刷新备忘原文，不动卡片和复习队列。 */
+async function refreshMemo() {
+  const memos = await getMyMemos()
+  memo.value = memos.find(m => m.id === memoId.value) || null
 }
 
 async function loadCards() {
@@ -231,6 +248,7 @@ async function saveEdit() {
     if (previous !== memo.value.content) {
       previewMode.value = false
       previewCards.value = []
+      previewVersion.value = ''
       await loadCards()
       ElMessage.success('已保存。原文变了，旧卡片已暂停，请重新生成卡片后再复习')
     } else {
@@ -263,27 +281,54 @@ async function confirmDelete() {
 async function generateCards() {
   generating.value = true
   try {
-    previewCards.value = await apiDraftCards(memoId.value)
-    previewMode.value = true
-    reviewIndex.value = -1
-    showAnswer.value = false
-    ElMessage.success(`生成了 ${previewCards.value.length} 张卡片，确认后再开始复习`)
+    const draft = await loadPreview()
+    ElMessage.success(`生成了 ${draft.drafts.length} 张卡片，确认后再开始复习`)
   } catch {
   } finally {
     generating.value = false
   }
 }
 
+/** 拉取草稿预览：只更新内存里的草稿列表和原文版本号，不写库、不动旧卡片与复习进度。 */
+async function loadPreview() {
+  const draft = await apiDraftCards(memoId.value)
+  previewCards.value = draft.drafts
+  previewVersion.value = draft.memoVersion
+  previewMode.value = true
+  reviewIndex.value = -1
+  showAnswer.value = false
+  return draft
+}
+
 async function confirmPreview() {
   if (confirming.value) return
   confirming.value = true
   try {
-    cards.value = await apiGenerateCards(memoId.value)
+    cards.value = await apiGenerateCards(memoId.value, previewVersion.value)
     previewMode.value = false
     previewCards.value = []
+    previewVersion.value = ''
     startReview()
     ElMessage.success('已开始复习')
-  } catch {
+  } catch (err) {
+    if (err?.errorCode === 'MEMO_VERSION_MISMATCH') {
+      // 预览之后原文被改（例如另一个窗口改了备忘）：此时按新原文发卡，患者就没看过这些卡片。
+      // 清掉旧草稿，同步最新原文后重新预览，让患者重新确认一次。
+      previewMode.value = false
+      previewCards.value = []
+      previewVersion.value = ''
+      try {
+        await refreshMemo()
+      } catch {
+      }
+      try {
+        await loadPreview()
+        ElMessage.warning('原文已修改，已按最新内容重新预览，请确认后再开始复习')
+      } catch {
+      }
+    } else {
+      ElMessage.error(err?.message || '生成卡片失败')
+    }
   } finally {
     confirming.value = false
   }
