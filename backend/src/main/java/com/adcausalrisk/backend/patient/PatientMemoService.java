@@ -79,8 +79,7 @@ public class PatientMemoService {
     @Transactional
     public PatientMemo editMemo(Long memoId, String content, AppUserPrincipal principal) {
         requirePatient(principal);
-        PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
+        PatientMemo memo = lockOwnedMemo(memoId, principal);
         String previous = memo.getContent();
         memo.editContent(content);
         PatientMemo saved = memoRepository.saveAndFlush(memo);
@@ -96,10 +95,21 @@ public class PatientMemoService {
     @Transactional
     public void deleteMemo(Long memoId, AppUserPrincipal principal) {
         requirePatient(principal);
-        PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
+        PatientMemo memo = lockOwnedMemo(memoId, principal);
         cardRepository.deleteByMemoId(memoId);
         memoRepository.delete(memo);
+    }
+
+    /**
+     * Loads the memo this patient owns while taking the row lock, so any two requests that touch
+     * the same memo's text or card set run one after another instead of interleaving. Card
+     * confirmation uses this to keep "check the version → delete the old cards → write the new
+     * ones" inside a single lock; without it a concurrent edit can commit in the middle of that
+     * sequence and the confirmation then publishes cards built from text the patient never saw.
+     */
+    private PatientMemo lockOwnedMemo(Long memoId, AppUserPrincipal principal) {
+        return memoRepository.findByIdAndUserIdForUpdate(memoId, principal.userId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
     }
 
     @Transactional(readOnly = true)
@@ -155,14 +165,17 @@ public class PatientMemoService {
      * 从未看过、却已进入复习队列的卡片。所以版本不符必须拒绝。校验放在
      * {@code deleteByMemoId} 之前，拒绝时旧卡片和复习进度原样保留。
      *
+     * <p>校验和写卡都在备忘行锁内完成：只比对版本号还不够，请求若在校验之后、写卡之前停顿，
+     * 另一笔编辑仍可能插进来提交，确认就会按已过期的原文写卡。行锁让两笔请求串行，见
+     * {@link PatientMemoRepository#findByIdAndUserIdForUpdate}。
+     *
      * <p>{@code expectedVersion} 为空表示调用方没有预览步骤，沿用原有行为。
      */
     @Transactional
     public List<PatientFlashCard> generateCardsForMemo(Long memoId, AppUserPrincipal principal,
                                                        String expectedVersion) {
         requirePatient(principal);
-        PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
+        PatientMemo memo = lockOwnedMemo(memoId, principal);
         if (expectedVersion != null && !expectedVersion.isBlank()
                 && !memoVersion(memo.getContent()).equals(expectedVersion)) {
             throw new BusinessException(ErrorCode.MEMO_VERSION_MISMATCH,
