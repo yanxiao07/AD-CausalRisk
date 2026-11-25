@@ -74,6 +74,24 @@ const routes = [
     meta: { title: '备忘详情', layout: 'patient', roles: ['PATIENT'] }
   },
   {
+    path: '/patient/follow-up',
+    name: 'PatientFollowUp',
+    component: () => import('../views/patient/PatientFollowUp.vue'),
+    meta: { title: '复诊自助', layout: 'patient', roles: ['PATIENT'] }
+  },
+  {
+    path: '/patient/timeline',
+    name: 'PatientTimeline',
+    component: () => import('../views/patient/PatientTimeline.vue'),
+    meta: { title: '健康时间轴', layout: 'patient', roles: ['PATIENT'] }
+  },
+  {
+    path: '/patient/consent',
+    name: 'PatientConsent',
+    component: () => import('../views/patient/PatientConsent.vue'),
+    meta: { title: '授权中心', layout: 'patient', roles: ['PATIENT'] }
+  },
+  {
     // MenuCatalog 仍给患者下发 summary；这里落到同一个患者摘要页面，避免死菜单。
     path: '/summary',
     name: 'PatientSummary',

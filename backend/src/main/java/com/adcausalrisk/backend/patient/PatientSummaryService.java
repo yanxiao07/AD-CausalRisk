@@ -180,6 +180,14 @@ public class PatientSummaryService {
         };
     }
 
+    /**
+     * 健康时间轴按历史顺序复述每一次评估的结论，措辞必须与首页摘要完全一致，否则同一条记录在
+     * 两个页面会出现两种说法。这里只把现成的措辞暴露出来，不改变 {@link #currentSummary} 的行为。
+     */
+    public String conclusionOf(RiskAssessment assessment) {
+        return buildSummary(assessment, parse(assessment));
+    }
+
     private String buildFollowUpSummary(Long subjectId) {
         Instant next =
                 followUpRepository.findBySubjectIdOrderByScheduledAtAscIdAsc(subjectId).stream()

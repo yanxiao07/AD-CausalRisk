@@ -28,6 +28,9 @@ public interface RiskAssessmentRepository extends JpaRepository<RiskAssessment, 
     /** The patient summary always describes the most recent result for the bound subject. */
     Optional<RiskAssessment> findFirstBySubjectIdOrderByIdDesc(Long subjectId);
 
+    /** 健康时间轴按时间倒序列出该档案的全部评估，供患者回看历次医生结论。 */
+    List<RiskAssessment> findBySubjectIdOrderByCreatedAtDescIdDesc(Long subjectId);
+
     /**
      * Conditional review-status transition: only the caller that observes {@code current} may
      * write {@code next}. Two reviewers race on the same row, the database serialises them and

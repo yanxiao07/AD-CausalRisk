@@ -110,6 +110,16 @@
       </details>
     </section>
 
+    <section class="hcard hcard--services" aria-labelledby="services-title">
+      <h2 id="services-title" class="hcard__label">更多服务</h2>
+      <p class="hcard__note">复诊安排、过往记录和资料授权，都可以在这里自己查看和调整。</p>
+      <div class="service-actions">
+        <el-button size="large" @click="$router.push('/patient/follow-up')">复诊自助</el-button>
+        <el-button size="large" @click="$router.push('/patient/timeline')">健康时间轴</el-button>
+        <el-button size="large" @click="$router.push('/patient/consent')">授权中心</el-button>
+      </div>
+    </section>
+
     <div class="print-actions">
       <el-button :icon="Printer" @click="printSummary">打印摘要</el-button>
     </div>
@@ -307,6 +317,18 @@ onMounted(() => {
 }
 
 .memo-entry-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hcard--services {
+  background: linear-gradient(150deg, #ffffff 0%, #f5f3ff 100%);
+  border-color: rgba(109, 40, 217, 0.22);
+}
+
+.service-actions {
   margin-top: 16px;
   display: flex;
   gap: 12px;

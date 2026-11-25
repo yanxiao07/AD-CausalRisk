@@ -2,6 +2,7 @@ package com.adcausalrisk.backend.research;
 
 import com.adcausalrisk.backend.audit.AuditService;
 import com.adcausalrisk.backend.common.*;
+import com.adcausalrisk.backend.patient.PatientConsentService;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,10 +24,25 @@ class ValidationCohortService {
     private static final List<String> INPUTS = List.of("age_years", "education_years", "mmse", "cdr_sb",
             "cdr_global", "adas__total13", "faq__faqtotal");
     private static final Set<String> OUTCOMES = Set.of("AD", "OTHER_DEMENTIA", "NO_EVENT", "UNKNOWN");
+
+    /**
+     * 患者在最新一次表态中撤回「科研使用」后，这个档案不再出现在研究侧的队列与报告里。
+     * 只认最新一行：重新授权后立刻恢复，历史行不会被当成当前状态。没有记录时视为未表态，
+     * 沿用医院既有的伦理与书面授权流程。
+     */
+    private static final String CONSENT_ALLOWS_RESEARCH = """
+            AND NOT EXISTS (
+                SELECT 1 FROM patient_consent_record consent
+                WHERE consent.subject_id=s.id AND consent.research_use=FALSE
+                  AND consent.id=(SELECT latest.id FROM patient_consent_record latest
+                                  WHERE latest.subject_id=s.id
+                                  ORDER BY latest.recorded_at DESC, latest.id DESC LIMIT 1)
+            )
+            """;
     private static final String COHORT = """
             FROM validation_cohort_enrollment e JOIN subject s ON e.subject_id=s.id
             WHERE e.researcher_id=? AND s.data_version LIKE 'care-%'
-            """;
+            """ + CONSENT_ALLOWS_RESEARCH;
     private static final String CASE_SOURCE = """
             FROM validation_cohort_enrollment e
             JOIN subject s ON s.id=e.subject_id
@@ -38,7 +54,7 @@ class ValidationCohortService {
                 WHERE first_snapshot.subject_id=s.id AND first_snapshot.doctor_handoff=TRUE)
             LEFT JOIN research_table_snapshot ss ON ss.id=t.snapshot_id
             WHERE e.researcher_id=? AND s.data_version LIKE 'care-%'
-            """;
+            """ + CONSENT_ALLOWS_RESEARCH;
     private static final String CASES = """
             SELECT e.id,e.project_code,t.status,t.result_json,ss.request_json,ss.model_json,
                 ss.input_sha256,f.outcome,f.observed_date
@@ -48,12 +64,15 @@ class ValidationCohortService {
     private final ObjectMapper json;
     private final Clock clock;
     private final AuditService audit;
+    private final PatientConsentService consents;
 
-    ValidationCohortService(JdbcTemplate jdbc, ObjectMapper json, Clock clock, AuditService audit) {
+    ValidationCohortService(JdbcTemplate jdbc, ObjectMapper json, Clock clock, AuditService audit,
+                            PatientConsentService consents) {
         this.jdbc = jdbc;
         this.json = json;
         this.clock = clock;
         this.audit = audit;
+        this.consents = consents;
     }
 
     record Grant(String project, String subjectCode, String researcher, String authorizationRef) {}
@@ -112,6 +131,7 @@ class ValidationCohortService {
     public void grant(AppUserPrincipal actor, Grant request) {
         requireRole(actor, "ADMIN");
         var target = target(request, true);
+        requireResearchUse(target.subjectId(), "新增验证队列授权");
         String reference = required(request.authorizationRef(), 150);
         var existing = jdbc.queryForList("""
                 SELECT id FROM validation_cohort_enrollment WHERE project_code=? AND subject_id=? AND researcher_id=?
@@ -143,6 +163,7 @@ class ValidationCohortService {
 
     public FollowUp followUp(AppUserPrincipal actor, long subjectId) {
         requireDoctor(actor, subjectId, false);
+        requireResearchUseForRead(subjectId);
         return jdbc.query("""
                 SELECT outcome,observed_date,source_ref FROM validation_follow_up WHERE subject_id=?
                 """, (row, ignored) -> new FollowUp(row.getString(1), date(row, 2), row.getString(3)), subjectId)
@@ -157,6 +178,8 @@ class ValidationCohortService {
             throw invalid("请选择有效结局并填写不晚于今天的记录日期");
         }
         String source = required(request.sourceRef(), 150);
+        requireResearchUse(subjectId, "录入科研随访记录");
+        requireFollowUpContact(subjectId);
         int updated = jdbc.update("""
                 UPDATE validation_follow_up SET outcome=?,observed_date=?,source_ref=?,recorded_by=?,recorded_at=?
                 WHERE subject_id=?
@@ -206,6 +229,39 @@ class ValidationCohortService {
         if (date.isAfter(horizon)) return "NO_EVENT";
         if ("NO_EVENT".equals(outcome) && date.isBefore(horizon)) return "UNKNOWN";
         return outcome;
+    }
+
+    /**
+     * 患者明确关闭「科研使用」后不再新增队列授权、不再录入科研随访，读取侧由
+     * CONSENT_ALLOWS_RESEARCH 一并过滤。未表态时放行，保持医院既有授权流程不变；
+     * 已经入组的记录保留，退出由管理员显式撤销。
+     */
+    private void requireResearchUse(long subjectId, String action) {
+        var consent = consents.decisionOf(subjectId);
+        if (consent.decided() && !consent.researchUse()) {
+            throw invalid("患者已于 " + consent.recordedAt() + " 撤回科研使用授权，不能" + action);
+        }
+    }
+
+    /**
+     * 科研随访属于科研使用：患者撤回科研使用后，医生连读取都不应看到既有结局。
+     * 这里用 403 而不是 400，因为请求本身有效，只是没有读取该科研数据的授权。
+     */
+    private void requireResearchUseForRead(long subjectId) {
+        var consent = consents.decisionOf(subjectId);
+        if (consent.decided() && !consent.researchUse()) {
+            throw new BusinessException(
+                    ErrorCode.ACCESS_DENIED,
+                    "患者已于 " + consent.recordedAt() + " 撤回科研使用授权，不能读取科研随访记录");
+        }
+    }
+
+    /** 患者明确关闭「随访联系」后不再录入科研随访；临床复诊走 follow-up 模块，不受此开关影响。 */
+    private void requireFollowUpContact(long subjectId) {
+        var consent = consents.decisionOf(subjectId);
+        if (consent.decided() && !consent.followUpContact()) {
+            throw invalid("患者已于 " + consent.recordedAt() + " 撤回随访联系授权，不能录入科研随访记录");
+        }
     }
 
     private Target target(Grant request, boolean active) {
