@@ -250,7 +250,7 @@ const editingPlan = ref(null)
 
 function responseLabel(status) {
   return { CONFIRMED: '患者已确认', RESCHEDULE_REQUESTED: '待处理改期',
-    RESCHEDULE_DECLINED: '已回执保留原安排' }[status] || '等患者确认'
+    RESCHEDULE_DECLINED: '已回执保留原安排', CANCELLED: '患者已取消' }[status] || '等患者确认'
 }
 
 function openBooking(plan = null) {

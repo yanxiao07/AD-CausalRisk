@@ -16,6 +16,36 @@ export function respondToFollowUp(id, appointmentRevision, action, note) {
   return request.post(`/patients/me/follow-up/${id}/response`, { appointmentRevision, action, note }, { silent: true })
 }
 
+/**
+ * POST /api/patients/me/follow-up/{id}/cancel —— 患者自己取消本次复诊。
+ *
+ * 必须带上 appointmentRevision：医生改过安排后旧版本会被拒绝，避免取消掉一个已经作废的时间。
+ */
+export function cancelFollowUp(id, appointmentRevision) {
+  return request.post(`/patients/me/follow-up/${id}/cancel`, { appointmentRevision }, { silent: true })
+}
+
+/**
+ * GET /api/patients/me/consent —— 当前档案的资料授权（研究使用、复诊联系）。
+ */
+export function getMyConsent() {
+  return request.get('/patients/me/consent')
+}
+
+/**
+ * PUT /api/patients/me/consent —— 保存授权；每次保存都会追加一条记录，保留改动历史。
+ */
+export function saveMyConsent(researchUse, followUpContact) {
+  return request.put('/patients/me/consent', { researchUse, followUpContact }, { silent: true })
+}
+
+/**
+ * GET /api/patients/me/timeline —— 按时间倒序的评估与复诊记录，措辞与首页摘要一致。
+ */
+export function getMyTimeline() {
+  return request.get('/patients/me/timeline')
+}
+
 export function getMyMemos() {
   return request.get('/patients/me/memos')
 }
