@@ -174,6 +174,22 @@ public class PatientMemoService {
     @Transactional
     public List<PatientFlashCard> generateCardsForMemo(Long memoId, AppUserPrincipal principal,
                                                        String expectedVersion) {
+        return generateCardsForMemo(memoId, principal, expectedVersion, null);
+    }
+
+    /**
+     * 确认写卡。{@code previewed} 是患者在预览页实际看过的那批草稿；非空时按原样发布，
+     * 不在确认时重新抽取。
+     *
+     * <p>重新抽取会让「患者看过的」与「保存下来的」脱钩：语义服务在预览时可用、确认时
+     * 返回 503，重新抽取就会退化成规则结果——患者看到的是「周五」，回读却是「周五去趟银行」。
+     * 所以确认只负责核对草稿确实出自当前原文（{@code sourceRef} 必须能在原文里找到），
+     * 然后把草稿本身写进卡片表。
+     */
+    @Transactional
+    public List<PatientFlashCard> generateCardsForMemo(Long memoId, AppUserPrincipal principal,
+                                                       String expectedVersion,
+                                                       List<MemoCardExtractor.Draft> previewed) {
         requirePatient(principal);
         PatientMemo memo = lockOwnedMemo(memoId, principal);
         if (expectedVersion != null && !expectedVersion.isBlank()
@@ -181,9 +197,11 @@ public class PatientMemoService {
             throw new BusinessException(ErrorCode.MEMO_VERSION_MISMATCH,
                     "备忘原文已修改，请重新预览卡片后再确认");
         }
+        List<MemoCardExtractor.Draft> facts = previewed == null || previewed.isEmpty()
+                ? extractor.extract(memo.getContent())
+                : requirePreviewedFrom(memo.getContent(), previewed);
         cardRepository.deleteByMemoId(memoId);
 
-        List<MemoCardExtractor.Draft> facts = extractor.extract(memo.getContent());
         List<PatientFlashCard> created = new ArrayList<>();
         for (MemoCardExtractor.Draft draft : facts) {
             created.add(cardRepository.saveAndFlush(
@@ -193,6 +211,38 @@ public class PatientMemoService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "未能从这段备忘中提取出可复习的内容，请改写后再试");
         }
         return created;
+    }
+
+    /** 一次确认最多发布的卡片数，与抽取侧的整句上限对齐后再留出余量。 */
+    private static final int MAX_CONFIRMED_DRAFTS = 20;
+
+    /**
+     * 校验患者提交的预览草稿：内容不能为空、不能超过卡片列宽，出处必须真的出自当前原文。
+     * 出处这一条同时挡住「确认时发布与这段备忘无关的卡片」——预览页永远带着 sourceRef。
+     */
+    private static List<MemoCardExtractor.Draft> requirePreviewedFrom(
+            String content, List<MemoCardExtractor.Draft> previewed) {
+        if (previewed.size() > MAX_CONFIRMED_DRAFTS) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "一次确认的卡片数量超出上限");
+        }
+        List<MemoCardExtractor.Draft> accepted = new ArrayList<>();
+        for (MemoCardExtractor.Draft draft : previewed) {
+            String front = draft == null ? "" : Objects.toString(draft.frontText(), "").trim();
+            String back = draft == null ? "" : Objects.toString(draft.backText(), "").trim();
+            String source = draft == null ? "" : Objects.toString(draft.sourceRef(), "").trim();
+            if (front.isBlank() || back.isBlank()) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "卡片的正反面内容不能为空");
+            }
+            if (front.length() > 500 || back.length() > 500) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "卡片内容不能超过500字");
+            }
+            if (source.isBlank() || !content.contains(source)) {
+                throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                        "卡片出处与备忘原文不符，请重新预览后再确认");
+            }
+            accepted.add(new MemoCardExtractor.Draft(front, back, source));
+        }
+        return accepted;
     }
 
     /**

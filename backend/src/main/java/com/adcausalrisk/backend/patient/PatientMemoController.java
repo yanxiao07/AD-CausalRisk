@@ -41,7 +41,12 @@ public class PatientMemoController {
     public record CardReviewRequest(String action) {}
     public record CardDraftView(String frontText, String backText, String sourceRef) {}
     public record CardDraftResponse(String memoVersion, List<CardDraftView> drafts) {}
-    public record CardGenerateRequest(@Size(max = 128) String memoVersion) {}
+    /**
+     * 确认请求。{@code drafts} 是预览页展示给患者的那批草稿，确认时原样发布；
+     * 不传 {@code drafts} 表示调用方没有预览步骤，服务层按当前原文抽取。
+     */
+    public record CardGenerateRequest(@Size(max = 128) String memoVersion,
+                                      List<CardDraftView> drafts) {}
 
     private MemoView view(PatientMemo m) {
         return new MemoView(m.getId(), m.getSubjectId(), m.getContent(), m.getCreatedAt(), m.getUpdatedAt());
@@ -106,6 +111,8 @@ public class PatientMemoController {
     /**
      * 确认生成卡片。请求体可省略（保持旧调用方可用）；带 {@code memoVersion} 时，
      * 服务层会核对原文在预览之后有没有被改过，改过就拒绝并提示重新预览。
+     * 带 {@code drafts} 时只发布这批草稿，不在确认时重新抽取——语义服务在预览时可用、
+     * 确认时不可用时，重新抽取会让患者保存下自己没看过的卡片。
      */
     @PostMapping("/api/patients/me/memos/{memoId}/generate-cards")
     public Envelope<List<CardView>> generateCards(@PathVariable long memoId,
@@ -113,8 +120,15 @@ public class PatientMemoController {
                                                   Authentication auth) {
         AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
         String expectedVersion = request == null ? null : request.memoVersion();
-        return Envelope.success(memoService.generateCardsForMemo(memoId, principal, expectedVersion).stream()
-                .map(this::view).toList());
+        List<MemoCardExtractor.Draft> previewed = request == null || request.drafts() == null
+                ? null
+                : request.drafts().stream()
+                        .map(draft -> draft == null ? null : new MemoCardExtractor.Draft(
+                                draft.frontText(), draft.backText(), draft.sourceRef()))
+                        .toList();
+        return Envelope.success(
+                memoService.generateCardsForMemo(memoId, principal, expectedVersion, previewed).stream()
+                        .map(this::view).toList());
     }
 
     @GetMapping("/api/patients/me/memos/{memoId}/cards")

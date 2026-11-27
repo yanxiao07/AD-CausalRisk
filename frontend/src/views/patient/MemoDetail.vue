@@ -305,7 +305,15 @@ async function confirmPreview() {
   if (confirming.value) return
   confirming.value = true
   try {
-    cards.value = await apiGenerateCards(memoId.value, previewVersion.value)
+    cards.value = await apiGenerateCards(
+      memoId.value,
+      previewVersion.value,
+      previewCards.value.map((card) => ({
+        frontText: card.frontText,
+        backText: card.backText,
+        sourceRef: card.sourceRef
+      }))
+    )
     previewMode.value = false
     previewCards.value = []
     previewVersion.value = ''

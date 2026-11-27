@@ -66,10 +66,17 @@ export function draftCards(memoId) {
   return request.post(`/patients/me/memos/${memoId}/card-drafts`)
 }
 
-export function generateCards(memoId, memoVersion) {
+/**
+ * 确认生成卡片。drafts 传预览页展示给患者的那批草稿，后端按原样发布，
+ * 不会在确认时重新抽取——否则语义服务在确认时不可用，保存下来的卡片会和患者看过的不一样。
+ */
+export function generateCards(memoId, memoVersion, drafts) {
+  const body = {}
+  if (memoVersion) body.memoVersion = memoVersion
+  if (drafts && drafts.length) body.drafts = drafts
   return request.post(
     `/patients/me/memos/${memoId}/generate-cards`,
-    memoVersion ? { memoVersion } : undefined,
+    Object.keys(body).length ? body : undefined,
     { silent: true }
   )
 }

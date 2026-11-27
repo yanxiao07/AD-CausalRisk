@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -96,6 +97,73 @@ class PatientMemoCardDraftTest {
                         .path("data");
         assertThat(generated).hasSize(2);
         assertThat(generated.get(1).path("backText").asText()).isEqualTo("红色纸箱");
+    }
+
+    /**
+     * 评审给出的时序：预览时语义服务可用，确认时不可用。原文没改，但确认若重新抽取，
+     * 保存下来的就是规则兜底的整句，患者看过的「周五」被换掉了。
+     * 这里提交的草稿故意与规则抽取结果不同：确认必须原样发布预览草稿，而不是重新抽。
+     */
+    @Test
+    void confirmationPublishesWhatThePatientPreviewedInsteadOfReExtracting() throws Exception {
+        MockHttpSession session = login("patient");
+        long memoId = createMemo(session, "周五去趟银行");
+
+        JsonNode generated =
+                bodyOf(
+                                mockMvc.perform(
+                                                post(MEMOS + "/" + memoId + "/generate-cards")
+                                                        .session(session)
+                                                        .contentType(MediaType.APPLICATION_JSON)
+                                                        .content(
+                                                                json(
+                                                                        Map.of(
+                                                                                "drafts",
+                                                                                List.of(
+                                                                                        Map.of(
+                                                                                                "frontText",
+                                                                                                "这件事什么时候要做？",
+                                                                                                "backText",
+                                                                                                "周五",
+                                                                                                "sourceRef",
+                                                                                                "周五去趟银行"))))))
+                                        .andExpect(status().isOk())
+                                        .andReturn())
+                        .path("data");
+
+        assertThat(generated).hasSize(1);
+        assertThat(generated.get(0).path("backText").asText()).isEqualTo("周五");
+        assertThat(cards(session, memoId).get(0).path("backText").asText()).isEqualTo("周五");
+    }
+
+    /** 出处不在原文里的草稿必须挡住，否则确认接口可以拿来发布与这段备忘无关的卡片。 */
+    @Test
+    void draftsWhoseSourceIsNotInTheMemoAreRefused() throws Exception {
+        MockHttpSession session = login("patient");
+        long memoId = createMemo(session, "周五去趟银行");
+
+        JsonNode refused =
+                bodyOf(
+                                mockMvc.perform(
+                                                post(MEMOS + "/" + memoId + "/generate-cards")
+                                                        .session(session)
+                                                        .contentType(MediaType.APPLICATION_JSON)
+                                                        .content(
+                                                                json(
+                                                                        Map.of(
+                                                                                "drafts",
+                                                                                List.of(
+                                                                                        Map.of(
+                                                                                                "frontText",
+                                                                                                "这件事什么时候要做？",
+                                                                                                "backText",
+                                                                                                "下周三",
+                                                                                                "sourceRef",
+                                                                                                "下周三去公园"))))))
+                                        .andExpect(status().isBadRequest())
+                                        .andReturn());
+        assertThat(refused.path("errorCode").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(cards(session, memoId)).isEmpty();
     }
 
     @Test
