@@ -12,8 +12,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.adcausalrisk.backend.contract.ContractSchemas;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +46,7 @@ class PatientMemoCardDraftTest {
 
     private static final String DEMO_PASSWORD = "DemoPass!2026";
     private static final String MEMOS = "/api/patients/me/memos";
+    private static final String CARD_DRAFTS = MEMOS + "/{memoId}/card-drafts";
 
     @Autowired
     private MockMvc mockMvc;
@@ -444,6 +447,34 @@ class PatientMemoCardDraftTest {
             assertThat(generated).hasSize(1);
         }
         assertThat(cards(session, memoId)).hasSize(1);
+    }
+
+    /**
+     * 冻结契约里 card-drafts 的响应必须把 previewId 列为必填。
+     *
+     * <p>这份契约曾经在同一个 data 对象上写了两个 required 列表：解析器只保留后一份，
+     * previewId 于是从必填里消失，确认流程依赖的字段在契约上变成可选——而真实响应里它一直在，
+     * 所以没有任何测试会红。这里同时钉两件事：真实响应通过校验；少一个 previewId 必须被拒绝。
+     */
+    @Test
+    void theFrozenContractRequiresPreviewIdInThePreviewResponse() throws Exception {
+        MockHttpSession session = login("patient");
+        long memoId = createMemo(session, "周五去趟银行");
+        JsonNode body =
+                bodyOf(
+                        mockMvc.perform(post(MEMOS + "/" + memoId + "/card-drafts").session(session))
+                                .andExpect(status().isOk())
+                                .andReturn());
+
+        assertThat(ContractSchemas.validateResponse(body, CARD_DRAFTS, "post", 200))
+                .as("真实预览响应必须满足冻结契约：%s", body)
+                .isEmpty();
+
+        ObjectNode withoutPreviewId = body.deepCopy();
+        ((ObjectNode) withoutPreviewId.path("data")).remove("previewId");
+        assertThat(ContractSchemas.validateResponse(withoutPreviewId, CARD_DRAFTS, "post", 200))
+                .as("契约必须把 previewId 列为必填，否则确认流程依赖的字段会被漏掉：%s", withoutPreviewId)
+                .isNotEmpty();
     }
 
     private static Map<String, Object> draft(String front, String back, String source) {

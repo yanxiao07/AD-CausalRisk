@@ -12837,11 +12837,7 @@
                                 "$ref": "#/components/schemas/PatientCardDraftView"
                               }
                             }
-                          },
-                          "required": [
-                            "memoVersion",
-                            "drafts"
-                          ]
+                          }
                         }
                       }
                     }
