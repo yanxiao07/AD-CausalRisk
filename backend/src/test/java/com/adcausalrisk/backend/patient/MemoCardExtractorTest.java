@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.sun.net.httpserver.HttpServer;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * 抽取器与语义侧的配合规则，纯单元测试，不起 Spring。
@@ -182,6 +184,62 @@ class MemoCardExtractorTest {
         assertThat(drafts).hasSize(1);
         assertThat(drafts.get(0).frontText()).isEqualTo("什么时候去医院抽血？");
         assertThat(drafts.get(0).backText()).isEqualTo("明天9:30");
+    }
+
+    /**
+     * 条件句的参数矩阵：线索词、有没有「就/则」、动作是肯定还是否定，都不能让条件或极性丢掉。
+     * 每一行都是一条虚构备忘，答案是患者复习时会看到的那一面。
+     */
+    @ParameterizedTest(name = "{0} → {1} / {2}")
+    @CsvSource(
+            delimiter = '|',
+            value = {
+                "如果下雨，不要去公园|下雨时该怎么做？|不要去公园",
+                "如果下雨，就带伞|下雨时该怎么做？|带伞",
+                "要是明天下雨，记得带伞|明天下雨时该怎么做？|记得带伞",
+                "万一头晕，马上坐下|头晕时该怎么做？|马上坐下",
+                "若血压超过180，立刻联系医生|血压超过180时该怎么做？|立刻联系医生",
+                "一旦发烧，先量体温|发烧时该怎么做？|先量体温",
+                "假如忘记吃药，第二天不要补双份|忘记吃药时该怎么做？|第二天不要补双份",
+                "如果哪里不舒服，就告诉我|哪里不舒服时该怎么做？|告诉我",
+                "下雨的话，不要去公园|下雨时该怎么做？|不要去公园",
+                "下雨的话就不要去公园|下雨时该怎么做？|不要去公园",
+                "如果下雨的话，记得带伞|下雨时该怎么做？|记得带伞"
+            })
+    void conditionKeepsBothItsClauseAndItsPolarity(String memo, String question, String answer) {
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract(memo);
+
+        assertThat(drafts).as("条件句必须整句出卡，不能被逗号拆成两半").hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(question);
+        assertThat(drafts.get(0).backText()).isEqualTo(answer);
+        assertThat(drafts.get(0).sourceRef()).isEqualTo(memo);
+    }
+
+    /**
+     * 时间表达的参数矩阵：日期 + 时段 + 钟点 + 分钟、冒号格式、「半」，答案都不能被截断。
+     * 只比对答案那一面，问句用动作原文组装，患者读起来才像人话。
+     */
+    @ParameterizedTest(name = "{0} → {1}")
+    @CsvSource(
+            delimiter = '|',
+            value = {
+                "明天上午9点30分复诊|明天上午9点30分",
+                "明天9:30去医院抽血|明天9:30",
+                "下周三下午2点去社区医院抽血|下周三下午2点",
+                "11月30日上午9点30分到门诊复查|11月30日上午9点30分",
+                "明天上午9点半去药房取药|明天上午9点半",
+                "今天下午3点交材料|今天下午3点"
+            })
+    void timeAnswerKeepsEveryPartThePatientWrote(String memo, String answer) {
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract(memo);
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).backText()).isEqualTo(answer);
+        assertThat(drafts.get(0).frontText()).as("问句里要保留患者写的动作").contains("什么时候");
     }
 
     @Test

@@ -146,6 +146,39 @@ class PatientMemoFieldExtractionTest {
         assertThat(drafts.get(0).path("backText").asText()).isEqualTo("马上坐下休息");
     }
 
+    /**
+     * 评审给的样例：带逗号、没有「就/则」的条件句。按逗号切开会把「不要去公园」变成
+     * 无条件的嘱咐，患者复习时会把「下雨才别去」记成「永远别去」。这里钉住预览结果。
+     */
+    @Test
+    void conditionalSentenceWithoutThenStillKeepsItsConditionInThePreview() throws Exception {
+        JsonNode drafts = preview(createMemo("如果下雨，不要去公园"));
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).path("frontText").asText()).isEqualTo("下雨时该怎么做？");
+        assertThat(drafts.get(0).path("backText").asText()).isEqualTo("不要去公园");
+    }
+
+    /** 评审给的样例：条件用「的话」收尾时，预览里同样不能只剩动作。 */
+    @Test
+    void conditionalSentenceEndingWithDeHuaStillKeepsItsConditionInThePreview() throws Exception {
+        JsonNode drafts = preview(createMemo("下雨的话，不要去公园"));
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).path("frontText").asText()).isEqualTo("下雨时该怎么做？");
+        assertThat(drafts.get(0).path("backText").asText()).isEqualTo("不要去公园");
+    }
+
+    /** 评审给的样例：时间答案不能截断到整点，患者看到的必须是「9点30分」。 */
+    @Test
+    void previewKeepsTheMinutesOfAnAppointmentTime() throws Exception {
+        JsonNode drafts = preview(createMemo("明天上午9点30分复诊"));
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).path("frontText").asText()).isEqualTo("什么时候复诊？");
+        assertThat(drafts.get(0).path("backText").asText()).isEqualTo("明天上午9点30分");
+    }
+
     @Test
     void draftsCarryTheSourceSentenceForPatientReview() throws Exception {
         JsonNode drafts = preview(createMemo("下周三上午九点去社区医院抽血"));

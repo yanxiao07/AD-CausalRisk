@@ -74,6 +74,21 @@ class MemoCardExtractor {
     private static final Pattern CONDITION_CLAUSE =
             Pattern.compile("^(?:如果|要是|一旦|假如|万一|若)(.{1,40}?)[，,](.{1,60})$");
 
+    /**
+     * 条件放在前面、用「的话」收尾的句子：「下雨的话，不要去公园」。
+     *
+     * <p>「的话」后面必须跟逗号或「就/则/那就」才算条件句。只跟一句评价的
+     * （「带伞的话更好」）拆开只会得到一条没有意义的问答，仍按整句兜底处理。
+     */
+    private static final Pattern CONDITION_TAIL =
+            Pattern.compile("^(.{1,40}?)(?:的话)(?:[，,](?:那就|就|则)?|(?:那就|就|则))(.{1,60})$");
+
+    /**
+     * 条件线索词。整句只要带这些词，就说明它在讲「什么情况下做什么」，
+     * 不能按逗号拆成两半——否则条件那一半只剩整句兜底，动作那一半变成无条件的嘱咐。
+     */
+    private static final Pattern CONDITION_CUE = Pattern.compile("如果|要是|一旦|假如|万一|若|的话");
+
     /** 提醒句：「别忘记带伞」「记得带医保卡」语义是「要带」，不是否定。 */
     private static final Pattern REMINDER =
             Pattern.compile("^(?:别(?:忘记|忘了)|不要忘记|记得|记住)(?:要)?(.{1,40})$");
@@ -187,6 +202,14 @@ class MemoCardExtractor {
                 if (results.size() >= MAX_CARDS) break;
                 continue;
             }
+            if (hasConditionCue(sentence)) {
+                // 拆不出「条件 + 动作」时整句保留：宁可卡片笨一点，
+                // 也不能把「下雨的话」和「不要去公园」拆成两张、让条件消失。
+                if (addIfNew(results, seen, fromConditionOnly(sentence))) {
+                    if (results.size() >= MAX_CARDS) break;
+                }
+                continue;
+            }
             for (String rawClause : CLAUSE_SPLIT.split(sentence)) {
                 String clause = rawClause.trim();
                 if (clause.length() < 2) {
@@ -244,16 +267,51 @@ class MemoCardExtractor {
     /**
      * 「如果下雨，不要去公园」这种没有「就/则」的条件句。答案保留否定/提醒的原样措辞，
      * 问句带上条件，患者复习时才不会把有条件的嘱咐记成无条件。
+     *
+     * <p>只检查动作部分有没有疑问词：条件里出现「哪里」「什么」是口语里的不定指
+     * （「如果哪里不舒服，就告诉我」），不是提问，整句丢掉反而会把条件与动作拆散。
      */
     private Draft fromConditionClause(String sentence) {
-        if (containsQuestionWord(sentence)) return null;
         Matcher m = CONDITION_CLAUSE.matcher(sentence);
-        if (!m.matches()) return null;
-        String condition = trimPunctuation(m.group(1));
-        String action = trimPunctuation(m.group(2));
+        String condition;
+        String action;
+        if (m.matches()) {
+            condition = trimPunctuation(m.group(1));
+            action = trimPunctuation(m.group(2));
+        } else {
+            m = CONDITION_TAIL.matcher(sentence);
+            if (!m.matches()) return null;
+            condition = trimPunctuation(m.group(1));
+            action = trimPunctuation(m.group(2));
+        }
+        // 「如果下雨的话，…」与「下雨的话，…」里的「的话」只是条件标记，
+        // 留在问句里会读成「下雨的话时该怎么做？」，去掉才是自然的口语问法。
+        condition = trimPunctuation(condition.replaceFirst("的话$", ""));
         if (condition.isBlank() || action.isBlank()) return null;
-        if (containsQuestionWord(condition) || containsQuestionWord(action)) return null;
+        if (containsQuestionWord(action)) return null;
+        action = trimPunctuation(action.replaceFirst("^(?:那就|就|则|那)", ""));
+        if (action.isBlank()) return null;
         return new Draft(condition + "时该怎么做？", action, cap(sentence, MAX_SOURCE));
+    }
+
+    private boolean hasConditionCue(String sentence) {
+        return CONDITION_CUE.matcher(sentence).find();
+    }
+
+    /**
+     * 条件句拆不出「条件 + 动作」时的兜底：整句作为一张卡片，条件和动作一起保留。
+     *
+     * <p>语义侧能给出片段就用片段（它至少证明这句里确实有一个可复习的事实），
+     * 否则问句与答案都用整句原文——患者看到的是「下雨的话，不要去公园」，
+     * 而不是一条丢了条件的「我要避免做什么？→ 去公园」。
+     */
+    private Draft fromConditionOnly(String sentence) {
+        for (Draft drafted : fromSemantic(sentence)) {
+            return drafted;
+        }
+        String trimmed = trimPunctuation(sentence);
+        if (trimmed.isBlank()) return null;
+        return new Draft(WHOLE_SENTENCE_QUESTION, cap(trimmed, MAX_SENTENCE), cap(sentence, MAX_SOURCE));
     }
 
     /**
