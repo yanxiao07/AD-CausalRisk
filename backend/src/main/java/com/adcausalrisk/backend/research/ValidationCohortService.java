@@ -29,9 +29,12 @@ class ValidationCohortService {
      * 患者在最新一次表态中撤回「科研使用」后，这个档案不再出现在研究侧的队列与报告里。
      * 只认最新一行：重新授权后立刻恢复，历史行不会被当成当前状态。没有记录时视为未表态，
      * 沿用医院既有的伦理与书面授权流程。
+     *
+     * <p>拆成「条件」和「取反」两份常量，是为了让读取侧（{@link #COHORT}）与保存侧
+     * （{@link #requireResearchUseStillGranted}）用同一段 SQL 判断，不会出现一边过滤、一边放行。
      */
-    private static final String CONSENT_ALLOWS_RESEARCH = """
-            AND NOT EXISTS (
+    private static final String RESEARCH_USE_WITHDRAWN = """
+            EXISTS (
                 SELECT 1 FROM patient_consent_record consent
                 WHERE consent.subject_id=s.id AND consent.research_use=FALSE
                   AND consent.id=(SELECT latest.id FROM patient_consent_record latest
@@ -39,6 +42,7 @@ class ValidationCohortService {
                                   ORDER BY latest.recorded_at DESC, latest.id DESC LIMIT 1)
             )
             """;
+    private static final String CONSENT_ALLOWS_RESEARCH = "AND NOT " + RESEARCH_USE_WITHDRAWN;
     private static final String COHORT = """
             FROM validation_cohort_enrollment e JOIN subject s ON e.subject_id=s.id
             WHERE e.researcher_id=? AND s.data_version LIKE 'care-%'
@@ -113,6 +117,10 @@ class ValidationCohortService {
                         && option.model() != null).distinct().toList();
     }
 
+    /**
+     * 当前仍然可以出现在报告里的入组记录。与 {@link #COHORT} 同一条授权条件：
+     * 患者撤回科研使用后，这些档案即使入组记录还在，也不能再进入新的报告。
+     */
     Set<String> projectGrants(AppUserPrincipal actor, String project) {
         requireRole(actor, "RESEARCHER");
         return new HashSet<>(jdbc.queryForList("SELECT e.id " + COHORT + " AND e.project_code=?",
@@ -125,6 +133,25 @@ class ValidationCohortService {
                 SELECT id FROM validation_cohort_enrollment
                 WHERE researcher_id=? AND project_code=? ORDER BY id FOR UPDATE
                 """, String.class, actor.userId(), project));
+    }
+
+    /**
+     * 保存报告前的最后一道复核：入组记录还在，不代表患者此刻仍然同意科研使用。
+     * 请求是几秒前发出的，患者可能在报告算完之前撤回，所以必须在写入前按最新表态再查一次。
+     * 任何一例已撤回都整体拒绝，不做「剔除后继续保存」——患者看到的队列已经是 0 例，
+     * 再产出一份包含该病例的报告会自相矛盾。
+     */
+    void requireResearchUseStillGranted(List<String> enrollmentIds) {
+        if (enrollmentIds.isEmpty()) return;
+        String placeholders = String.join(",", Collections.nCopies(enrollmentIds.size(), "?"));
+        var withdrawn = jdbc.queryForList("""
+                SELECT e.id FROM validation_cohort_enrollment e JOIN subject s ON s.id=e.subject_id
+                WHERE e.id IN (""" + placeholders + ") AND " + RESEARCH_USE_WITHDRAWN,
+                String.class, enrollmentIds.toArray());
+        if (!withdrawn.isEmpty()) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED,
+                    "患者已撤回科研使用授权，不能保存包含该档案的验证报告");
+        }
     }
 
     @Transactional
