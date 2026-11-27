@@ -166,6 +166,7 @@ const reviewQueue = ref([])
 const previewMode = ref(false)
 const previewCards = ref([])
 const previewVersion = ref('')
+const previewId = ref('')
 const confirming = ref(false)
 const reviewingCardId = ref(null)
 
@@ -250,6 +251,7 @@ async function saveEdit() {
       previewMode.value = false
       previewCards.value = []
       previewVersion.value = ''
+      previewId.value = ''
       await loadCards()
       ElMessage.success('已保存。原文变了，旧卡片已暂停，请重新生成卡片后再复习')
     } else {
@@ -290,11 +292,12 @@ async function generateCards() {
   }
 }
 
-/** 拉取草稿预览：只更新内存里的草稿列表和原文版本号，不写库、不动旧卡片与复习进度。 */
+/** 拉取草稿预览：只更新内存里的草稿列表、原文版本号和预览标识，不动旧卡片与复习进度。 */
 async function loadPreview() {
   const draft = await apiDraftCards(memoId.value)
   previewCards.value = draft.drafts
   previewVersion.value = draft.memoVersion
+  previewId.value = draft.previewId
   previewMode.value = true
   reviewIndex.value = -1
   showAnswer.value = false
@@ -307,6 +310,7 @@ async function confirmPreview() {
   try {
     cards.value = await apiGenerateCards(
       memoId.value,
+      previewId.value,
       previewVersion.value,
       previewCards.value.map((card) => ({
         frontText: card.frontText,
@@ -317,6 +321,7 @@ async function confirmPreview() {
     previewMode.value = false
     previewCards.value = []
     previewVersion.value = ''
+    previewId.value = ''
     startReview()
     ElMessage.success('已开始复习')
   } catch (err) {
@@ -326,6 +331,7 @@ async function confirmPreview() {
       previewMode.value = false
       previewCards.value = []
       previewVersion.value = ''
+      previewId.value = ''
       try {
         await refreshMemo()
       } catch {

@@ -2,9 +2,12 @@ package com.adcausalrisk.backend.patient;
 
 import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
+import com.adcausalrisk.backend.patient.entity.PatientCardDraftPreview;
 import com.adcausalrisk.backend.patient.entity.PatientFlashCard;
 import com.adcausalrisk.backend.patient.entity.PatientMemo;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,25 +18,34 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 @Service
 public class PatientMemoService {
 
     private final PatientMemoRepository memoRepository;
     private final PatientFlashCardRepository cardRepository;
+    private final PatientCardDraftPreviewRepository previewRepository;
     private final PatientSummaryService summary;
     private final MemoCardExtractor extractor;
+    private final ObjectMapper json;
 
     public PatientMemoService(PatientMemoRepository memoRepository,
                               PatientFlashCardRepository cardRepository,
+                              PatientCardDraftPreviewRepository previewRepository,
                               PatientSummaryService summary,
-                              MemoCardExtractor extractor) {
+                              MemoCardExtractor extractor,
+                              ObjectMapper json) {
         this.memoRepository = memoRepository;
         this.cardRepository = cardRepository;
+        this.previewRepository = previewRepository;
         this.summary = summary;
         this.extractor = extractor;
+        this.json = json;
     }
 
     /**
@@ -88,6 +100,9 @@ public class PatientMemoService {
         // patient then previews freshly generated cards before reviewing them again.
         if (!Objects.equals(previous, saved.getContent())) {
             cardRepository.deleteByMemoId(memoId);
+            // 原文一改，绑定的那批预览草稿就失效了：出处与版本都对不上，
+            // 患者必须重新预览，确认接口也不该再按旧批次发布。
+            previewRepository.deleteByMemoId(memoId);
         }
         return saved;
     }
@@ -97,6 +112,7 @@ public class PatientMemoService {
         requirePatient(principal);
         PatientMemo memo = lockOwnedMemo(memoId, principal);
         cardRepository.deleteByMemoId(memoId);
+        previewRepository.deleteByMemoId(memoId);
         memoRepository.delete(memo);
     }
 
@@ -174,21 +190,25 @@ public class PatientMemoService {
     @Transactional
     public List<PatientFlashCard> generateCardsForMemo(Long memoId, AppUserPrincipal principal,
                                                        String expectedVersion) {
-        return generateCardsForMemo(memoId, principal, expectedVersion, null);
+        return generateCardsForMemo(memoId, principal, null, expectedVersion, null);
     }
 
     /**
-     * 确认写卡。{@code previewed} 是患者在预览页实际看过的那批草稿；非空时按原样发布，
-     * 不在确认时重新抽取。
+     * 确认写卡。{@code previewId} 指向预览时服务端绑定下来的那批草稿，确认只发布那一批。
      *
-     * <p>重新抽取会让「患者看过的」与「保存下来的」脱钩：语义服务在预览时可用、确认时
-     * 返回 503，重新抽取就会退化成规则结果——患者看到的是「周五」，回读却是「周五去趟银行」。
-     * 所以确认只负责核对草稿确实出自当前原文（{@code sourceRef} 必须能在原文里找到），
-     * 然后把草稿本身写进卡片表。
+     * <p>不能相信客户端提交的卡片文字：只校验 {@code sourceRef} 在原文里找得到，保留版本和
+     * 出处、把预览答案从「周五」换成「下周一去公园」照样能存进去——患者看到过的卡片被悄悄
+     * 改掉，复习队列里就多了一条他自己没确认过的事实。所以草稿由服务端在预览时落库绑定，
+     * 确认只按 {@code previewId} 取回并原样发布。
+     *
+     * <p>{@code previewed} 只是可选的核对：调用方带上它时，必须与服务端绑定的批次逐条一致，
+     * 不一致直接拒绝（400），不会用它覆盖服务端的那批。
+     *
+     * <p>不带 {@code previewId} 也不带草稿时，沿用原有行为：按当前原文抽取。
      */
     @Transactional
     public List<PatientFlashCard> generateCardsForMemo(Long memoId, AppUserPrincipal principal,
-                                                       String expectedVersion,
+                                                       String previewId, String expectedVersion,
                                                        List<MemoCardExtractor.Draft> previewed) {
         requirePatient(principal);
         PatientMemo memo = lockOwnedMemo(memoId, principal);
@@ -197,9 +217,15 @@ public class PatientMemoService {
             throw new BusinessException(ErrorCode.MEMO_VERSION_MISMATCH,
                     "备忘原文已修改，请重新预览卡片后再确认");
         }
-        List<MemoCardExtractor.Draft> facts = previewed == null || previewed.isEmpty()
-                ? extractor.extract(memo.getContent())
-                : requirePreviewedFrom(memo.getContent(), previewed);
+        List<MemoCardExtractor.Draft> facts;
+        if (previewId != null && !previewId.isBlank()) {
+            facts = boundPreview(previewId, memoId, principal, memo.getContent(), previewed);
+        } else if (previewed != null && !previewed.isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "确认卡片必须带上预览标识 previewId，请重新预览后再确认");
+        } else {
+            facts = extractor.extract(memo.getContent());
+        }
         cardRepository.deleteByMemoId(memoId);
 
         List<PatientFlashCard> created = new ArrayList<>();
@@ -213,50 +239,103 @@ public class PatientMemoService {
         return created;
     }
 
-    /** 一次确认最多发布的卡片数，与抽取侧的整句上限对齐后再留出余量。 */
-    private static final int MAX_CONFIRMED_DRAFTS = 20;
-
     /**
-     * 校验患者提交的预览草稿：内容不能为空、不能超过卡片列宽，出处必须真的出自当前原文。
-     * 出处这一条同时挡住「确认时发布与这段备忘无关的卡片」——预览页永远带着 sourceRef。
+     * 取回预览时绑定下来的草稿批次，并核对它仍对得上「这位患者、这条备忘、这份原文」。
+     *
+     * <p>三步都不能省：previewId 必须属于当前患者和当前备忘（否则别人可以拿自己的预览
+     * 往这条备忘里发卡）；绑定时的原文版本必须仍是当前版本（否则出处已经不成立）；
+     * 调用方若附带了草稿，必须与绑定的那批逐条一致。
      */
-    private static List<MemoCardExtractor.Draft> requirePreviewedFrom(
-            String content, List<MemoCardExtractor.Draft> previewed) {
-        if (previewed.size() > MAX_CONFIRMED_DRAFTS) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "一次确认的卡片数量超出上限");
+    private List<MemoCardExtractor.Draft> boundPreview(String previewId, Long memoId,
+                                                       AppUserPrincipal principal, String content,
+                                                       List<MemoCardExtractor.Draft> submitted) {
+        PatientCardDraftPreview bound = previewRepository
+                .findByPreviewIdAndUserIdAndMemoId(previewId, principal.userId(), memoId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR,
+                        "预览草稿已失效，请重新预览后再确认"));
+        if (!memoVersion(content).equals(bound.getMemoVersion())) {
+            throw new BusinessException(ErrorCode.MEMO_VERSION_MISMATCH,
+                    "备忘原文已修改，请重新预览卡片后再确认");
         }
-        List<MemoCardExtractor.Draft> accepted = new ArrayList<>();
-        for (MemoCardExtractor.Draft draft : previewed) {
-            String front = draft == null ? "" : Objects.toString(draft.frontText(), "").trim();
-            String back = draft == null ? "" : Objects.toString(draft.backText(), "").trim();
-            String source = draft == null ? "" : Objects.toString(draft.sourceRef(), "").trim();
-            if (front.isBlank() || back.isBlank()) {
-                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "卡片的正反面内容不能为空");
-            }
-            if (front.length() > 500 || back.length() > 500) {
-                throw new BusinessException(ErrorCode.VALIDATION_ERROR, "卡片内容不能超过500字");
-            }
-            if (source.isBlank() || !content.contains(source)) {
-                throw new BusinessException(ErrorCode.VALIDATION_ERROR,
-                        "卡片出处与备忘原文不符，请重新预览后再确认");
-            }
-            accepted.add(new MemoCardExtractor.Draft(front, back, source));
+        List<MemoCardExtractor.Draft> drafts = readBoundDrafts(bound.getDraftsJson());
+        if (drafts.isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "未能从这段备忘中提取出可复习的内容，请改写后再试");
         }
-        return accepted;
+        if (submitted != null && !submitted.isEmpty() && !sameDrafts(submitted, drafts)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "确认的卡片与预览页展示的不一致，请重新预览后再确认");
+        }
+        return drafts;
+    }
+
+    /** 提交的草稿必须与服务端绑定的批次逐条一致：条数、正反面、出处都不能变。 */
+    private static boolean sameDrafts(List<MemoCardExtractor.Draft> submitted,
+                                      List<MemoCardExtractor.Draft> bound) {
+        if (submitted.size() != bound.size()) return false;
+        for (int index = 0; index < bound.size(); index++) {
+            MemoCardExtractor.Draft left = submitted.get(index);
+            MemoCardExtractor.Draft right = bound.get(index);
+            if (left == null) return false;
+            if (!Objects.equals(trimToEmpty(left.frontText()), trimToEmpty(right.frontText()))) return false;
+            if (!Objects.equals(trimToEmpty(left.backText()), trimToEmpty(right.backText()))) return false;
+            if (!Objects.equals(trimToEmpty(left.sourceRef()), trimToEmpty(right.sourceRef()))) return false;
+        }
+        return true;
+    }
+
+    private static String trimToEmpty(String text) {
+        return text == null ? "" : text.trim();
+    }
+
+    /** 绑定批次以 JSON 存放：一个「正面、背面、出处」三元组数组。 */
+    private List<MemoCardExtractor.Draft> readBoundDrafts(String draftsJson) {
+        try {
+            List<Map<String, String>> rows = json.readValue(draftsJson,
+                    new TypeReference<List<Map<String, String>>>() {});
+            List<MemoCardExtractor.Draft> drafts = new ArrayList<>();
+            for (Map<String, String> row : rows) {
+                if (row == null) continue;
+                drafts.add(new MemoCardExtractor.Draft(
+                        row.get("frontText"), row.get("backText"), row.get("sourceRef")));
+            }
+            return drafts;
+        } catch (Exception unreadable) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "预览草稿已失效，请重新预览后再确认");
+        }
+    }
+
+    private String writeDrafts(List<MemoCardExtractor.Draft> drafts) {
+        List<Map<String, String>> rows = new ArrayList<>();
+        for (MemoCardExtractor.Draft draft : drafts) {
+            Map<String, String> row = new LinkedHashMap<>();
+            row.put("frontText", draft.frontText());
+            row.put("backText", draft.backText());
+            row.put("sourceRef", draft.sourceRef());
+            rows.add(row);
+        }
+        try {
+            return json.writeValueAsString(rows);
+        } catch (Exception unwritable) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "卡片内容暂时无法保存，请稍后重试");
+        }
     }
 
     /**
-     * 预览结果连同原文版本号，供确认时核对「患者看到的是不是当前原文」。
+     * 预览结果连同原文版本号和预览标识，供确认时核对「患者看到的是不是当前原文」。
      * cards 里每条都带 sourceRef，预览页据此展示这张卡来自哪句原文。
      */
-    public record CardDrafts(String memoVersion, List<MemoCardExtractor.Draft> cards) {}
+    public record CardDrafts(String previewId, String memoVersion, List<MemoCardExtractor.Draft> cards) {}
 
     /**
-     * 只做预览：按当前原文算出候选卡片，但不写库，也不动已有卡片和复习进度。
-     * 患者点「确认」后才会调用 {@link #generateCardsForMemo} 真正替换旧卡，
-     * 这样生成动作在确认之前不会生效。
+     * 只做预览：按当前原文算出候选卡片，不动已有卡片和复习进度。
+     *
+     * <p>唯一写入的是这张「预览批次」记录：确认接口只认它，所以预览结果必须由服务端留下
+     * 凭据，否则确认时只能相信客户端提交的文字，改一个字就能把患者看过的答案换掉。
+     * 同一备忘重新预览会替换旧批次，旧 previewId 随即失效。
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public CardDrafts draftCardsForMemo(Long memoId, AppUserPrincipal principal) {
         requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
@@ -266,7 +345,12 @@ public class PatientMemoService {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                     "未能从这段备忘中提取出可复习的内容，请改写后再试");
         }
-        return new CardDrafts(memoVersion(memo.getContent()), facts);
+        String version = memoVersion(memo.getContent());
+        String previewId = UUID.randomUUID().toString();
+        previewRepository.deleteByMemoId(memoId);
+        previewRepository.saveAndFlush(new PatientCardDraftPreview(
+                previewId, principal.userId(), memoId, version, writeDrafts(facts)));
+        return new CardDrafts(previewId, version, facts);
     }
 
     /**

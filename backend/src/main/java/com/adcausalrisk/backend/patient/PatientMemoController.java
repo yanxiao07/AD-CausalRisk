@@ -40,13 +40,15 @@ public class PatientMemoController {
     public record CardEditRequest(@Size(max = 500) String frontText, @Size(max = 500) String backText) {}
     public record CardReviewRequest(String action) {}
     public record CardDraftView(String frontText, String backText, String sourceRef) {}
-    public record CardDraftResponse(String memoVersion, List<CardDraftView> drafts) {}
+    public record CardDraftResponse(String previewId, String memoVersion, List<CardDraftView> drafts) {}
     /**
-     * 确认请求。{@code drafts} 是预览页展示给患者的那批草稿，确认时原样发布；
-     * 不传 {@code drafts} 表示调用方没有预览步骤，服务层按当前原文抽取。
+     * 确认请求。{@code previewId} 指向 card-drafts 返回的那批服务端草稿，确认只发布这一批；
+     * {@code drafts} 可选，带上时必须与预览页展示的一致，否则拒绝。
+     * 两者都不带表示调用方没有预览步骤，服务层按当前原文抽取（旧调用方行为）。
      */
-    public record CardGenerateRequest(@Size(max = 128) String memoVersion,
-                                      List<CardDraftView> drafts) {}
+    public record CardGenerateRequest(@Size(max = 64) String previewId,
+                                      @Size(max = 128) String memoVersion,
+                                      @Size(max = 20) List<CardDraftView> drafts) {}
 
     private MemoView view(PatientMemo m) {
         return new MemoView(m.getId(), m.getSubjectId(), m.getContent(), m.getCreatedAt(), m.getUpdatedAt());
@@ -101,7 +103,7 @@ public class PatientMemoController {
     public Envelope<CardDraftResponse> draftCards(@PathVariable long memoId, Authentication auth) {
         AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
         PatientMemoService.CardDrafts drafts = memoService.draftCardsForMemo(memoId, principal);
-        return Envelope.success(new CardDraftResponse(drafts.memoVersion(),
+        return Envelope.success(new CardDraftResponse(drafts.previewId(), drafts.memoVersion(),
                 drafts.cards().stream()
                         .map(draft -> new CardDraftView(
                                 draft.frontText(), draft.backText(), draft.sourceRef()))
@@ -109,16 +111,16 @@ public class PatientMemoController {
     }
 
     /**
-     * 确认生成卡片。请求体可省略（保持旧调用方可用）；带 {@code memoVersion} 时，
-     * 服务层会核对原文在预览之后有没有被改过，改过就拒绝并提示重新预览。
-     * 带 {@code drafts} 时只发布这批草稿，不在确认时重新抽取——语义服务在预览时可用、
-     * 确认时不可用时，重新抽取会让患者保存下自己没看过的卡片。
+     * 确认生成卡片。请求体可省略（保持旧调用方可用）；带 {@code previewId} 时，服务层只发布
+     * 预览时绑定的那批草稿，并核对原文版本——原文在预览之后被改过就拒绝（400 MEMO_VERSION_MISMATCH）。
+     * 带 {@code drafts} 却不带 {@code previewId} 会被拒绝：确认不接受客户端自带的卡片文字。
      */
     @PostMapping("/api/patients/me/memos/{memoId}/generate-cards")
     public Envelope<List<CardView>> generateCards(@PathVariable long memoId,
                                                   @Valid @RequestBody(required = false) CardGenerateRequest request,
                                                   Authentication auth) {
         AppUserPrincipal principal = (AppUserPrincipal) auth.getPrincipal();
+        String previewId = request == null ? null : request.previewId();
         String expectedVersion = request == null ? null : request.memoVersion();
         List<MemoCardExtractor.Draft> previewed = request == null || request.drafts() == null
                 ? null
@@ -127,7 +129,7 @@ public class PatientMemoController {
                                 draft.frontText(), draft.backText(), draft.sourceRef()))
                         .toList();
         return Envelope.success(
-                memoService.generateCardsForMemo(memoId, principal, expectedVersion, previewed).stream()
+                memoService.generateCardsForMemo(memoId, principal, previewId, expectedVersion, previewed).stream()
                         .map(this::view).toList());
     }
 
