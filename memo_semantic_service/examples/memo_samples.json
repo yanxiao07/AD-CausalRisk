@@ -1,0 +1,89 @@
+{
+  "note": "同一组虚构备忘：expected 是人工标注的字段真值；ruleBaseline 记录旧的三条整句正则实际产出；fieldRule 记录字段抽取器（A 部分）的实际产出。covered=抽到结构化问答，whole_sentence=退化为整句兜底。模型与两套规则都按 expected 计分，漏抽与错配一起看。",
+  "samples": [
+    {
+      "id": "colon-time",
+      "text": "复诊时间：11月30日上午",
+      "expected": [{"label": "TIME", "value": "11月30日上午"}],
+      "ruleBaseline": "covered",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "place-suffix",
+      "text": "钥匙搁在玄关柜上",
+      "expected": [{"label": "PLACE", "value": "玄关柜上"}],
+      "ruleBaseline": "covered",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "time-prefix",
+      "text": "下周三上午九点去社区医院抽血",
+      "expected": [{"label": "TIME", "value": "下周三上午九点"}],
+      "ruleBaseline": "whole_sentence",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "place-verb",
+      "text": "血压计放在客厅电视柜下面",
+      "expected": [{"label": "PLACE", "value": "客厅电视柜下面"}],
+      "ruleBaseline": "whole_sentence",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "item-list",
+      "text": "复诊要带医保卡、病历本和化验单",
+      "expected": [{"label": "ITEM", "value": "医保卡、病历本和化验单"}],
+      "ruleBaseline": "whole_sentence",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "negation",
+      "text": "不要空腹吃这个药",
+      "expected": [{"label": "NEGATION", "value": "空腹吃这个药"}],
+      "ruleBaseline": "whole_sentence",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "two-actions",
+      "text": "明天上午去药房取药，顺便把血压记录下来",
+      "expected": [{"label": "TIME", "value": "明天上午"}],
+      "ruleBaseline": "whole_sentence",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "frequency",
+      "text": "每天早晚各量一次血压",
+      "expected": [{"label": "FREQUENCY", "value": "每天早晚各"}],
+      "ruleBaseline": "whole_sentence",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "condition",
+      "text": "如果头晕就马上坐下休息",
+      "expected": [{"label": "CONDITION", "value": "头晕"}],
+      "ruleBaseline": "whole_sentence",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "reminder",
+      "text": "别忘记带伞",
+      "expected": [{"label": "ITEM", "value": "伞"}],
+      "ruleBaseline": "whole_sentence",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "intent",
+      "text": "我要每天吃降压药",
+      "expected": [{"label": "FREQUENCY", "value": "每天"}],
+      "ruleBaseline": "covered",
+      "fieldRule": "covered"
+    },
+    {
+      "id": "question",
+      "text": "我的血压计在哪里",
+      "expected": [],
+      "ruleBaseline": "whole_sentence",
+      "fieldRule": "whole_sentence"
+    }
+  ]
+}

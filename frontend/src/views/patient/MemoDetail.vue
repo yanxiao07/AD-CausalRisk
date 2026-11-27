@@ -50,6 +50,7 @@
           <li v-for="(card, index) in previewCards" :key="index" class="card-list-item">
             <div class="card-list-front">{{ card.frontText }}</div>
             <div class="card-list-back">{{ card.backText }}</div>
+            <div v-if="card.sourceRef" class="card-list-source">原文：{{ card.sourceRef }}</div>
           </li>
         </ul>
         <div class="inline-actions">
@@ -687,5 +688,12 @@ onMounted(loadAll)
 .card-list-back {
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+.card-list-source {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  opacity: 0.8;
 }
 </style>

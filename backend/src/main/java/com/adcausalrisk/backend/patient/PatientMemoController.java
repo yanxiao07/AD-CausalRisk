@@ -39,7 +39,7 @@ public class PatientMemoController {
     public record MemoUpdateRequest(@Size(max = 1000) String content) {}
     public record CardEditRequest(@Size(max = 500) String frontText, @Size(max = 500) String backText) {}
     public record CardReviewRequest(String action) {}
-    public record CardDraftView(String frontText, String backText) {}
+    public record CardDraftView(String frontText, String backText, String sourceRef) {}
     public record CardDraftResponse(String memoVersion, List<CardDraftView> drafts) {}
     public record CardGenerateRequest(@Size(max = 128) String memoVersion) {}
 
@@ -98,7 +98,8 @@ public class PatientMemoController {
         PatientMemoService.CardDrafts drafts = memoService.draftCardsForMemo(memoId, principal);
         return Envelope.success(new CardDraftResponse(drafts.memoVersion(),
                 drafts.cards().stream()
-                        .map(pair -> new CardDraftView(pair[0], pair[1]))
+                        .map(draft -> new CardDraftView(
+                                draft.frontText(), draft.backText(), draft.sourceRef()))
                         .toList()));
     }
 

@@ -14714,6 +14714,10 @@
           "backText": {
             "type": "string",
             "maxLength": 500
+          },
+          "sourceRef": {
+            "type": "string",
+            "maxLength": 200
           }
         },
         "required": [
