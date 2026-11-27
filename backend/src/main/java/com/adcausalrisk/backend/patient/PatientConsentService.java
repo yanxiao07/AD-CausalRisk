@@ -90,6 +90,10 @@ public class PatientConsentService {
         if (subjectId == null) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "账号还没有绑定健康档案，暂时无法设置授权");
         }
+        // 与报告保存共用同一把行锁：报告侧在写入前锁住 subject 行并复核最新表态，
+        // 撤回也必须先拿到同一行锁。否则撤回可以落在「复核之后、写入之前」，
+        // 接口照样返回 200，报告里还带着这位患者的数据。
+        lockSubject(subjectId);
         jdbc.update(
                 "INSERT INTO patient_consent_record"
                         + " (subject_id, user_id, research_use, follow_up_contact, recorded_at)"
@@ -106,6 +110,11 @@ public class PatientConsentService {
                         + " 科研使用=" + (researchUse ? "允许" : "不允许")
                         + " 随访联系=" + (followUpContact ? "允许" : "不允许"));
         return view(subjectId);
+    }
+
+    /** 取档案行锁。研究侧保存验证报告时用的是同一句 SQL，两边因此互斥。 */
+    private void lockSubject(Long subjectId) {
+        jdbc.queryForList("SELECT id FROM subject WHERE id=? FOR UPDATE", Long.class, subjectId);
     }
 
     /**

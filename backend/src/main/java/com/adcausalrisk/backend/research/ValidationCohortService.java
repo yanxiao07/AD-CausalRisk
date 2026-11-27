@@ -140,10 +140,16 @@ class ValidationCohortService {
      * 请求是几秒前发出的，患者可能在报告算完之前撤回，所以必须在写入前按最新表态再查一次。
      * 任何一例已撤回都整体拒绝，不做「剔除后继续保存」——患者看到的队列已经是 0 例，
      * 再产出一份包含该病例的报告会自相矛盾。
+     *
+     * <p>光再查一次仍有窗口：撤回可以落在这次查询之后、报告写入之前，接口返回 200，
+     * 报告里却带着已撤回患者的数据。所以复核前先锁住涉及档案的 {@code subject} 行
+     * （与 {@link PatientConsentService#saveConsent} 加锁的是同一行），并一直持有到
+     * 报告写入所在事务提交：撤回要么整体先完成（这里复核即拒绝），要么排到报告落库之后。
      */
     void requireResearchUseStillGranted(List<String> enrollmentIds) {
         if (enrollmentIds.isEmpty()) return;
         String placeholders = String.join(",", Collections.nCopies(enrollmentIds.size(), "?"));
+        List<Long> subjectIds = lockSubjectsOf(enrollmentIds, placeholders);
         var withdrawn = jdbc.queryForList("""
                 SELECT e.id FROM validation_cohort_enrollment e JOIN subject s ON s.id=e.subject_id
                 WHERE e.id IN (""" + placeholders + ") AND " + RESEARCH_USE_WITHDRAWN,
@@ -152,6 +158,25 @@ class ValidationCohortService {
             throw new BusinessException(ErrorCode.ACCESS_DENIED,
                     "患者已撤回科研使用授权，不能保存包含该档案的验证报告");
         }
+        if (subjectIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED);
+        }
+    }
+
+    /**
+     * 先按入组记录取出档案 id，再对档案行加锁。锁语句刻意不写在带 join 的查询里：
+     * 只有单表 {@code FOR UPDATE} 才明确锁住 subject 行，也就锁住了这张表的授权表态。
+     */
+    private List<Long> lockSubjectsOf(List<String> enrollmentIds, String placeholders) {
+        List<Long> subjectIds = jdbc.queryForList("""
+                SELECT DISTINCT s.id FROM validation_cohort_enrollment e JOIN subject s ON s.id=e.subject_id
+                WHERE e.id IN (""" + placeholders + ") ORDER BY s.id",
+                Long.class, enrollmentIds.toArray());
+        if (subjectIds.isEmpty()) return subjectIds;
+        String subjectPlaceholders = String.join(",", Collections.nCopies(subjectIds.size(), "?"));
+        jdbc.queryForList("SELECT id FROM subject WHERE id IN (" + subjectPlaceholders + ")"
+                + " ORDER BY id FOR UPDATE", Long.class, subjectIds.toArray());
+        return subjectIds;
     }
 
     @Transactional
