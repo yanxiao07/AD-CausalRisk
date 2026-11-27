@@ -18,11 +18,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -110,6 +112,54 @@ class ValidationReportConsentGuardTest {
                         .isEqualTo(ErrorCode.ACCESS_DENIED));
     }
 
+    /**
+     * 多例报告里只要有一例撤回就整体拒绝：不能「剔除后继续保存」，否则患者看到队列已归零，
+     * 却仍然收到一份统计里含该病例的报告。
+     */
+    @Test
+    void oneWithdrawalRefusesTheWholeMultiCaseReport() {
+        recordConsent(true, Instant.now().minusSeconds(3600));
+        Subject second =
+                subjectRepository.save(
+                        new Subject(
+                                "REPORT-GUARD-003",
+                                "另一位仍在授权中的档案",
+                                Subject.Status.ACTIVE,
+                                "care-demo-report-guard-3",
+                                Instant.now()));
+        String secondEnrollment = UUID.randomUUID().toString();
+        jdbc.update(
+                "INSERT INTO validation_cohort_enrollment"
+                        + " (id, project_code, subject_id, researcher_id, authorization_ref, granted_by,"
+                        + " granted_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                secondEnrollment,
+                PROJECT,
+                second.getId(),
+                researcherId,
+                "ETHICS-2026-001",
+                adminId,
+                Timestamp.from(Instant.now()));
+        jdbc.update(
+                "INSERT INTO patient_consent_record (subject_id, user_id, research_use, follow_up_contact,"
+                        + " recorded_at) VALUES (?, ?, FALSE, TRUE, ?)",
+                subjectId,
+                patientId,
+                Timestamp.from(Instant.now()));
+        try {
+            assertThatThrownBy(
+                            () ->
+                                    cohort.requireResearchUseStillGranted(
+                                            List.of(enrollmentId, secondEnrollment)))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(error -> assertThat(((BusinessException) error).errorCode())
+                            .isEqualTo(ErrorCode.ACCESS_DENIED));
+        } finally {
+            jdbc.update("DELETE FROM validation_cohort_enrollment WHERE subject_id = ?", second.getId());
+            jdbc.update("DELETE FROM patient_consent_record WHERE subject_id = ?", second.getId());
+            jdbc.update("DELETE FROM subject WHERE id = ?", second.getId());
+        }
+    }
+
     /** 重新授权后最新表态生效，历史撤回行不再拦保存。 */
     @Test
     void reauthorizationLiftsTheBlock() {
@@ -173,7 +223,7 @@ class ValidationReportConsentGuardTest {
     @Test
     void withdrawalCannotCommitBetweenTheRecheckAndTheReportWrite() throws Exception {
         recordConsent(true, Instant.now().minusSeconds(3600));
-        bindPatientToThisSubject();
+        List<Map<String, Object>> displacedBindings = bindPatientToThisSubject();
         AppUserPrincipal patient =
                 new AppUserPrincipal(patientId, "patient", "", List.of("PATIENT"), true);
 
@@ -216,15 +266,106 @@ class ValidationReportConsentGuardTest {
             assertThat(latestResearchUse()).as("撤回记录已经写入").isFalse();
         } finally {
             pool.shutdownNow();
+            restorePatientBindings(displacedBindings);
         }
     }
 
-    /** 让 patient 账号只绑定本测试档案，saveConsent 的档案解析才不会落到别的档案上。 */
-    private void bindPatientToThisSubject() {
+    /**
+     * 评审在 H2 的 REPEATABLE READ 下复现的时序：报告事务先建立快照，之后患者撤回并提交，
+     * 报告再取档案锁、复核授权。普通 SELECT 读到的仍是快照里的旧值，过期授权就被放行。
+     * 复核必须用加锁读（读最新已提交版本），否则「先锁后查」只是顺序对了、数据还是旧的。
+     */
+    @Test
+    void recheckReadsTheWithdrawalThatCommittedAfterTheSnapshotWasTaken() throws Exception {
+        recordConsent(true, Instant.now().minusSeconds(3600));
+        List<Map<String, Object>> displacedBindings = bindPatientToThisSubject();
+        AppUserPrincipal patient =
+                new AppUserPrincipal(patientId, "patient", "", List.of("PATIENT"), true);
+
+        TransactionTemplate reportTransaction = new TransactionTemplate(transactionManager);
+        reportTransaction.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch snapshotTaken = new CountDownLatch(1);
+        CountDownLatch withdrawalCommitted = new CountDownLatch(1);
+        try {
+            Future<?> reportSide =
+                    pool.submit(
+                            () ->
+                                    reportTransaction.executeWithoutResult(
+                                            state -> {
+                                                jdbc.queryForList(
+                                                        "SELECT research_use FROM patient_consent_record"
+                                                                + " WHERE subject_id = ?",
+                                                        Boolean.class,
+                                                        subjectId);
+                                                snapshotTaken.countDown();
+                                                awaitQuietly(withdrawalCommitted);
+                                                assertThatThrownBy(
+                                                                () ->
+                                                                        cohort.requireResearchUseStillGranted(
+                                                                                List.of(enrollmentId)))
+                                                        .as("撤回已提交，复核必须按最新表态拒绝")
+                                                        .isInstanceOf(BusinessException.class)
+                                                        .satisfies(
+                                                                error ->
+                                                                        assertThat(
+                                                                                        ((BusinessException) error)
+                                                                                                .errorCode())
+                                                                                .isEqualTo(
+                                                                                        ErrorCode
+                                                                                                .ACCESS_DENIED));
+                                            }));
+            assertThat(snapshotTaken.await(10, TimeUnit.SECONDS))
+                    .as("报告侧要先建立本事务的快照")
+                    .isTrue();
+
+            Future<?> withdrawalSide =
+                    pool.submit(
+                            () -> {
+                                consents.saveConsent(patient, false, true);
+                                withdrawalCommitted.countDown();
+                            });
+
+            reportSide.get(10, TimeUnit.SECONDS);
+            withdrawalSide.get(10, TimeUnit.SECONDS);
+            assertThat(latestResearchUse()).as("撤回记录已经写入").isFalse();
+        } finally {
+            pool.shutdownNow();
+            restorePatientBindings(displacedBindings);
+        }
+    }
+
+    /**
+     * 让 patient 账号只绑定本测试档案。{@link PatientConsentService#saveConsent} 按「最近一次
+     * 有结果的档案」解析 subject，若这个账号还绑着别的档案，撤回可能落到别的档案上，
+     * 测试就会时对时错。返回被暂时挪走的绑定，供测试结束还原。
+     */
+    private List<Map<String, Object>> bindPatientToThisSubject() {
+        List<Map<String, Object>> displaced =
+                jdbc.queryForList(
+                        "SELECT subject_id, permission_type FROM subject_permission WHERE user_id = ?",
+                        patientId);
+        jdbc.update("DELETE FROM subject_permission WHERE user_id = ?", patientId);
         jdbc.update(
                 "INSERT INTO subject_permission (subject_id, user_id, permission_type) VALUES (?, ?, 'VIEW')",
                 subjectId,
                 patientId);
+        return displaced;
+    }
+
+    private void restorePatientBindings(List<Map<String, Object>> displaced) {
+        for (Map<String, Object> row : displaced) {
+            long otherSubject = ((Number) row.get("subject_id")).longValue();
+            if (otherSubject == subjectId) continue;
+            if (jdbc.queryForObject("SELECT COUNT(*) FROM subject WHERE id = ?", Long.class, otherSubject) == 0) {
+                continue;
+            }
+            jdbc.update(
+                    "INSERT INTO subject_permission (subject_id, user_id, permission_type) VALUES (?, ?, ?)",
+                    otherSubject,
+                    patientId,
+                    row.get("permission_type"));
+        }
     }
 
     private Boolean latestResearchUse() {

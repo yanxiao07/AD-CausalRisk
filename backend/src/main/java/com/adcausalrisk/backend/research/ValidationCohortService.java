@@ -8,7 +8,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -70,13 +73,22 @@ class ValidationCohortService {
     private final AuditService audit;
     private final PatientConsentService consents;
 
+    /**
+     * 复核用的独立读事务。见 {@link #latestResearchUse(Long)}：报告事务可能早已建立
+     * REPEATABLE READ 快照，必须换一个事务才读得到撤回后的最新表态。
+     */
+    private final TransactionTemplate freshRead;
+
     ValidationCohortService(JdbcTemplate jdbc, ObjectMapper json, Clock clock, AuditService audit,
-                            PatientConsentService consents) {
+                            PatientConsentService consents, PlatformTransactionManager transactions) {
         this.jdbc = jdbc;
         this.json = json;
         this.clock = clock;
         this.audit = audit;
         this.consents = consents;
+        this.freshRead = new TransactionTemplate(transactions);
+        this.freshRead.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.freshRead.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
 
     record Grant(String project, String subjectCode, String researcher, String authorizationRef) {}
@@ -150,17 +162,40 @@ class ValidationCohortService {
         if (enrollmentIds.isEmpty()) return;
         String placeholders = String.join(",", Collections.nCopies(enrollmentIds.size(), "?"));
         List<Long> subjectIds = lockSubjectsOf(enrollmentIds, placeholders);
-        var withdrawn = jdbc.queryForList("""
-                SELECT e.id FROM validation_cohort_enrollment e JOIN subject s ON s.id=e.subject_id
-                WHERE e.id IN (""" + placeholders + ") AND " + RESEARCH_USE_WITHDRAWN,
-                String.class, enrollmentIds.toArray());
-        if (!withdrawn.isEmpty()) {
-            throw new BusinessException(ErrorCode.ACCESS_DENIED,
-                    "患者已撤回科研使用授权，不能保存包含该档案的验证报告");
-        }
         if (subjectIds.isEmpty()) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
+        List<Long> withdrawn = freshRead.execute(status -> {
+            List<Long> hit = new ArrayList<>();
+            for (Long subjectId : subjectIds) {
+                if (Boolean.FALSE.equals(latestResearchUse(subjectId))) hit.add(subjectId);
+            }
+            return hit;
+        });
+        if (withdrawn != null && !withdrawn.isEmpty()) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED,
+                    "患者已撤回科研使用授权，不能保存包含该档案的验证报告");
+        }
+    }
+
+    /**
+     * 复核用的最新表态，必须在独立事务里读。
+     *
+     * <p>报告事务从算报告起就持有自己的 REPEATABLE READ 快照：撤回若在快照建立之后提交，
+     * 同一个事务里无论普通 SELECT 还是 {@code FOR UPDATE} 读到的都是旧值，复核就会放行过期授权。
+     * 换一个事务（REQUIRES_NEW + READ COMMITTED）才读得到最新已提交的表态。
+     *
+     * <p>读完之后也不会再有撤回插进来：调用方已经持有这些档案的 {@code subject} 行锁，
+     * 而撤回路径（{@link PatientConsentService#saveConsent}）写表态前必须先拿同一行锁。
+     *
+     * <p>判断口径与 {@link #RESEARCH_USE_WITHDRAWN} 一致：只看最新一行，未表态（查不到行）放行。
+     */
+    private Boolean latestResearchUse(Long subjectId) {
+        List<Boolean> rows = jdbc.queryForList("""
+                SELECT research_use FROM patient_consent_record
+                WHERE subject_id=? ORDER BY recorded_at DESC, id DESC LIMIT 1
+                """, Boolean.class, subjectId);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     /**
