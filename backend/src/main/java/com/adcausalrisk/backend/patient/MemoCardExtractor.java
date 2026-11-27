@@ -63,6 +63,17 @@ class MemoCardExtractor {
     private static final Pattern CONDITION =
             Pattern.compile("^(?:如果|要是|一旦|假如)(.{1,40}?)(?:就|则|那就)(.{1,40})$");
 
+    /**
+     * 带逗号但不带「就/则」的条件句：「如果下雨，不要去公园」。
+     *
+     * <p>按逗号切开会把条件和动作分家：「如果下雨」自己抽不出字段只能整句兜底，
+     * 「不要去公园」则被当成独立的否定句，问句变成无条件的「我要避免做什么？」——
+     * 患者复习时会把「下雨才别去」记成「永远别去」，原意被改写。
+     * 所以条件与动作必须在整句层面一起处理。
+     */
+    private static final Pattern CONDITION_CLAUSE =
+            Pattern.compile("^(?:如果|要是|一旦|假如|万一|若)(.{1,40}?)[，,](.{1,60})$");
+
     /** 提醒句：「别忘记带伞」「记得带医保卡」语义是「要带」，不是否定。 */
     private static final Pattern REMINDER =
             Pattern.compile("^(?:别(?:忘记|忘了)|不要忘记|记得|记住)(?:要)?(.{1,40})$");
@@ -95,7 +106,9 @@ class MemoCardExtractor {
                             + ")"
                             + "(?:上午|下午|晚上|早上|中午|凌晨)?"
                             + "(?:(?:[0-9]{1,2}|[一二三四五六七八九十]{1,3})(?:点|时)"
-                            + "(?:半|整|之前|以前|左右)?)?"
+                            + "(?:(?:[0-9]{1,2}|[一二三四五六七八九十]{1,3})分|[半整]|之前|以前|左右)?"
+                            + "|[0-9]{1,2}:[0-9]{2}"
+                            + ")?"
                             + ")(.{2,80})");
 
     /** 频率句：「每天早晚各量一次血压」「每周三复查」。 */
@@ -170,6 +183,10 @@ class MemoCardExtractor {
                 if (results.size() >= MAX_CARDS) break;
                 continue;
             }
+            if (addIfNew(results, seen, fromConditionClause(sentence))) {
+                if (results.size() >= MAX_CARDS) break;
+                continue;
+            }
             for (String rawClause : CLAUSE_SPLIT.split(sentence)) {
                 String clause = rawClause.trim();
                 if (clause.length() < 2) {
@@ -217,10 +234,25 @@ class MemoCardExtractor {
         if (containsQuestionWord(sentence)) return null;
         Matcher m = CONDITION.matcher(sentence);
         if (!m.matches()) return null;
-        String condition = m.group(1).trim();
-        String action = m.group(2).trim();
+        String condition = trimPunctuation(m.group(1));
+        String action = trimPunctuation(m.group(2));
         if (condition.isBlank() || action.isBlank()) return null;
         if (containsQuestionWord(action)) return null;
+        return new Draft(condition + "时该怎么做？", action, cap(sentence, MAX_SOURCE));
+    }
+
+    /**
+     * 「如果下雨，不要去公园」这种没有「就/则」的条件句。答案保留否定/提醒的原样措辞，
+     * 问句带上条件，患者复习时才不会把有条件的嘱咐记成无条件。
+     */
+    private Draft fromConditionClause(String sentence) {
+        if (containsQuestionWord(sentence)) return null;
+        Matcher m = CONDITION_CLAUSE.matcher(sentence);
+        if (!m.matches()) return null;
+        String condition = trimPunctuation(m.group(1));
+        String action = trimPunctuation(m.group(2));
+        if (condition.isBlank() || action.isBlank()) return null;
+        if (containsQuestionWord(condition) || containsQuestionWord(action)) return null;
         return new Draft(condition + "时该怎么做？", action, cap(sentence, MAX_SOURCE));
     }
 
@@ -411,5 +443,10 @@ class MemoCardExtractor {
 
     private static String cap(String text, int max) {
         return text.length() <= max ? text : text.substring(0, max);
+    }
+
+    /** 条件与动作取自同一句时，前后可能残留逗号，拼进问句会变成「下雨，时该怎么做？」。 */
+    private static String trimPunctuation(String text) {
+        return text == null ? "" : text.replaceAll("^[，,、：:\\s]+|[，,、：:\\s]+$", "");
     }
 }

@@ -30,6 +30,11 @@ class MemoCardExtractorTest {
         };
     }
 
+    /** 语义服务未配置：只跑规则，确认规则自身就能答对，不靠模型兜底。 */
+    private static MemoSemanticClient offlineSemantic() {
+        return new MemoSemanticClient("");
+    }
+
     @Test
     void rulesDecideFirstEvenWhenSemanticBackendHasAnAnswer() {
         MemoCardExtractor extractor =
@@ -144,6 +149,39 @@ class MemoCardExtractorTest {
         assertThat(drafts).hasSize(1);
         assertThat(drafts.get(0).frontText()).isEqualTo("什么情况下要这样做？");
         assertThat(drafts.get(0).backText()).isEqualTo("发烧");
+    }
+
+    @Test
+    void conditionalSentenceWithoutThenKeepsItsCondition() {
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("如果下雨，不要去公园");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo("下雨时该怎么做？");
+        assertThat(drafts.get(0).backText()).isEqualTo("不要去公园");
+    }
+
+    @Test
+    void timeKeepsTheMinutesInsteadOfTruncatingAtTheHour() {
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("明天上午9点30分复诊");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo("什么时候复诊？");
+        assertThat(drafts.get(0).backText()).isEqualTo("明天上午9点30分");
+    }
+
+    @Test
+    void colonTimeAlsoKeepsTheMinutes() {
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("明天9:30去医院抽血");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo("什么时候去医院抽血？");
+        assertThat(drafts.get(0).backText()).isEqualTo("明天9:30");
     }
 
     @Test
