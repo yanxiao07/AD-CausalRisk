@@ -59,9 +59,15 @@ class MemoCardExtractor {
      */
     private static final Pattern COLON = Pattern.compile("^(.{2,120})[:：](.{1,120})$");
 
-    /** 条件句「如果/要是/一旦/假如 X 就/则 Y」。跨逗号，必须在分句之前处理。 */
+    /**
+     * 条件句「如果/要是/一旦/假如/万一/若 X 就/则 Y」。跨逗号，必须在分句之前处理。
+     *
+     * <p>「万一」「若」与前面四个线索词同义，只是更口语（「万一发烧就吃退烧药」）。
+     * 它们不在整句正则里时，这种句子只能落到条件兜底，条件与动作都抽不出来；
+     * 放进正则后条件与动作各自归位，卡片是「发烧时该怎么做？→ 吃退烧药」。
+     */
     private static final Pattern CONDITION =
-            Pattern.compile("^(?:如果|要是|一旦|假如)(.{1,40}?)(?:就|则|那就)(.{1,40})$");
+            Pattern.compile("^(?:如果|要是|一旦|假如|万一|若)(.{1,40}?)(?:就|则|那就)(.{1,40})$");
 
     /**
      * 带逗号但不带「就/则」的条件句：「如果下雨，不要去公园」。
@@ -289,7 +295,9 @@ class MemoCardExtractor {
         condition = trimPunctuation(condition.replaceFirst("的话$", ""));
         if (condition.isBlank() || action.isBlank()) return null;
         if (containsQuestionWord(action)) return null;
-        action = trimPunctuation(action.replaceFirst("^(?:那就|就|则|那)", ""));
+        // 只去掉「那就/就/则」这类纯连接词。裸「那」不能去：它常常是指示代词的一部分，
+        // 「下雨的话，那件外套要带上」的答案一旦去掉「那」就变成「件外套要带上」。
+        action = trimPunctuation(action.replaceFirst("^(?:那就|就|则)", ""));
         if (action.isBlank()) return null;
         return new Draft(condition + "时该怎么做？", action, cap(sentence, MAX_SOURCE));
     }
@@ -301,14 +309,13 @@ class MemoCardExtractor {
     /**
      * 条件句拆不出「条件 + 动作」时的兜底：整句作为一张卡片，条件和动作一起保留。
      *
-     * <p>语义侧能给出片段就用片段（它至少证明这句里确实有一个可复习的事实），
-     * 否则问句与答案都用整句原文——患者看到的是「下雨的话，不要去公园」，
-     * 而不是一条丢了条件的「我要避免做什么？→ 去公园」。
+     * <p>这里刻意不交给语义侧。语义侧给出的永远只是原句里的一个片段，拿它当答案必然是
+     * 一次不完整的拆分：标成否定的片段只剩动作（「如果下雨不要去公园」会变成无条件的
+     * 「我要避免做什么？→ 去公园」），标成条件的片段只剩条件、动作彻底消失。
+     * 既然拆不出完整的一对，就整句保留——患者看到的是「如果下雨不要去公园」，
+     * 而不是一条被改写过的、丢了条件的嘱咐。
      */
     private Draft fromConditionOnly(String sentence) {
-        for (Draft drafted : fromSemantic(sentence)) {
-            return drafted;
-        }
         String trimmed = trimPunctuation(sentence);
         if (trimmed.isBlank()) return null;
         return new Draft(WHOLE_SENTENCE_QUESTION, cap(trimmed, MAX_SENTENCE), cap(sentence, MAX_SOURCE));

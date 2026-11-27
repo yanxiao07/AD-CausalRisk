@@ -140,17 +140,48 @@ class MemoCardExtractorTest {
         assertThat(drafts.get(0).backText()).isEqualTo("血压有点高");
     }
 
-    /** 线索词在时照旧生效，否则这条防线会把规则漏掉的真条件句也一起挡掉。 */
+    /** 「万一/若」也是条件线索词，带「就/则」时由规则自己拆，条件与动作都不丢。 */
     @Test
-    void semanticSpanKeepsWorkingWhenTheCueIsPresent() {
+    void conditionCueWithoutACommaIsSplitByTheRuleNotByTheSemanticSpan() {
         MemoCardExtractor extractor =
                 new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("CONDITION", "发烧"))));
 
         List<MemoCardExtractor.Draft> drafts = extractor.extract("万一发烧就吃退烧药");
 
         assertThat(drafts).hasSize(1);
-        assertThat(drafts.get(0).frontText()).isEqualTo("什么情况下要这样做？");
-        assertThat(drafts.get(0).backText()).isEqualTo("发烧");
+        assertThat(drafts.get(0).frontText()).isEqualTo("发烧时该怎么做？");
+        assertThat(drafts.get(0).backText()).isEqualTo("吃退烧药");
+    }
+
+    /**
+     * 评审复测的场景：语义侧只给出动作片段时，绝不能用它拼出一张无条件的卡片。
+     * 「如果下雨不要去公园」拆不出完整的一对，就整句保留，条件与动作都在。
+     */
+    @Test
+    void anActionOnlySpanNeverTurnsAConditionalIntoAnUnconditionalCard() {
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("NEGATION", "去公园"))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("如果下雨不要去公园");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText())
+                .as("拆不出条件与动作时必须整句保留，不能退化成「我要避免做什么？」")
+                .isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).backText()).isEqualTo("如果下雨不要去公园");
+    }
+
+    /** 语义侧只给出条件片段时同理：动作会彻底消失，所以同样退回整句。 */
+    @Test
+    void aConditionOnlySpanNeverPublishesACardWithoutItsAction() {
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("CONDITION", "下雨"))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("如果下雨不要去公园");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).backText()).isEqualTo("如果下雨不要去公园");
     }
 
     @Test
@@ -204,7 +235,9 @@ class MemoCardExtractorTest {
                 "如果哪里不舒服，就告诉我|哪里不舒服时该怎么做？|告诉我",
                 "下雨的话，不要去公园|下雨时该怎么做？|不要去公园",
                 "下雨的话就不要去公园|下雨时该怎么做？|不要去公园",
-                "如果下雨的话，记得带伞|下雨时该怎么做？|记得带伞"
+                "如果下雨的话，记得带伞|下雨时该怎么做？|记得带伞",
+                "下雨的话，那件外套要带上|下雨时该怎么做？|那件外套要带上",
+                "万一发烧就吃退烧药|发烧时该怎么做？|吃退烧药"
             })
     void conditionKeepsBothItsClauseAndItsPolarity(String memo, String question, String answer) {
         MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());

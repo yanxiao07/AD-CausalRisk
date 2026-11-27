@@ -169,6 +169,29 @@ class PatientMemoFieldExtractionTest {
         assertThat(drafts.get(0).path("backText").asText()).isEqualTo("不要去公园");
     }
 
+    /** 动作以「那」开头时不能把这个指代词当成连接词去掉，否则「那件外套」会变成「件外套」。 */
+    @Test
+    void actionStartingWithADemonstrativeKeepsItInThePreview() throws Exception {
+        JsonNode drafts = preview(createMemo("下雨的话，那件外套要带上"));
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).path("frontText").asText()).isEqualTo("下雨时该怎么做？");
+        assertThat(drafts.get(0).path("backText").asText()).isEqualTo("那件外套要带上");
+    }
+
+    /**
+     * 连逗号都没有的条件句（「如果下雨不要去公园」）拆不出条件与动作，
+     * 预览必须整句保留，不能退化成无条件的「我要避免做什么？→ 去公园」。
+     */
+    @Test
+    void unsplittableConditionalSentenceKeepsTheWholeSentenceInThePreview() throws Exception {
+        JsonNode drafts = preview(createMemo("如果下雨不要去公园"));
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).path("frontText").asText()).isEqualTo(WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).path("backText").asText()).isEqualTo("如果下雨不要去公园");
+    }
+
     /** 评审给的样例：时间答案不能截断到整点，患者看到的必须是「9点30分」。 */
     @Test
     void previewKeepsTheMinutesOfAnAppointmentTime() throws Exception {
