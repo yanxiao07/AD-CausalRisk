@@ -12651,7 +12651,7 @@
       "post": {
         "operationId": "postApiPatientsMeMemosMemoIdGenerateCards",
         "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
-        "summary": "从备忘文本生成记忆卡片",
+        "summary": "确认生成记忆卡片：带 previewId 时只发布预览时服务端绑定的那批草稿",
         "security": [
           {
             "sessionCookie": []
@@ -12670,16 +12670,47 @@
         ],
         "requestBody": {
           "required": false,
-          "description": "可选。带上 card-drafts 返回的 memoVersion 时，服务端会核对原文在预览之后是否被修改，已修改则拒绝（400 MEMO_VERSION_MISMATCH），避免把患者没预览过的卡片发进复习队列。省略则沿用原有行为。",
+          "description": "可选。带上 card-drafts 返回的 previewId 时，服务端只发布预览时绑定下来的那批草稿，不在确认时重新抽取：即使客户端改写了答案，存进复习队列的仍是患者看过的那一批。原文在预览之后被修改则拒绝（400 MEMO_VERSION_MISMATCH），previewId 不属于当前患者/备忘或已失效则拒绝（400）。drafts 可选，带上时必须与服务端绑定的批次逐条一致，否则拒绝（400）；只带 drafts 不带 previewId 同样拒绝。两个字段都省略则沿用原有行为，按当前原文抽取。",
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                  "previewId": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
                   "memoVersion": {
                     "type": "string",
                     "maxLength": 128
+                  },
+                  "drafts": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "frontText",
+                        "backText",
+                        "sourceRef"
+                      ],
+                      "properties": {
+                        "frontText": {
+                          "type": "string",
+                          "maxLength": 500
+                        },
+                        "backText": {
+                          "type": "string",
+                          "maxLength": 500
+                        },
+                        "sourceRef": {
+                          "type": "string",
+                          "maxLength": 200
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -12750,7 +12781,7 @@
       "post": {
         "operationId": "postApiPatientsMeMemosMemoIdCardDrafts",
         "x-implementation-state": "IMPLEMENTED_SYNTHETIC_LOCAL_VALIDATION",
-        "summary": "预览从备忘文本生成的卡片（不写库、不改动已有卡片），并返回原文版本号",
+        "summary": "预览从备忘文本生成的卡片，返回预览标识 previewId 与原文版本号；服务端同时绑定这批草稿，确认时按 previewId 原样发布",
         "security": [
           {
             "sessionCookie": []
@@ -12783,7 +12814,17 @@
                         "data": {
                           "type": "object",
                           "additionalProperties": false,
+                          "required": [
+                            "previewId",
+                            "memoVersion",
+                            "drafts"
+                          ],
                           "properties": {
+                            "previewId": {
+                              "type": "string",
+                              "maxLength": 64,
+                              "description": "本次预览批次的标识。确认生成时回传，服务端据此发布绑定下来的这批草稿；重新预览会让旧标识失效。"
+                            },
                             "memoVersion": {
                               "type": "string",
                               "maxLength": 128,
@@ -12796,11 +12837,7 @@
                                 "$ref": "#/components/schemas/PatientCardDraftView"
                               }
                             }
-                          },
-                          "required": [
-                            "memoVersion",
-                            "drafts"
-                          ]
+                          }
                         }
                       }
                     }
@@ -14714,6 +14751,10 @@
           "backText": {
             "type": "string",
             "maxLength": 500
+          },
+          "sourceRef": {
+            "type": "string",
+            "maxLength": 200
           }
         },
         "required": [

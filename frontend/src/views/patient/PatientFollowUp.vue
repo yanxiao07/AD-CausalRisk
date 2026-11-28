@@ -33,12 +33,15 @@
           <p v-if="actionMessage" class="hcard__note booking-feedback" role="status">{{ actionMessage }}</p>
           <p v-if="actionError" class="hcard__note booking-error" role="alert">{{ actionError }}</p>
 
-          <div v-if="canAct" class="booking-actions">
-            <button v-if="appointment.responseStatus !== 'CONFIRMED'" type="button" class="booking-button primary"
+          <div v-if="canRespond" class="booking-actions">
+            <button v-if="canAct && appointment.responseStatus !== 'CONFIRMED'" type="button" class="booking-button primary"
               :disabled="busy" @click="sendResponse('CONFIRM')">确认按时复诊</button>
-            <button type="button" class="booking-button" :disabled="busy" @click="openReschedule">申请改期</button>
+            <button v-if="canAct" type="button" class="booking-button" :disabled="busy" @click="openReschedule">申请改期</button>
             <button type="button" class="booking-button danger" :disabled="busy" @click="askCancel">取消本次复诊</button>
           </div>
+          <p v-if="waitingForClinic && canRespond" class="hcard__note">
+            改期申请正在等医院回复，原复诊时间仍然有效；如果这段时间不方便，仍可点「取消本次复诊」。
+          </p>
 
           <form v-if="canAct && rescheduleOpen" class="booking-form" @submit.prevent="sendResponse('REQUEST_RESCHEDULE')">
             <label for="reschedule-note">希望什么时候复诊（选填）</label>
@@ -105,8 +108,9 @@ const others = computed(() =>
 const appointment = computed(() => selectedId.value == null
   ? followUp.value?.next
   : followUp.value?.appointments?.find(row => row.id === selectedId.value))
-const canAct = computed(() => Boolean(appointment.value?.canRespond) && !waitingForClinic.value)
+const canRespond = computed(() => Boolean(appointment.value?.canRespond))
 const waitingForClinic = computed(() => appointment.value?.responseStatus === 'RESCHEDULE_REQUESTED')
+const canAct = computed(() => canRespond.value && !waitingForClinic.value)
 
 const responseMessages = {
   CONFIRMED: '您已确认按时复诊。',
@@ -151,6 +155,16 @@ function select(id) {
   actionMessage.value = ''
 }
 
+function isConflict(problem) {
+  return problem?.httpStatus === 409 || problem?.code === 409
+}
+
+async function refreshAfterConflict(message) {
+  await load()
+  if (selectedId.value != null && !appointment.value) selectedId.value = null
+  actionError.value = message || '复诊安排已被医院更新，已为您刷新，请按最新时间重新操作。'
+}
+
 async function openReschedule() {
   actionError.value = ''
   rescheduleNote.value = ''
@@ -173,9 +187,9 @@ async function sendResponse(action) {
     ElMessage.success(actionMessage.value)
   } catch (problem) {
     actionError.value = problem?.message || '提交失败，请稍后再试。'
-    if (problem?.status === 409) {
+    if (isConflict(problem)) {
       rescheduleOpen.value = false
-      await load()
+      await refreshAfterConflict(problem?.message)
     }
   } finally {
     busy.value = false
@@ -204,7 +218,7 @@ async function askCancel() {
     ElMessage.success(actionMessage.value)
   } catch (problem) {
     actionError.value = problem?.message || '取消失败，请稍后再试。'
-    if (problem?.status === 409) await load()
+    if (isConflict(problem)) await refreshAfterConflict(problem?.message)
   } finally {
     busy.value = false
   }

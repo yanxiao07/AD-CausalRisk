@@ -66,10 +66,19 @@ export function draftCards(memoId) {
   return request.post(`/patients/me/memos/${memoId}/card-drafts`)
 }
 
-export function generateCards(memoId, memoVersion) {
+/**
+ * 确认生成卡片。previewId 指向预览接口绑定的那批草稿，后端只发布这一批，
+ * 不在确认时重新抽取——否则语义服务在确认时不可用，保存下来的卡片会和患者看过的不一样。
+ * drafts 一并回传用于核对：与服务端绑定批次不一致时后端会拒绝。
+ */
+export function generateCards(memoId, previewId, memoVersion, drafts) {
+  const body = {}
+  if (previewId) body.previewId = previewId
+  if (memoVersion) body.memoVersion = memoVersion
+  if (drafts && drafts.length) body.drafts = drafts
   return request.post(
     `/patients/me/memos/${memoId}/generate-cards`,
-    memoVersion ? { memoVersion } : undefined,
+    Object.keys(body).length ? body : undefined,
     { silent: true }
   )
 }

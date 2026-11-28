@@ -167,10 +167,22 @@ class ValidationReportService {
         }
     }
 
+    /**
+     * 写入/读取报告前的复核。两步都必须做：
+     *
+     * <ol>
+     *   <li>入组记录仍在（防止管理员已显式撤销授权）；
+     *   <li>患者最新表态仍然允许科研使用（防止请求发出后、报告算完前撤回）。
+     * </ol>
+     *
+     * <p>只查第一步会留下一个窗口：报告算完时队列已经显示 0 例，但报告照样落库，
+     * 里面还带着那位患者的数据。
+     */
     private void requireGrants(AppUserPrincipal actor, Scope scope, List<String> ids) {
         if (!cohort.lockProjectGrants(actor, scope.project()).containsAll(ids)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED);
         }
+        cohort.requireResearchUseStillGranted(ids);
     }
 
     private Report find(AppUserPrincipal actor, Scope scope, String digest) {

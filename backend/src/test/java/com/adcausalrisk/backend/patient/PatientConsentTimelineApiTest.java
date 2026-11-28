@@ -169,7 +169,14 @@ class PatientConsentTimelineApiTest {
         JsonNode visitRow = events.get(1);
         assertThat(visitRow.get("type").asText()).isEqualTo("VISIT");
         assertThat(visitRow.get("title").asText()).isEqualTo("访视 V1");
-        assertThat(visitRow.get("values").get(0).get("value").asText()).isEqualTo("27.5");
+        assertThat(visitRow.get("values")).as("患者账号不得读到原始量表值").isEmpty();
+        assertThat(events.toString()).as("原始量表值不得出现在时间轴").doesNotContain("27.5");
+
+        JsonNode detail =
+                bodyOf(mockMvc.perform(get("/api/subjects/{id}", subjectId).session(patient))
+                        .andExpect(status().isOk())
+                        .andReturn()).get("data");
+        assertThat(detail.get("visits")).as("档案详情与时间轴必须用同一条权限规则").isEmpty();
     }
 
     @Test
@@ -287,8 +294,9 @@ class PatientConsentTimelineApiTest {
         assertThat(events).as("被更正的旧版本不得在时间线上重复出现").hasSize(1);
         JsonNode visit = events.get(0);
         assertThat(visit.get("status").asText()).isEqualTo("已更正（第 2 版）");
-        assertThat(visit.get("values").get(0).get("value").asText()).isEqualTo("29.0");
-        assertThat(events.toString()).as("旧版本的值不应外泄").doesNotContain("27.5");
+        assertThat(visit.get("values")).as("更正后仍不得携带原始量表值").isEmpty();
+        assertThat(events.toString()).as("新旧版本的原始值都不应外泄")
+                .doesNotContain("27.5").doesNotContain("29.0");
     }
 
     @Test

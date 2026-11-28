@@ -2,9 +2,12 @@ package com.adcausalrisk.backend.patient;
 
 import com.adcausalrisk.backend.common.BusinessException;
 import com.adcausalrisk.backend.common.ErrorCode;
+import com.adcausalrisk.backend.patient.entity.PatientCardDraftPreview;
 import com.adcausalrisk.backend.patient.entity.PatientFlashCard;
 import com.adcausalrisk.backend.patient.entity.PatientMemo;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,25 +18,34 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.UUID;
 
 @Service
 public class PatientMemoService {
 
     private final PatientMemoRepository memoRepository;
     private final PatientFlashCardRepository cardRepository;
+    private final PatientCardDraftPreviewRepository previewRepository;
     private final PatientSummaryService summary;
+    private final MemoCardExtractor extractor;
+    private final ObjectMapper json;
 
     public PatientMemoService(PatientMemoRepository memoRepository,
                               PatientFlashCardRepository cardRepository,
-                              PatientSummaryService summary) {
+                              PatientCardDraftPreviewRepository previewRepository,
+                              PatientSummaryService summary,
+                              MemoCardExtractor extractor,
+                              ObjectMapper json) {
         this.memoRepository = memoRepository;
         this.cardRepository = cardRepository;
+        this.previewRepository = previewRepository;
         this.summary = summary;
+        this.extractor = extractor;
+        this.json = json;
     }
 
     /**
@@ -88,6 +100,9 @@ public class PatientMemoService {
         // patient then previews freshly generated cards before reviewing them again.
         if (!Objects.equals(previous, saved.getContent())) {
             cardRepository.deleteByMemoId(memoId);
+            // 原文一改，绑定的那批预览草稿就失效了：出处与版本都对不上，
+            // 患者必须重新预览，确认接口也不该再按旧批次发布。
+            previewRepository.deleteByMemoId(memoId);
         }
         return saved;
     }
@@ -97,6 +112,7 @@ public class PatientMemoService {
         requirePatient(principal);
         PatientMemo memo = lockOwnedMemo(memoId, principal);
         cardRepository.deleteByMemoId(memoId);
+        previewRepository.deleteByMemoId(memoId);
         memoRepository.delete(memo);
     }
 
@@ -174,6 +190,26 @@ public class PatientMemoService {
     @Transactional
     public List<PatientFlashCard> generateCardsForMemo(Long memoId, AppUserPrincipal principal,
                                                        String expectedVersion) {
+        return generateCardsForMemo(memoId, principal, null, expectedVersion, null);
+    }
+
+    /**
+     * 确认写卡。{@code previewId} 指向预览时服务端绑定下来的那批草稿，确认只发布那一批。
+     *
+     * <p>不能相信客户端提交的卡片文字：只校验 {@code sourceRef} 在原文里找得到，保留版本和
+     * 出处、把预览答案从「周五」换成「下周一去公园」照样能存进去——患者看到过的卡片被悄悄
+     * 改掉，复习队列里就多了一条他自己没确认过的事实。所以草稿由服务端在预览时落库绑定，
+     * 确认只按 {@code previewId} 取回并原样发布。
+     *
+     * <p>{@code previewed} 只是可选的核对：调用方带上它时，必须与服务端绑定的批次逐条一致，
+     * 不一致直接拒绝（400），不会用它覆盖服务端的那批。
+     *
+     * <p>不带 {@code previewId} 也不带草稿时，沿用原有行为：按当前原文抽取。
+     */
+    @Transactional
+    public List<PatientFlashCard> generateCardsForMemo(Long memoId, AppUserPrincipal principal,
+                                                       String previewId, String expectedVersion,
+                                                       List<MemoCardExtractor.Draft> previewed) {
         requirePatient(principal);
         PatientMemo memo = lockOwnedMemo(memoId, principal);
         if (expectedVersion != null && !expectedVersion.isBlank()
@@ -181,13 +217,21 @@ public class PatientMemoService {
             throw new BusinessException(ErrorCode.MEMO_VERSION_MISMATCH,
                     "备忘原文已修改，请重新预览卡片后再确认");
         }
+        List<MemoCardExtractor.Draft> facts;
+        if (previewId != null && !previewId.isBlank()) {
+            facts = boundPreview(previewId, memoId, principal, memo.getContent(), previewed);
+        } else if (previewed != null && !previewed.isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "确认卡片必须带上预览标识 previewId，请重新预览后再确认");
+        } else {
+            facts = extractor.extract(memo.getContent());
+        }
         cardRepository.deleteByMemoId(memoId);
 
-        List<String[]> facts = extractFacts(memo.getContent());
         List<PatientFlashCard> created = new ArrayList<>();
-        for (String[] pair : facts) {
-            if (pair[0].length() > 500 || pair[1].length() > 500) continue;
-            created.add(cardRepository.saveAndFlush(new PatientFlashCard(memoId, pair[0], pair[1])));
+        for (MemoCardExtractor.Draft draft : facts) {
+            created.add(cardRepository.saveAndFlush(
+                    new PatientFlashCard(memoId, draft.frontText(), draft.backText())));
         }
         if (created.isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "未能从这段备忘中提取出可复习的内容，请改写后再试");
@@ -195,27 +239,118 @@ public class PatientMemoService {
         return created;
     }
 
-    /** 预览结果连同原文版本号，供确认时核对「患者看到的是不是当前原文」。 */
-    public record CardDrafts(String memoVersion, List<String[]> cards) {}
+    /**
+     * 取回预览时绑定下来的草稿批次，并核对它仍对得上「这位患者、这条备忘、这份原文」。
+     *
+     * <p>三步都不能省：previewId 必须属于当前患者和当前备忘（否则别人可以拿自己的预览
+     * 往这条备忘里发卡）；绑定时的原文版本必须仍是当前版本（否则出处已经不成立）；
+     * 调用方若附带了草稿，必须与绑定的那批逐条一致。
+     */
+    private List<MemoCardExtractor.Draft> boundPreview(String previewId, Long memoId,
+                                                       AppUserPrincipal principal, String content,
+                                                       List<MemoCardExtractor.Draft> submitted) {
+        PatientCardDraftPreview bound = previewRepository
+                .findByPreviewIdAndUserIdAndMemoId(previewId, principal.userId(), memoId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR,
+                        "预览草稿已失效，请重新预览后再确认"));
+        if (!memoVersion(content).equals(bound.getMemoVersion())) {
+            throw new BusinessException(ErrorCode.MEMO_VERSION_MISMATCH,
+                    "备忘原文已修改，请重新预览卡片后再确认");
+        }
+        List<MemoCardExtractor.Draft> drafts = readBoundDrafts(bound.getDraftsJson());
+        if (drafts.isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "未能从这段备忘中提取出可复习的内容，请改写后再试");
+        }
+        if (submitted != null && !submitted.isEmpty() && !sameDrafts(submitted, drafts)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "确认的卡片与预览页展示的不一致，请重新预览后再确认");
+        }
+        return drafts;
+    }
+
+    /** 提交的草稿必须与服务端绑定的批次逐条一致：条数、正反面、出处都不能变。 */
+    private static boolean sameDrafts(List<MemoCardExtractor.Draft> submitted,
+                                      List<MemoCardExtractor.Draft> bound) {
+        if (submitted.size() != bound.size()) return false;
+        for (int index = 0; index < bound.size(); index++) {
+            MemoCardExtractor.Draft left = submitted.get(index);
+            MemoCardExtractor.Draft right = bound.get(index);
+            if (left == null) return false;
+            if (!Objects.equals(trimToEmpty(left.frontText()), trimToEmpty(right.frontText()))) return false;
+            if (!Objects.equals(trimToEmpty(left.backText()), trimToEmpty(right.backText()))) return false;
+            if (!Objects.equals(trimToEmpty(left.sourceRef()), trimToEmpty(right.sourceRef()))) return false;
+        }
+        return true;
+    }
+
+    private static String trimToEmpty(String text) {
+        return text == null ? "" : text.trim();
+    }
+
+    /** 绑定批次以 JSON 存放：一个「正面、背面、出处」三元组数组。 */
+    private List<MemoCardExtractor.Draft> readBoundDrafts(String draftsJson) {
+        try {
+            List<Map<String, String>> rows = json.readValue(draftsJson,
+                    new TypeReference<List<Map<String, String>>>() {});
+            List<MemoCardExtractor.Draft> drafts = new ArrayList<>();
+            for (Map<String, String> row : rows) {
+                if (row == null) continue;
+                drafts.add(new MemoCardExtractor.Draft(
+                        row.get("frontText"), row.get("backText"), row.get("sourceRef")));
+            }
+            return drafts;
+        } catch (Exception unreadable) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "预览草稿已失效，请重新预览后再确认");
+        }
+    }
+
+    private String writeDrafts(List<MemoCardExtractor.Draft> drafts) {
+        List<Map<String, String>> rows = new ArrayList<>();
+        for (MemoCardExtractor.Draft draft : drafts) {
+            Map<String, String> row = new LinkedHashMap<>();
+            row.put("frontText", draft.frontText());
+            row.put("backText", draft.backText());
+            row.put("sourceRef", draft.sourceRef());
+            rows.add(row);
+        }
+        try {
+            return json.writeValueAsString(rows);
+        } catch (Exception unwritable) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "卡片内容暂时无法保存，请稍后重试");
+        }
+    }
 
     /**
-     * 只做预览：按当前原文算出候选卡片，但不写库，也不动已有卡片和复习进度。
-     * 患者点「确认」后才会调用 {@link #generateCardsForMemo} 真正替换旧卡，
-     * 这样生成动作在确认之前不会生效。
+     * 预览结果连同原文版本号和预览标识，供确认时核对「患者看到的是不是当前原文」。
+     * cards 里每条都带 sourceRef，预览页据此展示这张卡来自哪句原文。
      */
-    @Transactional(readOnly = true)
+    public record CardDrafts(String previewId, String memoVersion, List<MemoCardExtractor.Draft> cards) {}
+
+    /**
+     * 只做预览：按当前原文算出候选卡片，不动已有卡片和复习进度。
+     *
+     * <p>唯一写入的是这张「预览批次」记录：确认接口只认它，所以预览结果必须由服务端留下
+     * 凭据，否则确认时只能相信客户端提交的文字，改一个字就能把患者看过的答案换掉。
+     * 同一备忘重新预览会替换旧批次，旧 previewId 随即失效。
+     */
+    @Transactional
     public CardDrafts draftCardsForMemo(Long memoId, AppUserPrincipal principal) {
         requirePatient(principal);
         PatientMemo memo = memoRepository.findByIdAndUserId(memoId, principal.userId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "备忘不存在"));
-        List<String[]> facts = extractFacts(memo.getContent()).stream()
-                .filter(pair -> pair[0].length() <= 500 && pair[1].length() <= 500)
-                .toList();
+        List<MemoCardExtractor.Draft> facts = extractor.extract(memo.getContent());
         if (facts.isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR,
                     "未能从这段备忘中提取出可复习的内容，请改写后再试");
         }
-        return new CardDrafts(memoVersion(memo.getContent()), facts);
+        String version = memoVersion(memo.getContent());
+        String previewId = UUID.randomUUID().toString();
+        previewRepository.deleteByMemoId(memoId);
+        previewRepository.saveAndFlush(new PatientCardDraftPreview(
+                previewId, principal.userId(), memoId, version, writeDrafts(facts)));
+        return new CardDrafts(previewId, version, facts);
     }
 
     /**
@@ -230,115 +365,6 @@ public class PatientMemoService {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 不可用", e);
         }
-    }
-
-    private static final int MAX_FACTS = 6;
-
-    private static List<String[]> extractFacts(String content) {
-        List<String[]> results = new ArrayList<>();
-        if (content == null || content.isBlank()) return results;
-
-        String[] sentences = content.split("[。！？.!?;；\\n]+");
-        for (String raw : sentences) {
-            String sent = raw.trim();
-            if (sent.length() < 2) continue;
-
-            String[] qa = parseQuestionAnswer(sent);
-            if (qa != null) {
-                results.add(qa);
-                if (results.size() >= MAX_FACTS) break;
-                continue;
-            }
-
-            // 没有可靠问答结构时整句作为一张「回忆这件事」的卡片。早期实现会把相邻的
-            // 词两两配对成「关于 A，我写了什么？→ B」，把互不相关的片段拼成错误答案，
-            // 所以这里只做整句兜底：宁可少一张卡，也不生成答非所问的内容。
-            if (results.size() < MAX_FACTS && sent.length() <= 120) {
-                results.add(new String[] { "我记下的这件事是什么？", sent });
-            }
-        }
-
-        if (results.isEmpty()) {
-            String trimmed = content.trim();
-            if (!trimmed.isBlank()) {
-                results.add(new String[] { "我记下的这件事是什么？", trimmed });
-            }
-        }
-
-        return results;
-    }
-
-    /**
-     * 出现这些疑问词说明句子本身在提问，不能再拿它当「X 在 Y」这类陈述句去拆答案。
-     * 「哪」同时覆盖「哪里 / 哪儿 / 哪个 / 哪些」。
-     */
-    private static final Set<String> QUESTION_WORDS = Set.of("哪", "什么", "谁", "怎么", "多少");
-
-    /**
-     * 按可靠度从高到低尝试抽取一组问答：
-     * 1. 冒号结构「标题：内容」是最明确的写法，优先于任何句式推断；
-     * 2. 「X 在 Y（里/中/上/下/处/旁边）」地点陈述句；
-     * 3. 「我 要/需要/… X」计划陈述句。
-     * 都不匹配时返回 null，由整句兜底接管，避免拼出答非所问的卡片。
-     */
-    private static String[] parseQuestionAnswer(String sentence) {
-        String[] colon = splitByColon(sentence);
-        if (colon != null) return colon;
-
-        String[] place = matchPlaceStatement(sentence);
-        if (place != null) return place;
-
-        return matchIntentStatement(sentence);
-    }
-
-    /**
-     * 「标题：内容」按冒号切分。旧实现在句式正则之后才处理冒号，导致
-     * 「棋盒放在哪里：蓝色帆布袋」被地点句式抢走，答案只剩下「哪」。
-     */
-    private static String[] splitByColon(String sentence) {
-        if (!sentence.contains("：") && !sentence.contains(":")) return null;
-        String[] parts = sentence.split("[:：]", 2);
-        String head = parts[0].trim();
-        String tail = parts[1].trim();
-        if (head.length() < 2 || tail.isBlank()) return null;
-        if (head.length() > 120 || tail.length() > 120) return null;
-        // 「16:00」「http://…」这类冒号不是问答结构，切开会得到毫无意义的卡片。
-        if (Character.isDigit(head.charAt(head.length() - 1)) && Character.isDigit(tail.charAt(0))) return null;
-        if (tail.startsWith("//")) return null;
-        String question = head.endsWith("？") || head.endsWith("?") ? head : head + "？";
-        return new String[] { question, tail };
-    }
-
-    private static final Pattern PLACE_STATEMENT = Pattern.compile(
-            "^(.{1,60}?)在(.{1,40}?)(?:里面|里|中|上|下|处|旁边|内)$");
-
-    private static String[] matchPlaceStatement(String sentence) {
-        if (containsQuestionWord(sentence)) return null;
-        Matcher m = PLACE_STATEMENT.matcher(sentence);
-        if (!m.matches()) return null;
-        String subject = m.group(1).trim();
-        String location = m.group(2).trim();
-        if (subject.isBlank() || location.isBlank()) return null;
-        if (containsQuestionWord(subject) || containsQuestionWord(location)) return null;
-        return new String[] { subject + "在哪里？", location };
-    }
-
-    private static final Pattern INTENT_STATEMENT = Pattern.compile(
-            "^我(?:要|需要|得|会|打算|计划|想)(.{1,80})$");
-
-    private static String[] matchIntentStatement(String sentence) {
-        Matcher m = INTENT_STATEMENT.matcher(sentence);
-        if (!m.matches()) return null;
-        String action = m.group(1).trim();
-        if (action.isBlank() || containsQuestionWord(action)) return null;
-        return new String[] { "我接下来要做什么？", action };
-    }
-
-    private static boolean containsQuestionWord(String text) {
-        for (String word : QUESTION_WORDS) {
-            if (text.contains(word)) return true;
-        }
-        return false;
     }
 
     @Transactional

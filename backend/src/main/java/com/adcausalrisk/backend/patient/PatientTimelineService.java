@@ -7,6 +7,7 @@ import com.adcausalrisk.backend.common.ErrorCode;
 import com.adcausalrisk.backend.followup.FollowUpPlanRepository;
 import com.adcausalrisk.backend.followup.entity.FollowUpPlan;
 import com.adcausalrisk.backend.security.AppUserPrincipal;
+import com.adcausalrisk.backend.subject.SubjectAccessPolicy;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -39,15 +40,18 @@ public class PatientTimelineService {
     private final PatientSummaryService summary;
     private final RiskAssessmentRepository assessmentRepository;
     private final FollowUpPlanRepository followUpRepository;
+    private final SubjectAccessPolicy accessPolicy;
 
     public PatientTimelineService(JdbcTemplate jdbc,
                                   PatientSummaryService summary,
                                   RiskAssessmentRepository assessmentRepository,
-                                  FollowUpPlanRepository followUpRepository) {
+                                  FollowUpPlanRepository followUpRepository,
+                                  SubjectAccessPolicy accessPolicy) {
         this.jdbc = jdbc;
         this.summary = summary;
         this.assessmentRepository = assessmentRepository;
         this.followUpRepository = followUpRepository;
+        this.accessPolicy = accessPolicy;
     }
 
     public record TimelineValue(String label, String value) {}
@@ -83,7 +87,11 @@ public class PatientTimelineService {
                 subjectId);
 
         List<TimelineEvent> events = new ArrayList<>();
-        events.addAll(visitEvents(subjectId));
+        // 原始量表值与档案详情（SubjectDetail.visits）共用同一个判定：患者摘要只讲结论，
+        // 不能因为换了页面（时间轴）就绕开原始量表权限。未通过时访视事件只保留日期与版本，
+        // 不再携带 MMSE / MoCA / CDR-SB。
+        boolean rawScores = accessPolicy.canReadRawScores(principal, subjectId);
+        events.addAll(visitEvents(subjectId, rawScores));
         events.addAll(assessmentEvents(subjectId));
         events.addAll(followUpEvents(subjectId));
         events.sort(Comparator.comparing(TimelineEvent::occurredAt).reversed());
@@ -102,11 +110,16 @@ public class PatientTimelineService {
     /**
      * 只取当前版本（{@code is_current = TRUE}）。被更正掉的旧版本不在时间线上重复出现，
      * 患者看到的「那次访视」永远只有一份，更正信息用状态标签说明。
+     *
+     * <p>{@code rawScores} 为 {@code false} 时连查询列都不取原始量表值，避免出现「查询了但
+     * 拼装时忘了过滤」这类回退。
      */
-    private List<TimelineEvent> visitEvents(Long subjectId) {
+    private List<TimelineEvent> visitEvents(Long subjectId, boolean rawScores) {
+        String columns = rawScores
+                ? "visit_code, visit_date, raw_mmse, raw_moca, raw_cdr_sb, mmse, moca, cdr_sb, version_no"
+                : "visit_code, visit_date, NULL, NULL, NULL, NULL, NULL, NULL, version_no";
         return jdbc.query(
-                "SELECT visit_code, visit_date, raw_mmse, raw_moca, raw_cdr_sb,"
-                        + " mmse, moca, cdr_sb, version_no"
+                "SELECT " + columns
                         + " FROM visit WHERE subject_id = ? AND is_current = TRUE"
                         + " ORDER BY visit_date DESC, id DESC",
                 (rs, rowNum) -> {
@@ -115,11 +128,14 @@ public class PatientTimelineService {
                     addValue(values, "MoCA", rs.getString(4), rs.getBigDecimal(7));
                     addValue(values, "CDR-SB", rs.getString(5), rs.getBigDecimal(8));
                     int versionNo = rs.getInt(9);
+                    String detail = !rawScores
+                            ? "本次访视已完成，量表结果以医生说明为准。"
+                            : values.isEmpty() ? "本次访视没有记录量表结果。" : "本次访视的量表记录。";
                     return new TimelineEvent(
                             "VISIT",
                             atStartOfDay(rs.getDate(2).toLocalDate()),
                             "访视 " + rs.getString(1),
-                            values.isEmpty() ? "本次访视没有记录量表结果。" : "本次访视的量表记录。",
+                            detail,
                             versionNo > 1 ? "已更正（第 " + versionNo + " 版）" : null,
                             values);
                 },

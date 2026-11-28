@@ -1,0 +1,426 @@
+package com.adcausalrisk.backend.patient;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+
+import com.adcausalrisk.backend.common.BusinessException;
+import com.sun.net.httpserver.HttpServer;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+
+/**
+ * 抽取器与语义侧的配合规则，纯单元测试，不起 Spring。
+ *
+ * <p>核心约束只有一条：规则优先，语义只补规则漏掉的句子。模型把字段配错时，最坏结果是
+ * 少一张卡；绝不能把规则已经抽对的问答改坏。
+ */
+class MemoCardExtractorTest {
+
+    private static MemoSemanticClient stub(List<MemoSemanticClient.Span> spans) {
+        return new MemoSemanticClient("") {
+            @Override
+            public List<Span> spans(String text) {
+                return spans;
+            }
+        };
+    }
+
+    /** 语义服务未配置：只跑规则，确认规则自身就能答对，不靠模型兜底。 */
+    private static MemoSemanticClient offlineSemantic() {
+        return new MemoSemanticClient("");
+    }
+
+    @Test
+    void rulesDecideFirstEvenWhenSemanticBackendHasAnAnswer() {
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("PLACE", "玄关柜上"))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("钥匙搁在玄关柜上");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo("钥匙搁在哪里？");
+        assertThat(drafts.get(0).backText()).isEqualTo("玄关柜上");
+    }
+
+    @Test
+    void semanticSpansFillInSentencesTheRulesMiss() {
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("TIME", "周五"))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("周五去趟银行");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo("这件事什么时候要做？");
+        assertThat(drafts.get(0).backText()).isEqualTo("周五");
+        assertThat(drafts.get(0).sourceRef()).isEqualTo("周五去趟银行");
+    }
+
+    @Test
+    void disabledSemanticBackendLeavesRulesAndFallbackUntouched() {
+        MemoCardExtractor extractor = new MemoCardExtractor(new MemoSemanticClient(""));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("今天天气不错");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).backText()).isEqualTo("今天天气不错");
+    }
+
+    @Test
+    void semanticClientReturnsNothingWhenNoUrlIsConfigured() {
+        assertThat(new MemoSemanticClient("").enabled()).isFalse();
+        assertThat(new MemoSemanticClient("").spans("明天上午去药房取药")).isEmpty();
+    }
+
+    @Test
+    void malformedSemanticResponseIsIgnoredInsteadOfThrowing() {
+        MemoSemanticClient client = new MemoSemanticClient("http://127.0.0.1:1");
+
+        assertThat(client.parse("not json")).isEmpty();
+        assertThat(client.parse("{\"spans\":{}}")).isEmpty();
+        assertThat(client.parse("{\"spans\":[{\"label\":\"TIME\",\"text\":\"明天\"}]}"))
+                .containsExactly(new MemoSemanticClient.Span("TIME", "明天"));
+    }
+
+    @Test
+    void blankMemoYieldsNoCards() {
+        MemoCardExtractor extractor = new MemoCardExtractor(new MemoSemanticClient(""));
+
+        assertThat(extractor.extract("   ")).isEmpty();
+        assertThat(extractor.extract(null)).isEmpty();
+    }
+
+    /**
+     * uie-nano 实测会把疑问句里的「哪里」当成地点。这类片段必须被丢掉，
+     * 否则卡片会变成「地点在哪里？→ 哪里」——比整句兜底更糟。
+     */
+    @Test
+    void semanticSpanThatIsAQuestionWordIsRejected() {
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("PLACE", "哪里"))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("我的血压计在哪里");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).backText()).isEqualTo("我的血压计在哪里");
+    }
+
+    @Test
+    void semanticSpanAbsentFromTheSentenceIsRejected() {
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("ITEM", "钥匙"))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("今天天气不错");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+    }
+
+    /**
+     * 模型把「血压」标成 CONDITION 时，三道基础校验都拦不住（它在原文里、不是疑问词、
+     * 也不长）。这类错配患者读卡片时看不出问题，所以条件/否定还要求原句真的带线索词。
+     */
+    @Test
+    void semanticSpanWithAWrongLabelCueIsRejected() {
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("CONDITION", "血压"))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("血压有点高");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).backText()).isEqualTo("血压有点高");
+    }
+
+    /** 「万一/若」也是条件线索词，带「就/则」时由规则自己拆，条件与动作都不丢。 */
+    @Test
+    void conditionCueWithoutACommaIsSplitByTheRuleNotByTheSemanticSpan() {
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("CONDITION", "发烧"))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("万一发烧就吃退烧药");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo("发烧时该怎么做？");
+        assertThat(drafts.get(0).backText()).isEqualTo("吃退烧药");
+    }
+
+    /**
+     * 评审复测的场景：语义侧只给出动作片段时，绝不能用它拼出一张无条件的卡片。
+     * 「如果下雨不要去公园」拆不出完整的一对，就整句保留，条件与动作都在。
+     */
+    @Test
+    void anActionOnlySpanNeverTurnsAConditionalIntoAnUnconditionalCard() {
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("NEGATION", "去公园"))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("如果下雨不要去公园");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText())
+                .as("拆不出条件与动作时必须整句保留，不能退化成「我要避免做什么？」")
+                .isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).backText()).isEqualTo("如果下雨不要去公园");
+    }
+
+    /** 语义侧只给出条件片段时同理：动作会彻底消失，所以同样退回整句。 */
+    @Test
+    void aConditionOnlySpanNeverPublishesACardWithoutItsAction() {
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("CONDITION", "下雨"))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("如果下雨不要去公园");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).backText()).isEqualTo("如果下雨不要去公园");
+    }
+
+    @Test
+    void conditionalSentenceWithoutThenKeepsItsCondition() {
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("如果下雨，不要去公园");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo("下雨时该怎么做？");
+        assertThat(drafts.get(0).backText()).isEqualTo("不要去公园");
+    }
+
+    /**
+     * 评审用 144 字备忘复现：整句兜底被 120 字上限截断，句尾的「不要独自离开」整段消失。
+     * 条件句既然拆不出「条件 + 动作」，就必须一个字不少地整句保留。
+     *
+     * <p>备忘长度固定为 144 字，与评审复现时的输入一致；整句中间没有任何句号，
+     * 所以它是一整句，只会走条件兜底这一条路。
+     */
+    @Test
+    void aLongConditionalSentenceKeepsItsTailInsteadOfBeingTruncated() {
+        String memo = "如果" + "头晕的时候就坐下缓一缓再站起来".repeat(9) + "更不要独自离开";
+        assertThat(memo.length()).as("复现条件：与评审一致的 144 字，长于旧实现的 120 字上限").isEqualTo(144);
+
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract(memo);
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).backText())
+                .as("整句兜底不能截断，句尾的限制条件必须保留")
+                .isEqualTo(memo)
+                .endsWith("更不要独自离开");
+    }
+
+    /**
+     * 超过卡片上限的整句同样不能截断：截断与丢弃都会让患者以为这句话已经被记下来了。
+     * 唯一安全的出口是明确拒绝，让患者自己改短原文。
+     */
+    @Test
+    void anOversizedWholeSentenceIsRefusedInsteadOfTruncated() {
+        String memo = "如果" + "头晕的时候先坐下休息并且把当天吃过的药都记下来".repeat(30);
+        assertThat(memo.length()).as("复现条件：超过单张卡片 500 字上限").isGreaterThan(500);
+
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        assertThatThrownBy(() -> extractor.extract(memo))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("500")
+                .hasMessageContaining("重新预览");
+    }
+
+    @Test
+    void timeKeepsTheMinutesInsteadOfTruncatingAtTheHour() {
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("明天上午9点30分复诊");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo("什么时候复诊？");
+        assertThat(drafts.get(0).backText()).isEqualTo("明天上午9点30分");
+    }
+
+    @Test
+    void colonTimeAlsoKeepsTheMinutes() {
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("明天9:30去医院抽血");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo("什么时候去医院抽血？");
+        assertThat(drafts.get(0).backText()).isEqualTo("明天9:30");
+    }
+
+    /**
+     * 条件句的参数矩阵：线索词、有没有「就/则」、动作是肯定还是否定，都不能让条件或极性丢掉。
+     * 每一行都是一条虚构备忘，答案是患者复习时会看到的那一面。
+     */
+    @ParameterizedTest(name = "{0} → {1} / {2}")
+    @CsvSource(
+            delimiter = '|',
+            value = {
+                "如果下雨，不要去公园|下雨时该怎么做？|不要去公园",
+                "如果下雨，就带伞|下雨时该怎么做？|带伞",
+                "要是明天下雨，记得带伞|明天下雨时该怎么做？|记得带伞",
+                "万一头晕，马上坐下|头晕时该怎么做？|马上坐下",
+                "若血压超过180，立刻联系医生|血压超过180时该怎么做？|立刻联系医生",
+                "一旦发烧，先量体温|发烧时该怎么做？|先量体温",
+                "假如忘记吃药，第二天不要补双份|忘记吃药时该怎么做？|第二天不要补双份",
+                "如果哪里不舒服，就告诉我|哪里不舒服时该怎么做？|告诉我",
+                "下雨的话，不要去公园|下雨时该怎么做？|不要去公园",
+                "下雨的话就不要去公园|下雨时该怎么做？|不要去公园",
+                "如果下雨的话，记得带伞|下雨时该怎么做？|记得带伞",
+                "下雨的话，那件外套要带上|下雨时该怎么做？|那件外套要带上",
+                "万一发烧就吃退烧药|发烧时该怎么做？|吃退烧药"
+            })
+    void conditionKeepsBothItsClauseAndItsPolarity(String memo, String question, String answer) {
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract(memo);
+
+        assertThat(drafts).as("条件句必须整句出卡，不能被逗号拆成两半").hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(question);
+        assertThat(drafts.get(0).backText()).isEqualTo(answer);
+        assertThat(drafts.get(0).sourceRef()).isEqualTo(memo);
+    }
+
+    /**
+     * 时间表达的参数矩阵：日期 + 时段 + 钟点 + 分钟、冒号格式、「半」，答案都不能被截断。
+     * 只比对答案那一面，问句用动作原文组装，患者读起来才像人话。
+     */
+    @ParameterizedTest(name = "{0} → {1}")
+    @CsvSource(
+            delimiter = '|',
+            value = {
+                "明天上午9点30分复诊|明天上午9点30分",
+                "明天9:30去医院抽血|明天9:30",
+                "下周三下午2点去社区医院抽血|下周三下午2点",
+                "11月30日上午9点30分到门诊复查|11月30日上午9点30分",
+                "明天上午9点半去药房取药|明天上午9点半",
+                "今天下午3点交材料|今天下午3点"
+            })
+    void timeAnswerKeepsEveryPartThePatientWrote(String memo, String answer) {
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract(memo);
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).backText()).isEqualTo(answer);
+        assertThat(drafts.get(0).frontText()).as("问句里要保留患者写的动作").contains("什么时候");
+    }
+
+    @Test
+    void overlongSemanticSpanIsRejected() {
+        String tooLong = "很".repeat(41);
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(stub(List.of(new MemoSemanticClient.Span("TIME", tooLong))));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract(tooLong + "出门");
+
+        assertThat(drafts.get(0).frontText()).isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+    }
+
+    /**
+     * 与 uie-nano 对照用的同一组虚构备忘，钉住「新规则能结构化到哪一步」。
+     *
+     * <p>数字来自 scripts/compare_memo_extraction.py 的同组样例：旧的三条整句正则在 12 条里
+     * 只覆盖 3 条，字段抽取覆盖 11 条，剩下的那条原文本身是疑问句，按设计退回整句兜底。
+     * 改抽取逻辑时这个数字若变化，说明覆盖面动了，必须重新对照模型一侧再下结论。
+     */
+    @Test
+    void fieldRulesCoverElevenOfTwelveBaselineMemos() {
+        MemoCardExtractor extractor = new MemoCardExtractor(new MemoSemanticClient(""));
+        List<String> memos =
+                List.of(
+                        "复诊时间：11月30日上午",
+                        "钥匙搁在玄关柜上",
+                        "下周三上午九点去社区医院抽血",
+                        "血压计放在客厅电视柜下面",
+                        "复诊要带医保卡、病历本和化验单",
+                        "不要空腹吃这个药",
+                        "明天上午去药房取药，顺便把血压记录下来",
+                        "每天早晚各量一次血压",
+                        "如果头晕就马上坐下休息",
+                        "别忘记带伞",
+                        "我要每天吃降压药",
+                        "我的血压计在哪里");
+
+        long structured =
+                memos.stream()
+                        .filter(
+                                memo ->
+                                        extractor.extract(memo).stream()
+                                                .anyMatch(
+                                                        draft ->
+                                                                !MemoCardExtractor
+                                                                        .WHOLE_SENTENCE_QUESTION
+                                                                        .equals(draft.frontText())))
+                        .count();
+
+        assertThat(structured).as("12 条基线备忘里应覆盖 11 条，只有疑问句那条兜底").isEqualTo(11);
+    }
+
+    /**
+     * 语义侧真正走一次 HTTP：前面几个用例都用桩替代了客户端，这里要确认请求体、路径和
+     * 返回解析真的和 Python 服务对得上。否则「语义兜底」只是纸面接通。
+     */
+    @Test
+    void semanticClientReadsSpansFromTheHttpContract() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        AtomicReference<String> received = new AtomicReference<>();
+        server.createContext(
+                "/api/memo/v1/extract",
+                exchange -> {
+                    try (exchange) {
+                        received.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                        byte[] reply =
+                                "{\"spans\":[{\"label\":\"TIME\",\"text\":\"周五\"}]}"
+                                        .getBytes(StandardCharsets.UTF_8);
+                        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                        exchange.sendResponseHeaders(200, reply.length);
+                        exchange.getResponseBody().write(reply);
+                    } catch (IOException disconnected) {
+                        // 断言失败时客户端可能提前断开，这里不掩盖真正的断言结果。
+                    }
+                });
+        server.start();
+        try {
+            MemoSemanticClient client =
+                    new MemoSemanticClient("http://127.0.0.1:" + server.getAddress().getPort());
+            assertThat(client.spans("周五去趟银行"))
+                    .containsExactly(new MemoSemanticClient.Span("TIME", "周五"));
+            assertThat(received.get()).contains("周五去趟银行");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * 服务不可达时整条链路必须退化成规则抽取，不能抛异常也不能少出卡。
+     * 端口先占用再释放，保证测的是一个真的没人监听的地址。
+     */
+    @Test
+    void unavailableSemanticServiceDegradesToRules() throws IOException {
+        int port;
+        try (ServerSocket socket = new ServerSocket(0)) {
+            port = socket.getLocalPort();
+        }
+        MemoCardExtractor extractor =
+                new MemoCardExtractor(new MemoSemanticClient("http://127.0.0.1:" + port));
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract("周五去趟银行");
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).backText()).isEqualTo("周五去趟银行");
+    }
+}

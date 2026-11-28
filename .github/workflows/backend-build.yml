@@ -15,6 +15,25 @@ jobs:
           cache-dependency-path: backend/pom.xml
       # Tests run on H2 in MySQL compatibility mode, so no database service is required.
       # Flyway migrates the schema during the test context startup.
+      #
+      # The wrapper pins the Maven distribution and downloads it on first use. A single
+      # wget failure against repo.maven.apache.org used to fail the whole job in ten
+      # seconds, long before any test ran, so the distribution is cached across runs and
+      # the first download is retried.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper/dists
+          key: maven-wrapper-${{ hashFiles('backend/.mvn/wrapper/maven-wrapper.properties') }}
+      - name: Download the pinned Maven distribution
+        working-directory: backend
+        shell: bash
+        run: |
+          for attempt in 1 2 3 4; do
+            if ./mvnw -B -ntp -v; then exit 0; fi
+            echo "Maven wrapper download attempt ${attempt} failed, retrying"
+            sleep $((attempt * 10))
+          done
+          exit 1
       - run: ./mvnw -B -ntp verify
         working-directory: backend
       - uses: actions/setup-python@v5
