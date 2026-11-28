@@ -254,7 +254,10 @@ class MemoCardExtractor {
 
     private boolean addIfNew(List<Draft> results, Set<String> seen, Draft draft) {
         if (draft == null) return false;
-        if (draft.frontText().length() > 500 || draft.backText().length() > 500) return false;
+        // 上限只认 MAX_CARD_TEXT，避免这里和 requireCardFits 各写一个数字日后漂移。
+        if (draft.frontText().length() > MAX_CARD_TEXT || draft.backText().length() > MAX_CARD_TEXT) {
+            return false;
+        }
         String key = draft.frontText() + '\u0000' + draft.backText();
         if (!seen.add(key)) return false;
         results.add(draft);

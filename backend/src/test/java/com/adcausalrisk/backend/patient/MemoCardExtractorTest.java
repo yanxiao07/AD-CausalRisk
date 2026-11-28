@@ -200,15 +200,14 @@ class MemoCardExtractorTest {
     /**
      * 评审用 144 字备忘复现：整句兜底被 120 字上限截断，句尾的「不要独自离开」整段消失。
      * 条件句既然拆不出「条件 + 动作」，就必须一个字不少地整句保留。
+     *
+     * <p>备忘长度固定为 144 字，与评审复现时的输入一致；整句中间没有任何句号，
+     * 所以它是一整句，只会走条件兜底这一条路。
      */
     @Test
     void aLongConditionalSentenceKeepsItsTailInsteadOfBeingTruncated() {
-        String memo =
-                "如果最近这段时间总是觉得头晕而且夜里睡不好觉白天没有精神走路的时候有点发飘"
-                        + "有时候还会心慌胸口闷得慌吃饭也没什么胃口天气一变就更难受每次出门前"
-                        + "先坐下缓一缓再站起来那出门的时候一定要有家里人陪着慢慢走不要一个人去"
-                        + "人多的地方也不要在外面待太久更不要独自离开";
-        assertThat(memo.length()).as("复现条件：长于旧实现的 120 字上限").isGreaterThan(120);
+        String memo = "如果" + "头晕的时候就坐下缓一缓再站起来".repeat(9) + "更不要独自离开";
+        assertThat(memo.length()).as("复现条件：与评审一致的 144 字，长于旧实现的 120 字上限").isEqualTo(144);
 
         MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
 
