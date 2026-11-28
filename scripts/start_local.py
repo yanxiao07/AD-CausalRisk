@@ -1,6 +1,7 @@
 """Start the local Windows application and open its login page."""
 
 import argparse
+import base64
 import hashlib
 import json
 import msvcrt
@@ -12,7 +13,7 @@ import socket
 import subprocess
 import sys
 import time
-from urllib.request import ProxyHandler, build_opener
+from urllib.request import ProxyHandler, Request, build_opener
 import webbrowser
 
 
@@ -37,6 +38,13 @@ def available(port):
 
 def responds(url):
     with HTTP.open(url, timeout=2) as response:
+        return response.status == 200
+
+
+def model_responds(port, token):
+    request = Request(f"http://127.0.0.1:{port}/api/research-table/v1/models",
+                      headers={"Authorization": f"Bearer {token}"})
+    with HTTP.open(request, timeout=2) as response:
         return response.status == 200
 
 
@@ -104,6 +112,28 @@ def model_config(config):
     return manifest, python, trusted
 
 
+def local_credential(data, *, protect):
+    # The persisted token can only be reopened by the Windows account that started Java.
+    operation = "Protect" if protect else "Unprotect"
+    script = (
+        "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Security; "
+        "$data=[Convert]::FromBase64String([Console]::In.ReadToEnd()); "
+        f"$result=[Security.Cryptography.ProtectedData]::{operation}($data,$null,'CurrentUser'); "
+        "[Console]::Write([Convert]::ToBase64String($result))"
+    )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        input=base64.b64encode(data).decode("ascii"), capture_output=True, text=True, check=True,
+    )
+    return base64.b64decode(result.stdout, validate=True)
+
+
+def save_state(path, state):
+    pending = path.with_suffix(".tmp")
+    pending.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    pending.replace(path)
+
+
 def stop_child(child):
     if child.poll() is None:
         subprocess.run(["taskkill.exe", "/PID", str(child.pid), "/T", "/F"],
@@ -111,32 +141,57 @@ def stop_child(child):
         child.wait(timeout=15)
 
 
-def start_model(model, python_port, logs, snapshot_dir, children):
+def start_model(model, token, python_port, log, snapshot_dir, children):
     if not available(python_port):
         raise RuntimeError(f"模型端口 {python_port} 已被占用。")
     print("正在启动医生预测所需的模型服务…", flush=True)
     manifest, python, trusted = model
-    token = secrets.token_hex(32)
-    lock = hashlib.sha256(
-        (ROOT / "research_runtime/requirements.lock").read_bytes().replace(b"\r\n", b"\n")
-    ).hexdigest()
     handshake = snapshot_dir.parent / "dynamic-host-handshake.json"
     previous = handshake.stat().st_mtime_ns if handshake.is_file() else None
     child = launch([
         str(python), "-B", "-m", "research_runtime.dynamic_host",
         "--host", "127.0.0.1", "--port", str(python_port), "--manifest", str(manifest),
         "--trusted-manifest-sha256", trusted, "--snapshot-dir", str(snapshot_dir),
-    ], ROOT, logs / "python.log", dict(ENV, RESEARCH_TABLE_TEST_TOKEN=token))
+    ], ROOT, log, dict(ENV, RESEARCH_TABLE_TEST_TOKEN=token))
     children[python_port] = child
-    wait_until(child, logs / "python.log", lambda: (
+    wait_until(child, log, lambda: (
         handshake.is_file() and handshake.stat().st_mtime_ns != previous
         and not available(python_port) and owns_ports({str(python_port): child.pid})
+        and model_responds(python_port, token)
     ))
-    return [
-        f"--research.table.base-url=http://127.0.0.1:{python_port}",
-        f"--research.model.manifest-path={manifest}", f"--research.model.trusted-manifest-sha256={trusted}",
-        f"--research.model.software-lock-sha256={lock}",
-    ], token
+
+
+def model_running(state, port):
+    pid = state["listeners"].get(str(port))
+    return bool(pid and not available(port) and owns_ports({str(port): pid}))
+
+
+def snapshot_dir(preview, logs):
+    return (logs if preview else RUNTIME / "rehearsal-model") / "snapshots"
+
+
+def recover_model(state, state_path, preview, port):
+    recovery = state.get("modelRecovery")
+    if recovery is None:
+        raise RuntimeError("此实例由旧版脚本启动，需要重启一次以启用模型恢复。")
+    model = model_config(read_config())
+    if model is None or model[2] != recovery["manifestSha256"]:
+        raise RuntimeError("当前模型清单与运行中的 Java 配置不一致。")
+    encrypted = base64.b64decode(recovery["protectedToken"], validate=True)
+    token = local_credential(encrypted, protect=False).decode("ascii")
+    logs = Path(state["logs"])
+    log = logs / f"python-recovery-{secrets.token_hex(6)}.log"
+    children = {}
+    try:
+        start_model(model, token, port, log, snapshot_dir(preview, logs), children)
+        state = dict(state, listeners={**state["listeners"], str(port): children[port].pid},
+                     modelLog=str(log))
+        save_state(state_path, state)
+        return state
+    except BaseException:
+        if port in children:
+            stop_child(children[port])
+        raise
 
 
 def build_app(config):
@@ -183,11 +238,16 @@ def start(model, config, preview, ports, database):
     ]
     children = {}
     prediction = False
+    recovery = None
     try:
         if model:
-            snapshot_dir = (logs if preview else RUNTIME / "rehearsal-model") / "snapshots"
             try:
-                model_args, token = start_model(model, python_port, logs, snapshot_dir, children)
+                lock = hashlib.sha256(
+                    (ROOT / "research_runtime/requirements.lock").read_bytes().replace(b"\r\n", b"\n")
+                ).hexdigest()
+                token = secrets.token_hex(32)
+                encrypted = local_credential(token.encode("ascii"), protect=True)
+                start_model(model, token, python_port, logs / "python.log", snapshot_dir(preview, logs), children)
             except (RuntimeError, OSError, subprocess.SubprocessError) as error:
                 if preview:
                     raise
@@ -196,9 +256,16 @@ def start(model, config, preview, ports, database):
                     stop_child(child)
                 print(f"模型未就绪，继续打开联调档案。{error}", flush=True)
             else:
-                java_args.extend(model_args)
+                manifest, _, trusted = model
+                java_args.extend([
+                    f"--research.table.base-url=http://127.0.0.1:{python_port}",
+                    f"--research.model.manifest-path={manifest}",
+                    f"--research.model.trusted-manifest-sha256={trusted}",
+                    f"--research.model.software-lock-sha256={lock}",
+                ])
                 java_env["SPRING_APPLICATION_JSON"] = json.dumps({"research": {"table": {"bearer-token": token}}})
                 prediction = True
+                recovery = {"manifestSha256": trusted, "protectedToken": base64.b64encode(encrypted).decode("ascii")}
         java_args.append(f"--research.care.prediction-enabled={str(prediction).lower()}")
         children[java_port] = launch(java_args, ROOT / "backend", logs / "java.log", java_env)
         wait_until(children[java_port], logs / "java.log", lambda: responds(f"http://127.0.0.1:{java_port}/api/auth/csrf"))
@@ -211,7 +278,7 @@ def start(model, config, preview, ports, database):
         if not owns_ports(listeners):
             raise RuntimeError("服务端口与启动进程不一致。")
         return {"database": database, "prediction": prediction, "logs": str(logs),
-                "listeners": listeners}
+                "listeners": listeners, "modelRecovery": recovery}
     except BaseException:
         for child in reversed(list(children.values())):
             stop_child(child)
@@ -242,6 +309,11 @@ def main():
         if same_instance(state, ports, login):
             if state.get("database") != database:
                 raise RuntimeError("旧版实例仍在运行。请先停止旧版实例，再启动新版联调库。")
+            if not args.care_only and state["prediction"] and not model_running(state, ports[2]):
+                try:
+                    state = recover_model(state, state_path, args.validation_preview, ports[2])
+                except (KeyError, RuntimeError, OSError, TypeError, ValueError, subprocess.SubprocessError) as error:
+                    print(f"模型恢复失败。{error}", flush=True)
         else:
             config = {}
             model = None
@@ -256,14 +328,14 @@ def main():
             if args.validation_preview and not model:
                 raise RuntimeError("验证演练需要本机模型配置。")
             state = start(model, config, args.validation_preview, ports, database)
-            state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            save_state(state_path, state)
     label = ("临时验证演练（重启清空）" if args.validation_preview
              else f"本机联调（重启保留）\n数据文件 {RUNTIME / 'adcr_care_sandbox.mv.db'}")
-    model_ready = state["prediction"] and not available(ports[2]) and owns_ports({
-        str(ports[2]): state["listeners"][str(ports[2])]
-    })
+    model_ready = state["prediction"] and model_running(state, ports[2])
     status = "已启动" if model_ready else "未就绪，可继续建档和查看已有结果"
     print(f"已启动 {label}\n模型服务{status}\n{login}\n运行日志 {state['logs']}", flush=True)
+    if state.get("modelLog"):
+        print(f"模型恢复日志 {state['modelLog']}", flush=True)
     if not args.no_browser:
         webbrowser.open(login)
 

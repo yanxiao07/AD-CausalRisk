@@ -98,38 +98,27 @@ class ValidationReportService {
     record Report(String id, String project, String artifactSha256, String snapshotSha256, Instant createdAt,
                   String method, int includedCases, String status, String reason, Metrics metrics,
                   String versionReviewState) {}
-    private record Stored(String enrollmentIds, String report) {}
-
     public Report latest(AppUserPrincipal actor, Scope scope) {
         scope.validate();
-        var grants = cohort.projectGrants(actor, scope.project());
-        try (var stored = jdbc.queryForStream("""
-                SELECT enrollment_ids_json,report_json FROM validation_cohort_report
-                WHERE researcher_id=? AND project_code=? AND artifact_sha256=?
-                ORDER BY created_at DESC,id DESC
-                """, (rs, row) -> new Stored(rs.getString(1), rs.getString(2)),
-                actor.userId(), scope.project(), scope.artifactSha256())) {
-            return stored.filter(row -> grants.containsAll(readIds(row.enrollmentIds())))
-                    .map(row -> readReport(row.report())).findFirst().orElse(null);
-        }
+        return transaction.execute(status -> {
+            var snapshot = currentSnapshot(actor, scope);
+            if (snapshot.cases().isEmpty()) return null;
+            requireGrants(actor, scope, snapshot.cases().stream().map(BoundCase::caseCode).toList());
+            // Creation order is not the current cohort: reauthorization may reuse an
+            // older immutable report. Use the same full snapshot identity as run().
+            return find(actor, scope, sha256(write(snapshot)));
+        });
     }
 
     public Report run(AppUserPrincipal actor, Scope scope) {
         scope.validate();
-        var cases = cohort.projectCases(actor, scope.project(), CASE_LIMIT + 1);
-        if (cases.size() > CASE_LIMIT) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "此项目超过单次验证容量");
-        }
-        var selected = cases.stream().filter(item -> scope.artifactSha256().equals(item.artifactSha256())
-                && item.adRisk() != null && item.inputSha256() != null && item.indexDate() != null).toList();
-        if (selected.isEmpty()) {
+        var snapshot = currentSnapshot(actor, scope);
+        var bound = snapshot.cases();
+        if (bound.isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "当前账号在此项目和版本下没有可验证的预测");
         }
-        var bound = selected.stream().map(item -> new BoundCase(item.caseCode(), item.inputSha256(),
-                item.indexDate().toString(), item.observedDate() == null ? null : item.observedDate().toString(),
-                new Sample(item.outcome24m(), item.adRisk().stripTrailingZeros()))).toList();
-        boolean synthetic = syntheticCare.enabled() && selected.stream().allMatch(item -> Boolean.FALSE.equals(item.clinicalUse()));
-        String digest = sha256(write(new FrozenSnapshot(METHOD, scope, synthetic, bound)));
+        boolean synthetic = snapshot.synthetic();
+        String digest = sha256(write(snapshot));
         var ids = bound.stream().map(BoundCase::caseCode).toList();
         String activeKey = actor.userId() + ":" + digest;
         if (!activeReports.add(activeKey)) throw new BusinessException(ErrorCode.TASK_STATE_CONFLICT, "此快照正在验证");
@@ -165,6 +154,20 @@ class ValidationReportService {
         } finally {
             activeReports.remove(activeKey);
         }
+    }
+
+    private FrozenSnapshot currentSnapshot(AppUserPrincipal actor, Scope scope) {
+        var cases = cohort.projectCases(actor, scope.project(), CASE_LIMIT + 1);
+        if (cases.size() > CASE_LIMIT) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "此项目超过单次验证容量");
+        }
+        var selected = cases.stream().filter(item -> scope.artifactSha256().equals(item.artifactSha256())
+                && item.adRisk() != null && item.inputSha256() != null && item.indexDate() != null).toList();
+        var bound = selected.stream().map(item -> new BoundCase(item.caseCode(), item.inputSha256(),
+                item.indexDate().toString(), item.observedDate() == null ? null : item.observedDate().toString(),
+                new Sample(item.outcome24m(), item.adRisk().stripTrailingZeros()))).toList();
+        boolean synthetic = syntheticCare.enabled() && selected.stream().allMatch(item -> Boolean.FALSE.equals(item.clinicalUse()));
+        return new FrozenSnapshot(METHOD, scope, synthetic, bound);
     }
 
     /**
@@ -239,14 +242,6 @@ class ValidationReportService {
 
     private BusinessException unavailable() {
         return new BusinessException(ErrorCode.RESEARCH_UNAVAILABLE, "验证计算服务暂不可用，请稍后重试");
-    }
-
-    private List<String> readIds(String stored) {
-        try {
-            return mapper.readerForListOf(String.class).readValue(stored);
-        } catch (IOException invalid) {
-            throw new IllegalStateException("Stored enrollment binding is invalid", invalid);
-        }
     }
 
     private Report readReport(String stored) {

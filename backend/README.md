@@ -14,7 +14,7 @@ Java负责会话、对象授权、资料、导入、质量、持久化任务/结
 
 ## 构建与验证
 
-需要 JDK21。Windows 运行 `.\mvnw.cmd -B -ntp verify`，Linux/macOS 运行 `./mvnw -B -ntp verify`。测试使用 H2 MySQL 兼容模式，核对 115 个 API 操作与实际路由。研究适配测试使用隔离环回宿主、公开构造请求与响应。
+需要 JDK21。Windows 运行 `.\mvnw.cmd -B -ntp verify`，Linux/macOS 运行 `./mvnw -B -ntp verify`。测试使用 H2 MySQL 兼容模式，核对当前 OpenAPI 的139个操作与实际路由。Windows 全量507项通过，包含输入范围、历史非法快照出站阻断及当前验证快照回读的8项新增回归。研究适配测试使用隔离环回宿主、公开构造请求与响应；实际模型调用与模拟客户端分别验收。
 
 Java 有一项跨语言快照检查使用仓库根目录的 `.venv/Scripts/python.exe`。在 Windows 上先按[项目验证步骤](../README.md#验证与升级)创建 `.venv` 并安装锁定依赖，即可运行该项。其他环境可执行同节的公开 HTTP 契约验证。
 
@@ -30,7 +30,7 @@ $env:ADCR_DB_PASSWORD='<db-password>'
 .\mvnw.cmd spring-boot:run
 ```
 
-Java 默认端口为 8080。Flyway 在启动时执行 V1–V33，Hibernate 验证表结构。V30 支持普通档案和评估申请。V31 扩展访视输入。V32 新增研究授权与随访结局，V33 保存绑定快照的验证报告。V32–V33 在本机 H2 验收，MySQL 目标环境的升级及恢复需另行复测。[既有 MySQL 验收](../docs/MySQL8_Acceptance.md)
+Java 默认端口为 8080。Flyway 在启动时执行 V1–V37，Hibernate 验证表结构。V30–V31 支持普通档案、评估申请及访视输入，V32–V33 保存研究授权、随访结局及验证报告，V34–V37 支持患者备忘/卡片、授权表态、预约取消及卡片预览绑定。当前迁移链在本机 H2 验收，MySQL 目标环境的升级及恢复需另行复测。[既有 MySQL 验收](../docs/MySQL8_Acceptance.md)
 
 合成种子账号为admin、researcher、doctor、patient、research_doctor，仓库种子口令为 `DemoPass!2026`，保存BCrypt哈希。管理员可通过账号管理重置密码；本地既有账号密码不会在升级时重置。
 
@@ -95,7 +95,13 @@ npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
 
 管理员登记或撤销项目内的档案授权。研究员仅能读取本人在项目下获授权的病例、模型选项及报告。普通档案取首次成功的预测，失败状态留在诊疗任务记录。随访写入需要当前医生具有档案管理权限，已办理责任交接时按现任医生校验。
 
+报告回读按当前获授权病例、冻结输入、预测概率及结局/观察日期组成的快照匹配，不按报告创建时间选择。恢复授权后重新运行可以复用原报告，刷新仍返回该快照的同一报告；更正结局或改变病例范围后，尚无匹配报告时返回 `data:null`，需要运行验证。历史报告及创建时间保持不变，读取时仍在事务中复核项目授权和患者最新科研使用表态。
+
 在 `synthetic-care` 中，Java 通过本机 Python 计算已保存概率的描述指标。启动器为演练配置 `research.validation.python` 和 `research.validation.workspace`。Java 限制进程并发和输入输出时间，保存结果前复查授权。普通业务配置返回独立协议待补齐的状态。接口示例与状态见[集成契约](../docs/Integration_Contract.md#获授权病例的批次验证)。
+
+### 已训练表格模型的输入范围
+
+Java 在手动快照、七变量 CSV、完整冻结请求及执行前共用数值范围校验。七项已观测值须为有限非负数，年龄不超过120、教育年限40、MMSE30、CDR-SB18、CDR全局3、ADAS-Cog13为85、FAQ30，含上下界。`null` 继续保留为缺失；越界值不截断、不替换为缺失，也不送入预测。CSV 逐行标记 INVALID；登记请求返回400。升级前已冻结的非法输入禁止再次执行，旧任务与报告保留用于追溯。仅供契约算术检查的 constructed 模型使用独立测试规格，不替代已训练模型的准入。
 
 ## 研究补件交接
 
