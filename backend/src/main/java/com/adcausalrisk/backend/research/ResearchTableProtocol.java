@@ -15,6 +15,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -22,6 +23,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Component
@@ -35,6 +37,14 @@ final class ResearchTableProtocol {
             "age_years", "education_years", "mmse", "cdr_sb", "cdr_global", "adas__total13", "faq__faqtotal");
     private static final List<String> INSTRUMENT_FEATURES = List.of(
             "mmse", "cdr_sb", "cdr_global", "adas__total13", "faq__faqtotal");
+    // Trained-model business input ranges shared by manual, CSV and execution paths.
+    // Constructed arithmetic fixtures are a separate, test-only model family.
+    // Null remains missing; invalid observations must never be clipped or imputed.
+    private static final Map<String, BigDecimal> FEATURE_MAXIMUM = Map.of(
+            "age_years", new BigDecimal("120"), "education_years", new BigDecimal("40"),
+            "mmse", new BigDecimal("30"), "cdr_sb", new BigDecimal("18"),
+            "cdr_global", new BigDecimal("3"), "adas__total13", new BigDecimal("85"),
+            "faq__faqtotal", new BigDecimal("30"));
 
     private final ObjectMapper json;
     private final JsonNode contract;
@@ -236,6 +246,15 @@ final class ResearchTableProtocol {
         List<String> expected = new ArrayList<>();
         model.get("features").forEach(name -> expected.add(name.textValue()));
         require(features.size() == expected.size() && expected.stream().allMatch(features::has));
+        if (request.path("modelKey").asText().startsWith("trained-")) {
+            for (var bound : FEATURE_MAXIMUM.entrySet()) {
+                JsonNode value = features.path(bound.getKey()).path("value");
+                if (value.isMissingNode() || value.isNull()) continue;
+                require(value.isNumber() && Double.isFinite(value.doubleValue())
+                        && value.decimalValue().signum() >= 0
+                        && value.decimalValue().compareTo(bound.getValue()) <= 0);
+            }
+        }
         JsonNode apoe = features.path("apoe4_count").path("value");
         require(apoe.isMissingNode() || apoe.isNull() || apoe.isIntegralNumber());
     }

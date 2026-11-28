@@ -405,7 +405,7 @@ class ResearchTableAssessmentTest {
         String code = "DEMO-SYNC-" + UUID.randomUUID();
         var actor = actor("admin", "ADMIN");
         var payload = json.createObjectNode().put("subjectId", subject(code))
-                .set("request", uniqueRequest().put("subjectCode", code).put("modelKey", "trained-seven-logistic"));
+                .set("request", trainedRequest().put("subjectCode", code));
         JsonNode registered = body(mvc.perform(post(PATH + "/snapshots/register")
                 .with(authentication(actor)).contentType(MediaType.APPLICATION_JSON)
                 .content(payload.toString()))).path("data");
@@ -432,7 +432,7 @@ class ResearchTableAssessmentTest {
     void registersAControlledSnapshotForTheCurrentResearcher() throws Exception {
         String code = "DEMO-REG-" + UUID.randomUUID();
         long subjectId = subject(code);
-        var request = uniqueRequest().put("subjectCode", code).put("modelKey", "trained-seven-logistic");
+        var request = trainedRequest().put("subjectCode", code);
 
         var payload = json.createObjectNode();
         payload.put("subjectId", subjectId);
@@ -474,7 +474,7 @@ class ResearchTableAssessmentTest {
     void marksOlderModelSnapshotsIncompatibleAndReRegistersWithoutRewritingHistory() throws Exception {
         String code = "DEMO-COMPAT-" + UUID.randomUUID().toString().substring(0, 8);
         long subjectId = subject(code);
-        var request = uniqueRequest().put("subjectCode", code).put("modelKey", "trained-seven-logistic");
+        var request = trainedRequest().put("subjectCode", code);
 
         var payload = json.createObjectNode();
         payload.put("subjectId", subjectId);
@@ -521,6 +521,97 @@ class ResearchTableAssessmentTest {
         }
         assertThat(newOption).isNotNull();
         assertThat(newOption.get("compatible").asBoolean()).isTrue();
+    }
+
+    @Test
+    void rejectsOutOfRangeManualAndWireSnapshotsBeforeSavingOrSyncing() throws Exception {
+        long subjectId = subject("DEMO-BOUNDS-" + UUID.randomUUID());
+        int syncs = SNAPSHOT_REQUESTS.get();
+        for (String[] bound : List.of(new String[]{"age_years", "120"},
+                new String[]{"education_years", "40"}, new String[]{"mmse", "30"},
+                new String[]{"cdr_sb", "18"}, new String[]{"cdr_global", "3"},
+                new String[]{"adas__total13", "85"}, new String[]{"faq__faqtotal", "30"})) {
+            for (var value : List.of(new java.math.BigDecimal("-0.01"),
+                    new java.math.BigDecimal(bound[1]).add(new java.math.BigDecimal("0.01")))) {
+                var wire = trainedRequest();
+                ((ObjectNode) wire.at("/features/" + bound[0])).put("value", value);
+                var payload = json.createObjectNode().put("subjectId", subjectId).put("indexDate", "2026-11-15");
+                var features = payload.putObject("features");
+                wire.get("features").fields().forEachRemaining(entry -> features.set(entry.getKey(), entry.getValue().get("value")));
+                mvc.perform(post(PATH + "/snapshots/register").with(authentication(actor("admin", "ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload.toString()))
+                        .andExpect(status().isBadRequest());
+                wire.put("subjectCode", jdbc.queryForObject("SELECT subject_code FROM subject WHERE id=?", String.class, subjectId));
+                payload.remove("features");
+                payload.set("request", wire);
+                mvc.perform(post(PATH + "/snapshots/register").with(authentication(actor("admin", "ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload.toString()))
+                        .andExpect(status().isBadRequest());
+            }
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM research_table_snapshot WHERE subject_id=?", Long.class, subjectId)).isZero();
+        assertThat(SNAPSHOT_REQUESTS.get()).isEqualTo(syncs);
+    }
+
+    @Test
+    void refusesPreviouslyFrozenOutOfRangeTrainedInputBeforeCallingTheHost() throws Exception {
+        var request = trainedRequest();
+        ((ObjectNode) request.at("/features/age_years")).put("value", -1);
+        long frozen = snapshot(request, fixture("response-seven"), "admin");
+        int calls = REQUESTS.get();
+        submit(frozen, "legacy-out-of-range", actor("admin", "ADMIN"))
+                .andExpect(status().isServiceUnavailable());
+        assertThat(REQUESTS.get()).isEqualTo(calls);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM research_table_task WHERE snapshot_id=?", Long.class, frozen)).isZero();
+    }
+
+    @Test
+    void rejectsOverRangeModelCsvDuringPreviewAndSave() throws Exception {
+        String code = "DEMO-CSV-BOUNDS-" + UUID.randomUUID().toString().substring(0, 8);
+        long subjectId = subject(code);
+        insertRequestVisit(subjectId, "2025-06-01");
+        insertQuality(subjectId, "WARN");
+        int syncs = SNAPSHOT_REQUESTS.get();
+        var csv = new MockMultipartFile("file", "bounds.csv", "text/csv", (
+                "subjectCode,visitDate,age_years,education_years,cdr_global,adas__total13,faq__faqtotal\n"
+                + code + ",2025-06-01,121,12,0.5,14,3\n").getBytes(StandardCharsets.UTF_8));
+        for (String preview : List.of("true", "false")) {
+            var response = body(mvc.perform(multipart(PATH + "/snapshots/batch-csv").file(csv)
+                    .param("preview", preview).with(authentication(actor("admin", "ADMIN")))));
+            assertThat(response.at("/data/0/status").asText()).isEqualTo("INVALID");
+            assertThat(response.at("/data/0/snapshotId").isNull()).isTrue();
+        }
+        assertThat(SNAPSHOT_REQUESTS.get()).isEqualTo(syncs);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM research_table_snapshot WHERE subject_id=?", Long.class, subjectId)).isZero();
+    }
+
+    @Test
+    void registersInclusiveBoundsAndNullInputsWithoutChangingValues() throws Exception {
+        long subjectId = subject("DEMO-LIMITS-" + UUID.randomUUID());
+        for (boolean upper : List.of(false, true)) {
+            var payload = json.createObjectNode().put("subjectId", subjectId).put("indexDate", "2026-11-15");
+            var values = payload.putObject("features");
+            for (String[] bound : List.of(new String[]{"age_years", "120"}, new String[]{"education_years", "40"},
+                    new String[]{"mmse", "30"}, new String[]{"cdr_sb", "18"}, new String[]{"cdr_global", "3"},
+                    new String[]{"adas__total13", "85"}, new String[]{"faq__faqtotal", "30"})) {
+                values.put(bound[0], upper ? Integer.parseInt(bound[1]) : 0);
+            }
+            var registered = body(mvc.perform(post(PATH + "/snapshots/register").with(authentication(actor("admin", "ADMIN")))
+                    .contentType(MediaType.APPLICATION_JSON).content(payload.toString())));
+            var stored = json.readTree(jdbc.queryForObject("SELECT request_json FROM research_table_snapshot WHERE id=?",
+                    String.class, registered.at("/data/snapshotId").asLong()));
+            values.fields().forEachRemaining(entry -> assertThat(stored.at("/features/" + entry.getKey() + "/value").decimalValue())
+                    .isEqualByComparingTo(entry.getValue().decimalValue()));
+        }
+        var payload = json.createObjectNode().put("subjectId", subjectId).put("indexDate", "2026-11-15");
+        var values = payload.putObject("features");
+        for (String name : List.of("age_years", "education_years", "mmse", "cdr_sb", "cdr_global", "adas__total13", "faq__faqtotal")) values.putNull(name);
+        var created = body(mvc.perform(post(PATH + "/snapshots/register").with(authentication(actor("admin", "ADMIN")))
+                .contentType(MediaType.APPLICATION_JSON).content(payload.toString())));
+        var stored = json.readTree(jdbc.queryForObject("SELECT request_json FROM research_table_snapshot WHERE id=?",
+                String.class, created.at("/data/snapshotId").asLong()));
+        assertThat(stored.at("/features/age_years/value").isNull()).isTrue();
+        assertThat(stored.at("/features/age_years/missingReason").asText()).isEqualTo("NOT_COLLECTED");
     }
 
     @Test
@@ -1569,6 +1660,13 @@ class ResearchTableAssessmentTest {
 
     private ObjectNode uniqueRequest() throws IOException {
         return fixture("request-seven").put("runId", "run-" + UUID.randomUUID());
+    }
+
+    private ObjectNode trainedRequest() throws IOException {
+        var request = uniqueRequest().put("modelKey", "trained-seven-logistic");
+        // Arithmetic contract fixtures deliberately use 5.5; actual CDR global is 0–3.
+        ((ObjectNode) request.at("/features/cdr_global")).put("value", 0.5);
+        return request;
     }
 
     private static byte[] bytes(JsonNode value) {

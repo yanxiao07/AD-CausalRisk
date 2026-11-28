@@ -58,7 +58,9 @@ Java 业务接口见 [OpenAPI](../contracts/java-business.target.openapi.json)�
 ## 获授权病例的批次验证
 
 1. 研究员调用 `GET /api/research/validation-cohort/scopes` 读取本人全部项目和模型选项。病例明细单独分页。
-2. 将选项的项目编号和模型产物 SHA-256 传给 `POST /api/research/validation-cohort/report`。同一快照可回读原报告。刷新使用相同的两个查询参数向同一路径发送 GET，查无可访问报告时返回空数据。
+2. 将选项的项目编号和模型产物 SHA-256 传给 `POST /api/research/validation-cohort/report`。同一快照可回读原报告。刷新使用相同的两个查询参数向同一路径发送 GET；读取匹配当前授权病例、冻结输入、概率、结局和观察日期的快照，查无匹配报告时返回空数据。恢复授权后可复用原报告，创建时间和历史内容不变；病例或结局更正后需要运行新的当前快照，不能把较晚创建的旧子集报告当成当前结果。读取和保存均复核最新授权。
 3. `COMPLETED` 表示演练指标已计算，`SUPPRESSED` 表示小组抑制，`BLOCKED` 表示等待独立验证协议。抑制和阻断时指标为空。数字出自本机 Python 子进程，Java 验证回执并持久化。该通道使用已保存的概率，模型拟合和发布另有流程。
 
 [请求示例](../contracts/examples/validation-report.request.example.json) · [响应示例](../contracts/examples/validation-report.response.example.json)
+
+已训练表格模型的手动快照、模型CSV、完整冻结请求及执行前读取共用Java数值范围检查，详见[变量范围](../backend/README.md#已训练表格模型的输入范围)。越界登记返回400，CSV逐行标记INVALID；null仍表示缺失，不能把越界值改成null或截断后继续。既有非法冻结快照禁止再次执行，历史结果保留追溯。该业务门槛不改变共享JSON字段或教学算术模型规格。

@@ -2,7 +2,7 @@
 
 本次是四环节研究主线的有界工程支撑：复用研究Python服务及现有Java工程，补齐业务权限、来源/质量、任务/结果持久化及管理接口；验收终点为独立的后端提交、可构建源码和对应检查。研究工程验收不替代研究模型或临床验收。
 
-基线为[业务设计](Design_Guide.md)及[集成约定](Integration_Contract.md)。[课程需求 V3.2](Course_SRS_V3_2.md)保留历史背景。[Java OpenAPI](../contracts/java-business.target.openapi.json) 共 115 个操作。表格研究任务是新评估入口，旧规则接口服务历史任务回读。
+基线为[业务设计](Design_Guide.md)及[集成约定](Integration_Contract.md)。[课程需求 V3.2](Course_SRS_V3_2.md)保留历史背景。[Java OpenAPI](../contracts/java-business.target.openapi.json) 共139个操作，迁移至V37。表格研究任务是新评估入口，旧规则接口服务历史任务回读。
 
 ## 管理员职责
 
@@ -31,12 +31,14 @@
 | FR-REPORT-01 | 授权HTML/PDF/JSON附件、模板、来源/版本/限制及复核信息；列表、报告详情与下载共用档案授权规则 | PDF中文文本提取与两页渲染检查；内嵌OFL字体，不依赖主机字体 |
 | FR-AUDIT-01 | 登录/失败/拒绝、导入/质量、任务、复核、随访、授权、导出审计，服务端分页 | 审计事件绑定对象/状态/traceId，不存原始请求或密码；写审计失败只记录错误，可靠审计部署另验 |
 | FR-AGENT-01/02 | HTTP适配、超时、版本/runId/返回值校验，稳定错误白名单 | 既有HTTP客户端故障与契约测试，真实合成服务成功/BLOCKED/非法原值；不自动重复POST |
+| 扩展：已训练模型值域 | 手动/CSV/冻结请求及执行前统一核对有限非负值与七项上界，null保留缺失 | 负值/越界无快照或预测出站、CSV预检及保存、含上下界/合法null、旧非法快照再执行拒绝 |
+| 扩展：当前验证报告 | run/read共用授权病例、冻结输入、概率、结局及日期的快照身份 | 十→九→十、结局更正、读取时权限复核与空队列回归；原报告JSON、创建时间和幂等保持 |
 
 管理扩展同时包括已安装验证模型开关、模型仓库上传/SHA-256校验/启停/回滚、Java/研究宿主健康/版本、研究任务独立指标聚合、偏好持久化、完整授权范围聚合与查询。模型启用/回滚在同一事务内锁定配置后串行切换。只读研究证据接口复用现有Git聚合说明，模型清单仅核文件存在，不加载权重或执行研究推理。这些是支撑接口，不改变研究验收标准。
 
 ## 可重复检查
 
-- JDK 21：在 `backend` 运行 `mvnw.cmd -B -ntp verify`（Linux/macOS 为 `./mvnw -B -ntp verify`）。独立 H2 MySQL 兼容模式覆盖 115 个 OpenAPI 操作。V29 完成 391 项回归。
+- JDK 21：在 `backend` 运行 `mvnw.cmd -B -ntp verify`（Linux/macOS 为 `./mvnw -B -ntp verify`）。Windows独立H2的507项通过，0失败/错误/跳过；路由核对覆盖当前139个OpenAPI操作。历史MySQL验收不自动覆盖V34–V37或本次修复。
 - 仓库根目录：同一已安装测试依赖的Python执行`python -m unittest discover -s tests -p test_contracts_and_fixture.py -v`，5项契约/fixtures检查。旧规则计算用于回归检查。
 - 与真实Python的合成联调验证完整/BLOCKED/原始超界值、导入身份、输入不可变、审计和正常Java重启后的结果读取。客户端模拟测试与真实HTTP分别记录，不把Mock当算法或临床证据。
 - 表格研究通道用[真实 HTTP 验收](../backend/README.md#本地研究任务联调)验证独立 Python 进程、登录会话、已训练权重、人工快照、结果回读及权限。验收使用新内存 H2。
