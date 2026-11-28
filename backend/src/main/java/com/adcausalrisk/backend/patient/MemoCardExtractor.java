@@ -1,5 +1,8 @@
 package com.adcausalrisk.backend.patient;
 
+import com.adcausalrisk.backend.common.BusinessException;
+import com.adcausalrisk.backend.common.ErrorCode;
+
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -31,6 +34,9 @@ import java.util.regex.Pattern;
  * </ol>
  *
  * <p>{@code sourceRef} 记录命中的原文片段，预览页据此让患者核对卡片来自哪句话。
+ *
+ * <p>整句兜底有一条硬约束：原话必须完整放进卡片。放不进一张卡时直接拒绝预览并提示患者
+ * 改短原文，不做截断——被截掉的句尾常常正是「不要独自离开」这类限制条件。
  */
 @Component
 class MemoCardExtractor {
@@ -41,7 +47,15 @@ class MemoCardExtractor {
     static final String WHOLE_SENTENCE_QUESTION = "我记下的这件事是什么？";
 
     private static final int MAX_CARDS = 6;
-    private static final int MAX_SENTENCE = 120;
+
+    /**
+     * 卡片文字上限，与 {@code PatientFlashCard} 的 front_text/back_text 列宽和契约的 maxLength 一致。
+     *
+     * <p>整句兜底最多保留到这里，再长也不能靠截断收场：句尾往往是「…不要独自离开」这类限制条件，
+     * 截掉它等于悄悄改写医嘱，而卡片上没有任何痕迹说明自己被截断过。
+     */
+    private static final int MAX_CARD_TEXT = 500;
+
     private static final int MAX_SOURCE = 200;
 
     /** 语义片段最长上限：再长就不像一个字段值，多半是模型把整句圈了进来。 */
@@ -231,7 +245,8 @@ class MemoCardExtractor {
         if (results.isEmpty()) {
             String trimmed = content.trim();
             if (!trimmed.isBlank()) {
-                results.add(new Draft(WHOLE_SENTENCE_QUESTION, cap(trimmed, MAX_SENTENCE), cap(trimmed, MAX_SOURCE)));
+                requireCardFits(trimmed);
+                results.add(new Draft(WHOLE_SENTENCE_QUESTION, trimmed, cap(trimmed, MAX_SOURCE)));
             }
         }
         return results;
@@ -318,7 +333,8 @@ class MemoCardExtractor {
     private Draft fromConditionOnly(String sentence) {
         String trimmed = trimPunctuation(sentence);
         if (trimmed.isBlank()) return null;
-        return new Draft(WHOLE_SENTENCE_QUESTION, cap(trimmed, MAX_SENTENCE), cap(sentence, MAX_SOURCE));
+        requireCardFits(trimmed);
+        return new Draft(WHOLE_SENTENCE_QUESTION, trimmed, cap(sentence, MAX_SOURCE));
     }
 
     /**
@@ -488,8 +504,24 @@ class MemoCardExtractor {
     }
 
     private Draft fallback(String clause) {
-        if (clause.length() > MAX_SENTENCE) return null;
+        requireCardFits(clause);
         return new Draft(WHOLE_SENTENCE_QUESTION, clause, cap(clause, MAX_SOURCE));
+    }
+
+    /**
+     * 整句兜底必须把原话完整放进卡片，放不下时明确拒绝，绝不截断。
+     *
+     * <p>这里曾经用 120 字上限截断，患者的 144 字备忘在预览里只剩前半句，句尾的
+     * 「不要独自离开」直接消失，而卡片上看不出任何被截断的痕迹——复习时读到的是一条
+     * 改了含义的医嘱。放不进一张卡时唯一安全的做法是让患者自己改短原文再预览。
+     */
+    private static void requireCardFits(String sentence) {
+        if (sentence.length() > MAX_CARD_TEXT) {
+            throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "这句话有" + sentence.length() + "字，超过单张卡片" + MAX_CARD_TEXT
+                            + "字上限，请拆成几句或缩短后重新预览");
+        }
     }
 
     private static boolean containsQuestionWord(String text) {

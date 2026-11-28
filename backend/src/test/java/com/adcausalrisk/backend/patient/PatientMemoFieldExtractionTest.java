@@ -192,6 +192,50 @@ class PatientMemoFieldExtractionTest {
         assertThat(drafts.get(0).path("backText").asText()).isEqualTo("如果下雨不要去公园");
     }
 
+    /**
+     * 评审的复现：144 字的条件句备忘，答案在旧实现里被截到 120 字，句尾「不要独自离开」消失。
+     * 预览里的答案必须与患者写的原话一字不差，限制条件不能留在被截掉的那一截里。
+     */
+    @Test
+    void aLongConditionalMemoKeepsTheWholeSentenceInThePreview() throws Exception {
+        String memo =
+                "如果最近这段时间总是觉得头晕而且夜里睡不好觉白天没有精神走路的时候有点发飘"
+                        + "有时候还会心慌胸口闷得慌吃饭也没什么胃口天气一变就更难受每次出门前"
+                        + "先坐下缓一缓再站起来那出门的时候一定要有家里人陪着慢慢走不要一个人去"
+                        + "人多的地方也不要在外面待太久更不要独自离开";
+        JsonNode drafts = preview(createMemo(memo));
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).path("frontText").asText()).isEqualTo(WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).path("backText").asText())
+                .as("整句兜底不能截断，句尾的限制条件必须保留")
+                .isEqualTo(memo)
+                .endsWith("更不要独自离开");
+    }
+
+    /**
+     * 连一张卡都放不下的整句不截断、也不静默丢弃，而是明确拒绝并告诉患者怎么改：
+     * 截断或丢弃都会让患者以为这句话已经被记下来了。
+     */
+    @Test
+    void aMemoTooLongForOneCardIsRefusedWithAnActionableMessage() throws Exception {
+        String memo = "如果" + "头晕的时候先坐下休息并且把当天吃过的药都记下来".repeat(30);
+        long memoId = createMemo(memo);
+        MockHttpSession session = login("patient");
+
+        JsonNode refused =
+                bodyOf(
+                        mockMvc.perform(post(MEMOS + "/" + memoId + "/card-drafts").session(session))
+                                .andExpect(status().isBadRequest())
+                                .andReturn());
+
+        assertThat(refused.path("errorCode").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(refused.path("message").asText())
+                .as("拒绝理由要能让患者自己改短原文")
+                .contains("500")
+                .contains("重新预览");
+    }
+
     /** 评审给的样例：时间答案不能截断到整点，患者看到的必须是「9点30分」。 */
     @Test
     void previewKeepsTheMinutesOfAnAppointmentTime() throws Exception {

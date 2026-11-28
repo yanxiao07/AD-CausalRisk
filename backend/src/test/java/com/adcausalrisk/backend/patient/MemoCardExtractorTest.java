@@ -1,6 +1,7 @@
 package com.adcausalrisk.backend.patient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -9,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.adcausalrisk.backend.common.BusinessException;
 import com.sun.net.httpserver.HttpServer;
 
 import org.junit.jupiter.api.Test;
@@ -193,6 +195,48 @@ class MemoCardExtractorTest {
         assertThat(drafts).hasSize(1);
         assertThat(drafts.get(0).frontText()).isEqualTo("下雨时该怎么做？");
         assertThat(drafts.get(0).backText()).isEqualTo("不要去公园");
+    }
+
+    /**
+     * 评审用 144 字备忘复现：整句兜底被 120 字上限截断，句尾的「不要独自离开」整段消失。
+     * 条件句既然拆不出「条件 + 动作」，就必须一个字不少地整句保留。
+     */
+    @Test
+    void aLongConditionalSentenceKeepsItsTailInsteadOfBeingTruncated() {
+        String memo =
+                "如果最近这段时间总是觉得头晕而且夜里睡不好觉白天没有精神走路的时候有点发飘"
+                        + "有时候还会心慌胸口闷得慌吃饭也没什么胃口天气一变就更难受每次出门前"
+                        + "先坐下缓一缓再站起来那出门的时候一定要有家里人陪着慢慢走不要一个人去"
+                        + "人多的地方也不要在外面待太久更不要独自离开";
+        assertThat(memo.length()).as("复现条件：长于旧实现的 120 字上限").isGreaterThan(120);
+
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        List<MemoCardExtractor.Draft> drafts = extractor.extract(memo);
+
+        assertThat(drafts).hasSize(1);
+        assertThat(drafts.get(0).frontText()).isEqualTo(MemoCardExtractor.WHOLE_SENTENCE_QUESTION);
+        assertThat(drafts.get(0).backText())
+                .as("整句兜底不能截断，句尾的限制条件必须保留")
+                .isEqualTo(memo)
+                .endsWith("更不要独自离开");
+    }
+
+    /**
+     * 超过卡片上限的整句同样不能截断：截断与丢弃都会让患者以为这句话已经被记下来了。
+     * 唯一安全的出口是明确拒绝，让患者自己改短原文。
+     */
+    @Test
+    void anOversizedWholeSentenceIsRefusedInsteadOfTruncated() {
+        String memo = "如果" + "头晕的时候先坐下休息并且把当天吃过的药都记下来".repeat(30);
+        assertThat(memo.length()).as("复现条件：超过单张卡片 500 字上限").isGreaterThan(500);
+
+        MemoCardExtractor extractor = new MemoCardExtractor(offlineSemantic());
+
+        assertThatThrownBy(() -> extractor.extract(memo))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("500")
+                .hasMessageContaining("重新预览");
     }
 
     @Test
